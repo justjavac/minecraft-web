@@ -1,5 +1,6 @@
 'use client';
 
+import '@/lib/three-compat';
 import { useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { WorldRenderer } from './World';
@@ -62,7 +63,8 @@ export function GameCanvas() {
                   const renderer = new WebGPURenderer({ canvas: props.canvas as HTMLCanvasElement, antialias: false });
                   await renderer.init();
                   return renderer;
-                } catch {
+                } catch (err) {
+                  console.warn('[renderer] WebGPU 初始化失败，回退到 WebGL', err);
                   setKind('webgl');
                   const { WebGLRenderer } = await import('three');
                   return new WebGLRenderer({ canvas: props.canvas as HTMLCanvasElement, antialias: false });

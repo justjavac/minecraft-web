@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { BoxGeometry, EdgesGeometry, type LineSegments, type Material } from 'three';
+import { BoxGeometry, EdgesGeometry, Group, LineSegments } from 'three';
 import { BLOCKS } from '@/lib/blocks';
 import { debugInfo, getActiveWorld, targetBlock } from '@/lib/game';
 import { getAtlasMaterials } from '@/lib/textures';
@@ -10,21 +10,34 @@ import { useRendererKind } from './renderer-kind';
 
 /** 准星选中方块的黑色线框（射线由 Player 每帧统一计算） */
 export function BlockHighlight() {
-  const ref = useRef<LineSegments>(null);
-  const geo = useMemo(() => new EdgesGeometry(new BoxGeometry(1.002, 1.002, 1.002)), []);
+  const groupRef = useRef<Group>(null);
+  const lineRef = useRef<LineSegments | null>(null);
   const kind = useRendererKind();
-  const [mat, setMat] = useState<Material | null>(null);
 
+  // 命令式创建/销毁：几何与 effect 严格成对（StrictMode 安全，见 ChunkMesh 注释）
   useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    let cancelled = false;
+    const line = new LineSegments(new EdgesGeometry(new BoxGeometry(1.002, 1.002, 1.002)));
+    line.visible = false;
+    line.frustumCulled = false;
     void getAtlasMaterials(kind).then((m) => {
-      setMat(m.line({ color: '#111111' }));
+      if (!cancelled) line.material = m.line({ color: '#111111' });
     });
-    return () => geo.dispose();
-  }, [geo, kind]);
+    group.add(line);
+    lineRef.current = line;
+    return () => {
+      cancelled = true;
+      line.removeFromParent();
+      line.geometry.dispose();
+      lineRef.current = null;
+    };
+  }, [kind]);
 
   useFrame(() => {
     const world = getActiveWorld();
-    const mesh = ref.current;
+    const mesh = lineRef.current;
     if (!world || !mesh) return;
     const hit = targetBlock.hit;
     if (hit) {
@@ -38,6 +51,5 @@ export function BlockHighlight() {
     }
   });
 
-  if (!mat) return null;
-  return <lineSegments ref={ref} geometry={geo} material={mat} visible={false} frustumCulled={false} />;
+  return <group ref={groupRef} />;
 }

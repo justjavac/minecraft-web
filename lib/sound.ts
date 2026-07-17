@@ -22,10 +22,17 @@ const GROUP_FILES: Record<SoundGroup, string[]> = {
 };
 
 let ctx: AudioContext | null = null;
+let preloadQueued = false;
 const buffers = new Map<string, Promise<AudioBuffer>>();
 
-function audioCtx(): AudioContext {
-  if (!ctx) ctx = new AudioContext();
+/** 是否已发生用户手势（浏览器自动播放策略：无手势创建/恢复 AudioContext 会刷警告） */
+let gestured = typeof navigator !== 'undefined' && navigator.userActivation?.hasBeenActive === true;
+
+function audioCtx(): AudioContext | null {
+  if (!ctx) {
+    if (!gestured) return null; // 等首次手势，由下方监听器创建
+    ctx = new AudioContext();
+  }
   // 浏览器要求用户手势后才能出声：每次播放都尝试恢复
   if (ctx.state === 'suspended') void ctx.resume();
   return ctx;
@@ -34,12 +41,14 @@ function audioCtx(): AudioContext {
 function loadBuffer(file: string): Promise<AudioBuffer> {
   let p = buffers.get(file);
   if (!p) {
+    const ac = audioCtx();
+    if (!ac) return Promise.reject(new Error('AudioContext 等待用户手势'));
     p = fetch(`/sounds/${file}`)
       .then((r) => {
         if (!r.ok) throw new Error(`音效缺失: ${file}`);
         return r.arrayBuffer();
       })
-      .then((ab) => audioCtx().decodeAudioData(ab));
+      .then((ab) => ac.decodeAudioData(ab));
     buffers.set(file, p);
     // 失败不缓存 rejection，下次播放时重试
     p.catch(() => buffers.delete(file));
@@ -47,11 +56,16 @@ function loadBuffer(file: string): Promise<AudioBuffer> {
   return p;
 }
 
-/** 世界加载后预载全部音效（静默失败，播放时会再尝试） */
-export function preloadSounds(): void {
+function preloadAll(): void {
   for (const files of Object.values(GROUP_FILES)) {
     for (const f of files) void loadBuffer(f).catch(() => {});
   }
+}
+
+/** 世界加载后预载全部音效（静默失败，播放时会再尝试；无用户手势则推迟到首次手势） */
+export function preloadSounds(): void {
+  if (gestured) preloadAll();
+  else preloadQueued = true;
 }
 
 export function playSound(group: SoundGroup, volume = 1): void {
@@ -60,6 +74,7 @@ export function playSound(group: SoundGroup, volume = 1): void {
   void loadBuffer(file)
     .then((buffer) => {
       const ac = audioCtx();
+      if (!ac) return;
       const src = ac.createBufferSource();
       src.buffer = buffer;
       // 每次播放随机音调，避免机械重复感
@@ -73,7 +88,16 @@ export function playSound(group: SoundGroup, volume = 1): void {
     .catch(() => {});
 }
 
-// 首次点击页面时主动创建/恢复 AudioContext，减少第一次播放的延迟
+// 首次手势（点击/按键）时创建/恢复 AudioContext 并补做预载，减少第一次播放的延迟
 if (typeof window !== 'undefined') {
-  window.addEventListener('pointerdown', () => audioCtx(), { once: true });
+  const onGesture = () => {
+    gestured = true;
+    audioCtx();
+    if (preloadQueued) {
+      preloadQueued = false;
+      preloadAll();
+    }
+  };
+  window.addEventListener('pointerdown', onGesture, { once: true });
+  window.addEventListener('keydown', onGesture, { once: true });
 }

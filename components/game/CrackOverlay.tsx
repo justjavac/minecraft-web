@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { CanvasTexture, MeshBasicMaterial, NearestFilter, type Material, type Mesh } from 'three';
 import { digState } from '@/lib/game';
@@ -46,16 +46,17 @@ function createCrackTexture(): CanvasTexture {
 /** 长按挖掘时目标方块上的裂纹进度覆盖层 */
 export function CrackOverlay() {
   const ref = useRef<Mesh>(null);
-  const tex = useMemo(() => createCrackTexture(), []);
   const kind = useRendererKind();
   const [material, setMaterial] = useState<Material | null>(null);
 
   useEffect(() => {
+    // 纹理在 effect 中创建、cleanup 成对释放（StrictMode 安全，见 ChunkMesh 注释）
+    const tex = createCrackTexture();
     void getAtlasMaterials(kind).then((mats) => {
       setMaterial(mats.basic({ map: tex, transparent: true, depthWrite: false }));
     });
     return () => tex.dispose();
-  }, [tex, kind]);
+  }, [kind]);
 
   useFrame(() => {
     const mesh = ref.current;
