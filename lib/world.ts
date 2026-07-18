@@ -87,6 +87,30 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
   }
   // 村庄结构（确定性，跨 chunk 一致）
   applyStructures(seedHash, terrain, cx, cz, data);
+
+  // 花草：平原/盆地/森林的草地列按哈希撒花/草丛（只有支撑且上方为空才放）
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      const biome = terrain.biomeAt(wx, wz);
+      if (biome !== 'plains' && biome !== 'forest' && biome !== 'basin') continue;
+      const h = terrain.heightAt(wx, wz);
+      if (h <= SEA_LEVEL || h + 1 >= WORLD_HEIGHT) continue;
+      if (data[localIndex(x, h, z)] !== BLOCK_BY_KEY.grass.id) continue;
+      const r = hash2(seedHash ^ 0x51ab3f, wx, wz);
+      const chance = biome === 'forest' ? 0.02 : 0.012;
+      if (r >= chance) continue;
+      const pick = hash2(seedHash ^ 0x7c91e2, wx, wz);
+      let plant: number;
+      if (biome === 'forest') {
+        plant = pick < 0.5 ? BLOCK_BY_KEY.fern.id : pick < 0.65 ? BLOCK_BY_KEY.short_grass.id : pick < 0.8 ? BLOCK_BY_KEY.poppy.id : pick < 0.9 ? BLOCK_BY_KEY.dandelion.id : BLOCK_BY_KEY.blue_orchid.id;
+      } else {
+        plant = pick < 0.45 ? BLOCK_BY_KEY.short_grass.id : pick < 0.6 ? BLOCK_BY_KEY.dandelion.id : pick < 0.75 ? BLOCK_BY_KEY.poppy.id : pick < 0.85 ? BLOCK_BY_KEY.cornflower.id : pick < 0.95 ? BLOCK_BY_KEY.oxeye_daisy.id : BLOCK_BY_KEY.allium.id;
+      }
+      if (data[localIndex(x, h + 1, z)] === AIR) data[localIndex(x, h + 1, z)] = plant;
+    }
+  }
 }
 
 export class World {

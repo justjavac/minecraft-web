@@ -54,7 +54,7 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
         spawnMaterialDrop(def.drop.material, x + 0.5, y + 0.4, z + 0.5, min + Math.floor(Math.random() * (max - min + 1)));
       }
     } else if (tierOk) {
-      spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
+      spawnBlockDrop(def.dropBlock ?? oldId, x + 0.5, y + 0.4, z + 0.5);
     }
     // 熔炉被破坏：炉内容物一并掉落
     if (oldId === FURNACE) dropFurnaceContents(`${x},${y},${z}`, x, y, z);
@@ -114,6 +114,29 @@ export function tryPlace(): boolean {
     if (id === null) return false;
   } else {
     id = s.hotbarBlocks[s.selectedSlot];
+  }
+  const def = BLOCKS[id];
+  if (!def) return false;
+
+  // —— 形状放置规则 ——
+  if (def.shape === 'slab') {
+    // 点击同类台阶本身：合并成完整方块（MC 规则）
+    const hitDef = BLOCKS[hitId];
+    if (hitDef?.shape === 'slab' && hitDef.fullBlock === def.fullBlock) {
+      world.setBlock(bx, by, bz, hitDef.fullBlock!);
+      playSound(hitDef.placeSound);
+      lastPlace = now;
+      return true;
+    }
+    // 点在方块底面：放上半台阶（注册顺序底/顶相邻）
+    if (fy === -1) id = id + 1;
+  } else if (def.shape === 'cross') {
+    // 花草：下方必须是不透明的支撑方块
+    if (!BLOCKS[world.getBlock(px, py - 1, pz)]?.opaque) return false;
+  } else if (def.shape === 'stairs') {
+    // 楼梯：按玩家视线朝向决定背向（顶半在远处）
+    const facing = Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 1 : 3) : dir.z > 0 ? 2 : 0;
+    id = id + facing;
   }
   world.setBlock(px, py, pz, id);
   playSound(BLOCKS[id]?.placeSound ?? 'place');

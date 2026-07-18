@@ -107,6 +107,18 @@ export interface BlockDef {
   digTime: number;
   /** 流体（水/流水）：可游泳、不可选中、参与水渲染 */
   fluid?: boolean;
+  /** 形状（默认 cube 全方块）：slab 半高 / stairs 双箱 L 形 / fence 柱+臂 / cross 十字面片 */
+  shape?: 'slab' | 'stairs' | 'fence' | 'cross';
+  /** 碰撞盒 y 范围（默认 [0,1]；台阶底 [0,0.5]，台阶顶 [0.5,1]，栅栏 [0,1.5]，花草无碰撞） */
+  box?: [number, number];
+  /** 台阶是否上半（放置/合并用） */
+  slabTop?: boolean;
+  /** 台阶对应的完整方块 id（两个半砖合并） */
+  fullBlock?: BlockId;
+  /** 楼梯朝向（0 北 -z / 1 东 +x / 2 南 +z / 3 西 -x） */
+  facing?: 0 | 1 | 2 | 3;
+  /** 挖掘掉落的方块 id 覆盖（楼梯各朝向/顶半砖统一掉基础型） */
+  dropBlock?: BlockId;
   cat: BlockCat;
 }
 
@@ -364,6 +376,78 @@ add('sculk', '幽匿块', 'sculk', { cat: 'earth', tool: 'shovel', digTime: 0.3,
 add('sculk_catalyst', '幽匿催发体', { side: 'sculk_catalyst_side', top: 'sculk_catalyst_top' }, { cat: 'earth', tool: 'shovel', digTime: 15, ...GRASS_SND });
 add('sculk_sensor', '幽匿感测体', { side: 'sculk_sensor_side', top: 'sculk_sensor_top' }, { cat: 'earth', tool: 'shovel', digTime: 7.5, ...GRASS_SND });
 add('sculk_shrieker', '幽匿尖啸体', { side: 'sculk_shrieker_side', top: 'sculk_shrieker_top' }, { cat: 'earth', tool: 'shovel', digTime: 15, ...GRASS_SND });
+
+// ——— 台阶（底半/顶半；同类两块合并回完整方块） ———
+const SLAB_BASES: [block: string, tex: string, cn: string, digTime: number][] = [
+  ['stone', 'stone', '石头', 7.5],
+  ['smooth_stone', 'smooth_stone', '平滑石头', 7.5],
+  ['cobble', 'cobblestone', '圆石', 10],
+  ['stone_bricks', 'stone_bricks', '石砖', 10],
+  ['deepslate_bricks', 'deepslate_bricks', '深板岩砖', 15],
+  ['brick', 'bricks', '砖块', 10],
+  ['sandstone', 'sandstone', '砂岩', 4],
+  ['planks', 'oak_planks', '橡木木板', 3],
+  ['spruce_planks', 'spruce_planks', '云杉木板', 3],
+  ['dark_oak_planks', 'dark_oak_planks', '深色橡木木板', 3],
+];
+for (const [base, tex, cn, digTime] of SLAB_BASES) {
+  const full = defs.find((d) => d.key === base)!.id;
+  const tool = base === 'planks' || base.endsWith('_planks') ? ('axe' as const) : ('pickaxe' as const);
+  const bottom = add(`${base}_slab`, `${cn}台阶`, tex, {
+    cat: 'stone', tool, digTime: digTime / 2, shape: 'slab', box: [0, 0.5], fullBlock: full, opaque: false,
+  });
+  add(`${base}_slab_top`, `${cn}台阶（上）`, tex, {
+    cat: 'stone', tool, digTime: digTime / 2, shape: 'slab', box: [0.5, 1], slabTop: true, fullBlock: full, dropBlock: bottom.id, opaque: false,
+  });
+}
+
+// ——— 楼梯（4 朝向 × 双箱 L 形；各朝向统一掉 0 朝向款） ———
+const STAIR_BASES: [block: string, tex: string, cn: string, digTime: number][] = [
+  ['cobble', 'cobblestone', '圆石', 10],
+  ['stone_bricks', 'stone_bricks', '石砖', 10],
+  ['deepslate_bricks', 'deepslate_bricks', '深板岩砖', 15],
+  ['brick', 'bricks', '砖块', 10],
+  ['planks', 'oak_planks', '橡木木板', 3],
+  ['spruce_planks', 'spruce_planks', '云杉木板', 3],
+  ['dark_oak_planks', 'dark_oak_planks', '深色橡木木板', 3],
+];
+const STAIR_DIR = ['', '_e', '_s', '_w'] as const;
+for (const [base, tex, cn, digTime] of STAIR_BASES) {
+  const tool = base === 'planks' || base.endsWith('_planks') ? ('axe' as const) : ('pickaxe' as const);
+  let baseId = 0;
+  for (let f = 0; f < 4; f++) {
+    const d = add(`${base}_stairs${STAIR_DIR[f]}`, `${cn}楼梯`, tex, {
+      cat: 'stone', tool, digTime, shape: 'stairs', facing: f as 0 | 1 | 2 | 3, opaque: false,
+    });
+    if (f === 0) baseId = d.id;
+    else d.dropBlock = baseId;
+  }
+}
+
+// ——— 栅栏（柱 + 邻接臂，高 1.5 不可跳过） ———
+for (const [w, cn] of [['oak', '橡木'], ['spruce', '云杉'], ['birch', '白桦'], ['dark_oak', '深色橡木']] as const) {
+  add(`${w}_fence`, `${cn}栅栏`, `${w}_planks`, { cat: 'wood', tool: 'axe', digTime: 3, shape: 'fence', box: [0, 1.5], opaque: false, ...WOOD_SND });
+}
+
+// ——— 花草（十字面片，无碰撞，需支撑，徒手即碎） ———
+const PLANTS: [key: string, cn: string][] = [
+  ['dandelion', '蒲公英'],
+  ['poppy', '虞美人'],
+  ['blue_orchid', '兰花'],
+  ['allium', '绒球葱'],
+  ['oxeye_daisy', '滨菊'],
+  ['cornflower', '矢车菊'],
+  ['red_tulip', '红色郁金香'],
+  ['white_tulip', '白色郁金香'],
+  ['short_grass', '草丛'],
+  ['fern', '蕨'],
+  ['oak_sapling', '橡树树苗'],
+  ['spruce_sapling', '云杉树苗'],
+  ['birch_sapling', '白桦树苗'],
+];
+for (const [k, cn] of PLANTS) {
+  add(k, cn, k, { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
+}
 
 /** 以方块 id 为下标 */
 export const BLOCKS: BlockDef[] = defs;
