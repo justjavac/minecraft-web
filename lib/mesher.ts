@@ -1,7 +1,7 @@
 // chunk 网格化：隐藏面剔除 + 逐顶点环境光遮蔽（AO）+ atlas UV，输出纯数据（不依赖 three，可单测）
 
 import { AIR, ATLAS_COLS, ATLAS_ROWS, BLOCKS, WATER } from './blocks';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex, type Chunk, type World } from './world';
+import { CHUNK_SIZE, WORLD_HEIGHT, type Chunk, type World } from './world';
 
 export interface GeometryData {
   positions: Float32Array;
@@ -124,50 +124,63 @@ class GeometryBuilder {
 
 const aoScratch = [0, 0, 0, 0];
 
-export function buildChunkGeometry(world: World, chunk: Chunk): { solid: GeometryData; water: GeometryData } {
+/** 不透明查找表（id → 1/0）：替代热路径上的 BLOCKS[id]?.opaque 属性链访问 */
+const OPAQUE = new Uint8Array(BLOCKS.length);
+for (const d of BLOCKS) OPAQUE[d.id] = d.opaque ? 1 : 0;
+
+// 3×3 chunk 邻居网格（48×48 截面 + 上下各 1 格缓冲），模块级复用避免逐次分配
+// （JS 单线程：主线程/每个 worker 各自持有独立模块实例，无共享冲突）
+const GW = 48;
+const GH = WORLD_HEIGHT + 2;
+const idGrid = new Uint16Array(GW * GW * GH);
+const opGrid = new Uint8Array(idGrid.length);
+const gidx = (x: number, y: number, z: number): number => ((y + 1) * GW + (z + CHUNK_SIZE)) * GW + (x + CHUNK_SIZE);
+
+/**
+ * 纯数据网格化：输入 3×3 邻居 chunk 的方块数据（datas[9]，索引 (gz+1)*3+(gx+1)，可为 null），
+ * 输出几何。与 World/Chunk 解耦，主线程与 Web Worker 共用
+ */
+export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null)[]): { solid: GeometryData; water: GeometryData } {
   const solid = new GeometryBuilder();
   const water = new GeometryBuilder();
 
-  // 预取 3×3 chunk 网格（面/AO 探测最多越界 1 格），热路径直接数组访问
-  const grid: (Chunk | null)[] = [];
-  for (let dz = -1; dz <= 1; dz++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      grid.push(world.chunks.get(`${chunk.cx + dx},${chunk.cz + dz}`) ?? null);
+  // 把 3×3 chunk 数据摊平进邻居网格：热路径全部变成无闭包的直接数组读
+  idGrid.fill(0);
+  for (let gz = -1; gz <= 1; gz++) {
+    for (let gx = -1; gx <= 1; gx++) {
+      const c = datas[(gz + 1) * 3 + (gx + 1)];
+      if (!c) continue;
+      for (let y = 0; y < WORLD_HEIGHT; y++) {
+        for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+          const src = c.subarray((y * CHUNK_SIZE + lz) * CHUNK_SIZE, (y * CHUNK_SIZE + lz + 1) * CHUNK_SIZE);
+          idGrid.set(src, ((y + 1) * GW + (gz + 1) * CHUNK_SIZE + lz) * GW + (gx + 1) * CHUNK_SIZE);
+        }
+      }
     }
   }
-  const blockAt = (x: number, y: number, z: number): number => {
-    if (y < 0 || y >= WORLD_HEIGHT) return AIR;
-    const gx = (x >> 4) - chunk.cx + 1;
-    const gz = (z >> 4) - chunk.cz + 1;
-    if (gx < 0 || gx > 2 || gz < 0 || gz > 2) return AIR;
-    const c = grid[gz * 3 + gx];
-    return c ? c.data[localIndex(x & 15, y, z & 15)] : AIR;
-  };
-  const isOpaque = (x: number, y: number, z: number): boolean =>
-    BLOCKS[blockAt(x, y, z)]?.opaque === true;
-
-  const baseX = chunk.cx * CHUNK_SIZE;
-  const baseZ = chunk.cz * CHUNK_SIZE;
+  for (let i = 0; i < idGrid.length; i++) opGrid[i] = OPAQUE[idGrid[i]];
+  const isOpaque = (x: number, y: number, z: number): boolean => opGrid[gidx(x, y, z)] === 1;
+  const baseX = cx * CHUNK_SIZE;
+  const baseZ = cz * CHUNK_SIZE;
   for (let y = 0; y < WORLD_HEIGHT; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
       for (let x = 0; x < CHUNK_SIZE; x++) {
-        const id = chunk.data[localIndex(x, y, z)];
+        const id = idGrid[gidx(x, y, z)];
         if (id === AIR) continue;
         const def = BLOCKS[id];
         if (!def) continue; // 未知 id（如旧版本存档），按空气处理
         const wx = baseX + x;
         const wz = baseZ + z;
         for (const face of FACES) {
-          const n = blockAt(wx + face.dir[0], y + face.dir[1], wz + face.dir[2]);
-          const ndef = BLOCKS[n] ?? BLOCKS[AIR];
+          const n = idGrid[gidx(x + face.dir[0], y + face.dir[1], z + face.dir[2])];
           // 同类透明方块之间不画（玻璃-玻璃、树叶-树叶、水-水）；不透明邻居挡住的面剔除
-          const visible = id === WATER ? n !== WATER && !ndef.opaque : !ndef.opaque && n !== id;
+          const visible = id === WATER ? n !== WATER && opGrid[gidx(x + face.dir[0], y + face.dir[1], z + face.dir[2])] !== 1 : opGrid[gidx(x + face.dir[0], y + face.dir[1], z + face.dir[2])] !== 1 && n !== id;
           if (!visible) continue;
           const tile = face.dir[1] === 1 ? def.top : face.dir[1] === -1 ? def.bottom : def.side;
           // 逐顶点 AO：探测邻层（面外侧那一格）的两个侧边与对角
-          const bx = wx + face.dir[0];
+          const bx = x + face.dir[0];
           const by = y + face.dir[1];
-          const bz = wz + face.dir[2];
+          const bz = z + face.dir[2];
           for (let i = 0; i < 4; i++) {
             const c = face.corners[i];
             const s1 = isOpaque(bx + c.side1[0], by + c.side1[1], bz + c.side1[2]);
@@ -180,13 +193,23 @@ export function buildChunkGeometry(world: World, chunk: Chunk): { solid: Geometr
             aoScratch[i] = aoValue(s1, s2, cc);
           }
           // 水面略低于方块顶（上方还有水则保持满格）
-          const topY = id === WATER && blockAt(wx, y + 1, wz) !== WATER ? 0.875 : 1;
+          const topY = id === WATER && idGrid[gidx(x, y + 1, z)] !== WATER ? 0.875 : 1;
           (id === WATER ? water : solid).addFace(wx, y, wz, face, tile, aoScratch, topY);
         }
       }
     }
   }
   return { solid: solid.build(), water: water.build() };
+}
+
+export function buildChunkGeometry(world: World, chunk: Chunk): { solid: GeometryData; water: GeometryData } {
+  const datas: (Uint16Array | null)[] = [];
+  for (let gz = -1; gz <= 1; gz++) {
+    for (let gx = -1; gx <= 1; gx++) {
+      datas.push(world.chunks.get(`${chunk.cx + gx},${chunk.cz + gz}`)?.data ?? null);
+    }
+  }
+  return buildFromGrid(chunk.cx, chunk.cz, datas);
 }
 
 const FULL_AO = [3, 3, 3, 3];

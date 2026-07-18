@@ -3,6 +3,7 @@
 import { memo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { buildChunkGeometry, type GeometryData } from '@/lib/mesher';
+import { getMesherPool } from '@/lib/mesherPool';
 import type { Chunk, World } from '@/lib/world';
 import type { AtlasMaterials } from '@/lib/textures';
 
@@ -28,30 +29,57 @@ interface ChunkMeshProps {
 export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materials }: ChunkMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
 
-  // 命令式创建/销毁 mesh：geometry 生命周期与 effect 严格成对——StrictMode 双调用下
-  // 「渲染期创建 + cleanup 销毁」会把仍在渲染的几何销毁掉（dev 下 WebGPU 崩溃根因）；
-  // 每次重建都是新 mesh（WebGPURenderer 不支持在存活 mesh 上更换 geometry，three#30398）；
-  // 材质为全局共享（atlas），只在创建处销毁几何，绝不动材质
+  // 网格化优先交给 Worker 池（后台线程，流式加载不卡主线程）；
+  // Worker 不可用时回退主线程同步构建。mesh 命令式创建/销毁——几何生命周期与
+  // effect 严格成对（StrictMode 安全）；每次重建都是新 mesh（three#30398）
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    const data = buildChunkGeometry(world, chunk);
+    let cancelled = false;
     const meshes: THREE.Mesh[] = [];
-    for (const [geo, mat] of [
-      [toGeometry(data.solid), materials.solid],
-      [toGeometry(data.water), materials.water],
-    ] as const) {
-      if (!geo) continue;
-      const mesh = new THREE.Mesh(geo, mat);
-      meshes.push(mesh);
-      group.add(mesh);
-    }
-    return () => {
+    const key = `${chunk.cx},${chunk.cz}`;
+
+    const attach = (solid: GeometryData, water: GeometryData) => {
+      if (cancelled) return;
+      for (const [data, mat] of [
+        [solid, materials.solid],
+        [water, materials.water],
+      ] as const) {
+        const geo = toGeometry(data);
+        if (!geo) continue;
+        const mesh = new THREE.Mesh(geo, mat);
+        meshes.push(mesh);
+        group.add(mesh);
+      }
+    };
+    const detach = () => {
+      cancelled = true;
       for (const mesh of meshes) {
         mesh.removeFromParent();
         mesh.geometry.dispose();
       }
+      meshes.length = 0;
     };
+
+    const datas: (Uint16Array | null)[] = [];
+    for (let gz = -1; gz <= 1; gz++) {
+      for (let gx = -1; gx <= 1; gx++) {
+        datas.push(world.chunks.get(`${chunk.cx + gx},${chunk.cz + gz}`)?.data ?? null);
+      }
+    }
+
+    const pool = getMesherPool();
+    if (pool) {
+      void pool.build(key, version, chunk.cx, chunk.cz, datas).then(({ solid, water, version: v }) => {
+        // 版本已更新或已卸载：丢弃过期结果（几何数组未使用，随 GC 回收）
+        if (cancelled || v !== version) return;
+        attach(solid, water);
+      });
+    } else {
+      const { solid, water } = buildChunkGeometry(world, chunk);
+      attach(solid, water);
+    }
+    return detach;
   }, [world, chunk, version, materials]);
 
   return <group ref={groupRef} />;

@@ -88,8 +88,8 @@ export function createTerrain(seed: string): Terrain {
     return Math.max(1, Math.floor(h));
   }
 
-  function biomeAt(x: number, z: number): Biome {
-    const h = heightAt(x, z);
+  /** 群系分类（heightAt 由调用方算好传入，避免重复求值） */
+  function classify(x: number, z: number, h: number): Biome {
     // 深海（海床明显低于海平面；判在河流之前，深水道归海洋）
     if (h <= SEA_LEVEL - 4) return 'ocean';
     // 河流水域及两岸浅滩
@@ -104,9 +104,15 @@ export function createTerrain(seed: string): Terrain {
     return 'plains';
   }
 
+  function biomeAt(x: number, z: number): Biome {
+    return classify(x, z, heightAt(x, z));
+  }
+
   /** 各群系树木密度与种类 */
   function treeAt(x: number, z: number): TreeKind | null {
-    const biome = biomeAt(x, z);
+    const h = heightAt(x, z);
+    if (h <= SEA_LEVEL + 1) return null; // 水下/水边不长树
+    const biome = classify(x, z, h);
     let chance = 0;
     let kinds: TreeKind[] = [];
     switch (biome) {
@@ -123,12 +129,8 @@ export function createTerrain(seed: string): Terrain {
         chance = 0.004;
         kinds = ['spruce'];
         break;
-      case 'river':
-        chance = 0.003;
-        kinds = ['oak'];
-        break;
       default:
-        return null; // desert / ocean 不长树
+        return null; // desert / ocean / river 不长树
     }
     const r = hash2(sh ^ 0x7ee5a1c3, x, z);
     if (r >= chance) return null;

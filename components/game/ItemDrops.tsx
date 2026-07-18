@@ -12,6 +12,9 @@ import { TOOLS } from '@/lib/tools';
 import { toGeometry } from './ChunkMesh';
 import { useRendererKind } from './renderer-kind';
 
+/** 帧循环复用的去重集合（避免每帧分配） */
+const seenScratch = new Set<number>();
+
 /** 掉落物渲染与物理驱动：小方块旋转 + 上下浮动，几何按内容类型缓存 */
 export function ItemDrops() {
   const groupRef = useRef<Group>(null);
@@ -60,7 +63,8 @@ export function ItemDrops() {
     });
 
     // 同步 mesh：新增/更新/删除
-    const seen = new Set<number>();
+    const seen = seenScratch;
+    seen.clear();
     for (const d of itemDrops) {
       seen.add(d.id);
       let mesh = meshMap.current.get(d.id);

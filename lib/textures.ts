@@ -222,17 +222,22 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     tilePx = DEFAULT_TILE_PX;
   }
 
-  // 预载全部 pack 贴图格（atlas 0..TILE_STEMS.length-1 与 pack/<i>.png 一一对应）
-  const packImgs: HTMLImageElement[] = [];
-  await Promise.all(
-    TILE_STEMS.map(async (stem, i) => {
-      const img = custom[stem] ?? (await loadImage(`/textures/pack/${i}.png`));
-      packImgs[i] = img;
-      const dx = (i % ATLAS_COLS) * tilePx;
-      const dy = Math.floor(i / ATLAS_COLS) * tilePx;
+  // 预载全部贴图：默认从单文件 atlas 裁格（一次请求）；导入包按 stem 整格覆盖
+  const atlas = await loadImage('/textures/atlas.png');
+  const drawTile = (i: number, dx: number, dy: number) => {
+    const stem = TILE_STEMS[i];
+    const img = custom[stem];
+    if (img) {
       ctx.drawImage(img, dx, dy, tilePx, tilePx);
-    }),
-  );
+      return;
+    }
+    const sx = (i % ATLAS_COLS) * DEFAULT_TILE_PX;
+    const sy = Math.floor(i / ATLAS_COLS) * DEFAULT_TILE_PX;
+    ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx, dy, tilePx, tilePx);
+  };
+  for (let i = 0; i < TILE_STEMS.length; i++) {
+    drawTile(i, (i % ATLAS_COLS) * tilePx, Math.floor(i / ATLAS_COLS) * tilePx);
+  }
 
   // 图标格（ICON_TILE_START..+15）：工作台/熔炉先铺木板/圆石底座，再叠加绘制
   ctx.imageSmoothingEnabled = false;
@@ -241,10 +246,7 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     const dx = (cell % ATLAS_COLS) * tilePx;
     const dy = Math.floor(cell / ATLAS_COLS) * tilePx;
     const baseStem = k <= 1 ? 'oak_planks' : k === 2 ? 'cobblestone' : null;
-    if (baseStem) {
-      const img = custom[baseStem] ?? packImgs[tileOf(baseStem)];
-      if (img) ctx.drawImage(img, dx, dy, tilePx, tilePx);
-    }
+    if (baseStem) drawTile(tileOf(baseStem), dx, dy);
     // 叠加绘制（工作台/熔炉/装备/食物图标）按 16px 坐标系编写，随分辨率缩放
     const overlay = TEXTURE_OVERLAYS[cell];
     if (overlay) {

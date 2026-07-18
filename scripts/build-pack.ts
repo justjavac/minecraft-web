@@ -47,3 +47,21 @@ if (missing.length > 0) {
   console.error(`缺失文件：\n  ${missing.join('\n  ')}`);
   process.exit(1);
 }
+
+// 合成单文件 atlas（8 列网格，运行时一次请求替代逐 tile 请求）
+execFileSync('python', [
+  '-c',
+  `import sys
+from PIL import Image
+COLS, PX, N = 8, 32, int(sys.argv[1])
+rows = (N + COLS - 1) // COLS
+atlas = Image.new('RGBA', (COLS * PX, rows * PX))
+for i in range(N):
+    im = Image.open(f'{sys.argv[2]}/{i}.png')
+    atlas.paste(im, ((i % COLS) * PX, (i // COLS) * PX))
+atlas.save(sys.argv[3])`,
+  String(TILE_STEMS.length),
+  OUT,
+  `${OUT}/../atlas.png`,
+]);
+console.log(`atlas: ${OUT}/../atlas.png`);

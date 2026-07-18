@@ -135,6 +135,9 @@ function makeMobMesh(type: MobType, mats: MobMats): Group {
 
 const arrowForward = new Vector3(0, 0, 1);
 const arrowDir = new Vector3();
+/** 帧循环复用的去重集合（避免每帧分配） */
+const seenScratch = new Set<number>();
+const seenArrowsScratch = new Set<number>();
 
 /** 生物渲染与 AI 驱动（仅生存模式；网格按 id 复用） */
 export function Mobs() {
@@ -170,7 +173,8 @@ export function Mobs() {
 
     // 同步生物网格（材质表就绪后才创建）
     if (mobMats) {
-      const seen = new Set<number>();
+      const seen = seenScratch;
+      seen.clear();
       for (const m of mobs) {
         seen.add(m.id);
         let mesh = meshMap.current.get(m.id);
@@ -200,7 +204,8 @@ export function Mobs() {
       }
 
       // 同步箭网格
-      const seenArrows = new Set<number>();
+      const seenArrows = seenArrowsScratch;
+      seenArrows.clear();
       for (const a of arrows) {
         seenArrows.add(a.id);
         let mesh = arrowMeshMap.current.get(a.id);
