@@ -77,5 +77,10 @@ scripts/                — fetch-textures.sh / fetch-sounds.sh / install-textur
 媒体资源采用 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)，作者为 Various Minetest Game developers。
 详见 [public/textures/CREDITS.md](public/textures/CREDITS.md) 与 [public/sounds/CREDITS.md](public/sounds/CREDITS.md)。
 
+界面字体为本地自托管的像素字体（[OFL 1.1](https://openfontlicense.org/)）：
+[Monocraft](https://github.com/IdreesInc/Monocraft)（拉丁/数字，© Idrees Hassan）与
+[Fusion Pixel 缝合像素字体](https://github.com/TakWolf/fusion-pixel-font)（中文，© TakWolf 及上游作者），
+许可文本见 `public/fonts/`。本地化字体使构建完全离线可用（不依赖 Google Fonts）。
+
 设置中导入的自定义贴图包由用户自行获取并仅存于本地浏览器，本项目不分发任何第三方贴图。
 使用 Faithful 32x 时请遵守其[许可证](https://faithfulpack.net/)的要求（署名 + 链接回 https://faithfulpack.net/）。
