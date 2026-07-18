@@ -40,19 +40,21 @@ describe('村庄结构', () => {
     const { rx, rz } = findVillageRegion(sh, t);
     const v = villageAt(sh, t, rx, rz)!;
     const hut = villageStructures(sh, rx, rz, v.x, v.z).find((s) => s.type === 'hut')!;
-    const cx = Math.floor(hut.x / CHUNK_SIZE);
-    const cz = Math.floor(hut.z / CHUNK_SIZE);
-    const data = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
-    // 铺一块平地当地基
     const h = t.heightAt(hut.x, hut.z);
-    for (let x = 0; x < CHUNK_SIZE; x++) {
-      for (let z = 0; z < CHUNK_SIZE; z++) data[localIndex(x, h, z)] = GRASS;
-    }
-    applyStructures(sh, t, cx, cz, data);
-    const at = (wx: number, y: number, wz: number) => data[localIndex(wx - cx * CHUNK_SIZE, y, wz - cz * CHUNK_SIZE)];
-    expect(at(hut.x - 2, h + 2, hut.z - 2)).toBe(LOG); // 角柱（地板在 h+1，墙从 h+2 起）
-    expect(at(hut.x, h + 5, hut.z)).toBe(PLANKS); // 屋顶
-    expect(at(hut.x, h + 2, hut.z + 2)).toBe(0); // 门洞（南墙中央）
-    expect(at(hut.x - 2, h + 3, hut.z)).toBe(GLASS); // 西墙玻璃窗
+    // 角柱可能跨到相邻 chunk：对小屋所在 chunk 与角柱所在 chunk 分别生成并断言
+    const genAt = (wx: number, wz: number) => {
+      const cx = Math.floor(wx / CHUNK_SIZE);
+      const cz = Math.floor(wz / CHUNK_SIZE);
+      const data = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
+      for (let x = 0; x < CHUNK_SIZE; x++) {
+        for (let z = 0; z < CHUNK_SIZE; z++) data[localIndex(x, h, z)] = GRASS;
+      }
+      applyStructures(sh, t, cx, cz, data);
+      return (x: number, y: number, z: number) => data[localIndex(x - cx * CHUNK_SIZE, y, z - cz * CHUNK_SIZE)];
+    };
+    expect(genAt(hut.x - 2, hut.z - 2)(hut.x - 2, h + 2, hut.z - 2)).toBe(LOG); // 角柱（地板在 h+1，墙从 h+2 起）
+    expect(genAt(hut.x, hut.z)(hut.x, h + 5, hut.z)).toBe(PLANKS); // 屋顶
+    expect(genAt(hut.x, hut.z + 2)(hut.x, h + 2, hut.z + 2)).toBe(0); // 门洞（南墙中央）
+    expect(genAt(hut.x - 2, hut.z)(hut.x - 2, h + 3, hut.z)).toBe(GLASS); // 西墙玻璃窗
   });
 });

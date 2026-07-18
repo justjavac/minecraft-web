@@ -53,7 +53,7 @@ describe('方块注册表', () => {
 });
 
 describe('矿石生成器', () => {
-  const flatTerrain = { heightAt: () => 30, treeAt: () => false };
+  const flatTerrain = { heightAt: () => 30, biomeAt: () => 'plains' as const, treeAt: () => null };
 
   it('虚空地形不产生任何方块', () => {
     const data = new Uint16Array(CHUNK_VOLUME);
@@ -95,7 +95,7 @@ describe('矿石生成器', () => {
   });
 
   it('World 生成的 chunk 含基岩', () => {
-    const w = new World('ore-e2e', undefined, { heightAt: () => 30, treeAt: () => false });
+    const w = new World('ore-e2e', undefined, { heightAt: () => 30, biomeAt: () => 'plains' as const, treeAt: () => null });
     const c = w.getChunk(0, 0);
     expect(c.data[0]).toBe(BLOCK_BY_KEY.bedrock.id);
   });

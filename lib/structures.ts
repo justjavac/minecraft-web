@@ -1,11 +1,18 @@
-// 村庄结构：区域级确定性生成（小屋/水井/土路），跨 chunk 一致
+// 结构生成：区域级确定性（平原/森林/盆地村庄、沙漠村庄、哨塔、冰屋），跨 chunk 一致
 
-import { AIR, COBBLE, DIRT, GLASS, LOG, PLANKS, WATER } from './blocks';
+import { AIR, BLOCK_BY_KEY, COBBLE, DIRT, GLASS, LOG, PLANKS, WATER, type BlockId } from './blocks';
 import { SEA_LEVEL, type Terrain } from './noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
 
-const REGION = 64; // 村庄区域边长（格）
-const VILLAGE_CHANCE = 0.12; // 每个区域 12% 概率出村庄
+const REGION = 64; // 结构区域边长（格）
+
+export type StructureKind = 'village' | 'desert_village' | 'watchtower' | 'igloo';
+
+export interface StructureSpot {
+  kind: StructureKind;
+  x: number;
+  z: number;
+}
 
 export interface Structure {
   type: 'hut' | 'well';
@@ -20,22 +27,65 @@ function regionHash(seedHash: number, rx: number, rz: number, salt: number): num
   return (h >>> 0) / 4294967296;
 }
 
-/** 该区域是否有村庄：12% 概率 + 中心高于海面 + 基本平坦 */
-export function villageAt(seedHash: number, terrain: Terrain, rx: number, rz: number): { x: number; z: number } | null {
-  if (regionHash(seedHash, rx, rz, 1) >= VILLAGE_CHANCE) return null;
-  const cx = rx * REGION + 32;
-  const cz = rz * REGION + 32;
-  const h = terrain.heightAt(cx, cz);
-  if (h <= SEA_LEVEL + 1) return null;
+/** 平坦度检查：中心及四角 16 格内高差不超过 6 */
+function flatEnough(terrain: Terrain, x: number, z: number): boolean {
   const hs = [
-    h,
-    terrain.heightAt(cx - 16, cz),
-    terrain.heightAt(cx + 16, cz),
-    terrain.heightAt(cx, cz - 16),
-    terrain.heightAt(cx, cz + 16),
+    terrain.heightAt(x, z),
+    terrain.heightAt(x - 16, z),
+    terrain.heightAt(x + 16, z),
+    terrain.heightAt(x, z - 16),
+    terrain.heightAt(x, z + 16),
   ];
-  if (Math.max(...hs) - Math.min(...hs) > 6) return null;
-  return { x: cx, z: cz };
+  return Math.max(...hs) - Math.min(...hs) <= 6;
+}
+
+/** 该区域生成什么结构（按群系与区域哈希；海洋/河流不生成） */
+export function structureAt(seedHash: number, terrain: Terrain, rx: number, rz: number): StructureSpot | null {
+  const x = rx * REGION + 32;
+  const z = rz * REGION + 32;
+  const biome = terrain.biomeAt(x, z);
+  const h = terrain.heightAt(x, z);
+  if (h <= SEA_LEVEL + 1) return null;
+  if (!flatEnough(terrain, x, z)) return null;
+  const r = regionHash(seedHash, rx, rz, 1);
+  switch (biome) {
+    case 'plains':
+    case 'forest':
+    case 'basin':
+      if (r < 0.1) return { kind: 'village', x, z };
+      if (r < 0.13) return { kind: 'watchtower', x, z };
+      return null;
+    case 'desert':
+      if (r < 0.09) return { kind: 'desert_village', x, z };
+      if (r < 0.12) return { kind: 'watchtower', x, z };
+      return null;
+    case 'ice':
+      if (r < 0.08) return { kind: 'igloo', x, z };
+      return null;
+    default:
+      return null;
+  }
+}
+
+/** 兼容旧接口：平原/盆地村庄判定（沙漠村庄不含） */
+export function villageAt(seedHash: number, terrain: Terrain, rx: number, rz: number): { x: number; z: number } | null {
+  const s = structureAt(seedHash, terrain, rx, rz);
+  return s && s.kind === 'village' ? { x: s.x, z: s.z } : null;
+}
+
+/** 玩家附近是否有村庄中心（用于村民生成；含沙漠村庄） */
+export function villageCenterNear(seedHash: number, terrain: Terrain, x: number, z: number, maxDist: number): { x: number; z: number } | null {
+  const rx = Math.floor(x / REGION);
+  const rz = Math.floor(z / REGION);
+  for (let drx = -1; drx <= 1; drx++) {
+    for (let drz = -1; drz <= 1; drz++) {
+      const s = structureAt(seedHash, terrain, rx + drx, rz + drz);
+      if (s && (s.kind === 'village' || s.kind === 'desert_village') && Math.hypot(s.x - x, s.z - z) <= maxDist) {
+        return { x: s.x, z: s.z };
+      }
+    }
+  }
+  return null;
 }
 
 /** 村庄布局：中心一口井 + 环形分布 3-6 栋小屋（确定性） */
@@ -51,18 +101,31 @@ export function villageStructures(seedHash: number, rx: number, rz: number, vx: 
   return structures;
 }
 
-/** 玩家附近是否有村庄中心（用于村民生成） */
-export function villageCenterNear(seedHash: number, terrain: Terrain, x: number, z: number, maxDist: number): { x: number; z: number } | null {
-  const rx = Math.floor(x / REGION);
-  const rz = Math.floor(z / REGION);
-  for (let drx = -1; drx <= 1; drx++) {
-    for (let drz = -1; drz <= 1; drz++) {
-      const v = villageAt(seedHash, terrain, rx + drx, rz + drz);
-      if (v && Math.hypot(v.x - x, v.z - z) <= maxDist) return v;
-    }
-  }
-  return null;
+// ——— 材质方案（平原村庄用圆石+橡木，沙漠村庄用砂岩系） ———
+interface VillageMats {
+  floor: BlockId;
+  pillar: BlockId;
+  wall: BlockId;
+  roof: BlockId;
+  well: BlockId;
 }
+
+const K = (key: string) => BLOCK_BY_KEY[key].id;
+
+const PLAINS_MATS: VillageMats = {
+  floor: COBBLE,
+  pillar: LOG,
+  wall: PLANKS,
+  roof: PLANKS,
+  well: COBBLE,
+};
+const DESERT_MATS: VillageMats = {
+  floor: K('sandstone'),
+  pillar: K('sandstone'),
+  wall: K('cut_sandstone'),
+  roof: K('smooth_sandstone'),
+  well: K('sandstone'),
+};
 
 function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
   const lx = x - cx * CHUNK_SIZE;
@@ -84,23 +147,23 @@ function putBase(data: Uint16Array, cx: number, cz: number, x: number, y: number
   }
 }
 
-/** 小屋：5×5×4，圆石地板、原木角柱、木板墙、门洞、玻璃窗、木板顶 */
-function writeHut(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
+/** 小屋：5×5×4，地板、角柱、墙、门洞、玻璃窗、屋顶外挑 */
+function writeHut(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array, mats: VillageMats): void {
   const by = terrain.heightAt(s.x, s.z) + 1;
   const bx = s.x - 2;
   const bz = s.z - 2;
   for (let x = 0; x < 5; x++) {
     for (let z = 0; z < 5; z++) {
-      putBase(data, cx, cz, bx + x, by, bz + z, COBBLE);
+      putBase(data, cx, cz, bx + x, by, bz + z, mats.floor);
       for (let y = by + 1; y <= by + 3; y++) {
         const corner = (x === 0 || x === 4) && (z === 0 || z === 4);
         const edge = x === 0 || x === 4 || z === 0 || z === 4;
         const door = z === 4 && x === 2 && y <= by + 2;
         const win = y === by + 2 && ((x === 0 && z === 2) || (x === 4 && z === 2) || (z === 0 && x === 2));
-        if (corner) put(data, cx, cz, bx + x, y, bz + z, LOG);
+        if (corner) put(data, cx, cz, bx + x, y, bz + z, mats.pillar);
         else if (door) put(data, cx, cz, bx + x, y, bz + z, AIR);
         else if (win) put(data, cx, cz, bx + x, y, bz + z, GLASS);
-        else if (edge) put(data, cx, cz, bx + x, y, bz + z, PLANKS);
+        else if (edge) put(data, cx, cz, bx + x, y, bz + z, mats.wall);
         else put(data, cx, cz, bx + x, y, bz + z, AIR); // 屋内清空
       }
     }
@@ -108,20 +171,20 @@ function writeHut(s: Structure, terrain: Terrain, cx: number, cz: number, data: 
   // 屋顶外挑 1 格
   for (let x = -1; x <= 5; x++) {
     for (let z = -1; z <= 5; z++) {
-      put(data, cx, cz, bx + x, by + 4, bz + z, PLANKS);
+      put(data, cx, cz, bx + x, by + 4, bz + z, mats.roof);
     }
   }
 }
 
-/** 水井：4×4 圆石环 + 2×2 水 */
-function writeWell(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
+/** 水井：4×4 环 + 2×2 水 */
+function writeWell(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array, mats: VillageMats): void {
   const by = terrain.heightAt(s.x, s.z) + 1;
   for (let x = -1; x <= 2; x++) {
     for (let z = -1; z <= 2; z++) {
       const edge = x === -1 || x === 2 || z === -1 || z === 2;
-      if (edge) put(data, cx, cz, s.x + x, by, s.z + z, COBBLE);
+      if (edge) put(data, cx, cz, s.x + x, by, s.z + z, mats.well);
       else {
-        put(data, cx, cz, s.x + x, by - 1, s.z + z, COBBLE);
+        put(data, cx, cz, s.x + x, by - 1, s.z + z, mats.well);
         put(data, cx, cz, s.x + x, by, s.z + z, WATER);
         put(data, cx, cz, s.x + x, by + 1, s.z + z, AIR);
       }
@@ -140,23 +203,92 @@ function writePath(a: Structure, b: Structure, terrain: Terrain, cx: number, cz:
   }
 }
 
-/** 生成本 chunk 覆盖范围内的村庄结构（检查本区域及相邻区域的村庄） */
+/** 哨塔：5×5 圆石塔身（12 高）+ 顶部木板瞭望台外挑 + 玻璃窗 */
+function writeWatchtower(spot: StructureSpot, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
+  const by = terrain.heightAt(spot.x, spot.z) + 1;
+  const bx = spot.x - 2;
+  const bz = spot.z - 2;
+  for (let x = 0; x < 5; x++) {
+    for (let z = 0; z < 5; z++) {
+      putBase(data, cx, cz, bx + x, by, bz + z, COBBLE);
+      const edge = x === 0 || x === 4 || z === 0 || z === 4;
+      for (let y = by + 1; y <= by + 11; y++) {
+        if (!edge) {
+          put(data, cx, cz, bx + x, y, bz + z, AIR); // 塔内中空
+          continue;
+        }
+        const win = y >= by + 6 && y <= by + 7 && ((x === 0 && z === 2) || (x === 4 && z === 2) || (z === 0 && x === 2) || (z === 4 && x === 2));
+        const door = z === 4 && x === 2 && y <= by + 2;
+        if (door) put(data, cx, cz, bx + x, y, bz + z, AIR);
+        else if (win) put(data, cx, cz, bx + x, y, bz + z, GLASS);
+        else put(data, cx, cz, bx + x, y, bz + z, COBBLE);
+      }
+      // 瞭望台：地板外挑 1 格木板 + 圆石围栏 + 角柱
+      for (let ox = -1; ox <= 5; ox++) {
+        for (let oz = -1; oz <= 5; oz++) {
+          const rim = ox === -1 || ox === 5 || oz === -1 || oz === 5;
+          put(data, cx, cz, bx + ox, by + 12, bz + oz, rim ? COBBLE : PLANKS);
+        }
+      }
+      put(data, cx, cz, bx + x, by + 13, bz + z, x % 2 === 0 && z % 2 === 0 && edge ? COBBLE : AIR);
+    }
+  }
+}
+
+/** 冰屋：雪块穹顶 + 南向门洞 + 冰窗 */
+function writeIgloo(spot: StructureSpot, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
+  const snow = BLOCK_BY_KEY.snow_block.id;
+  const ice = BLOCK_BY_KEY.ice.id;
+  const cx0 = spot.x;
+  const cz0 = spot.z;
+  const by = terrain.heightAt(cx0, cz0) + 1;
+  const R = 4;
+  for (let dy = 0; dy <= R; dy++) {
+    const r = Math.floor(Math.sqrt(R * R - dy * dy));
+    for (let x = -r; x <= r; x++) {
+      for (let z = -r; z <= r; z++) {
+        const shell = Math.abs(Math.round(Math.sqrt(x * x + z * z)) - r) <= 0 || dy === R;
+        if (!shell && dy > 0) continue;
+        const door = z === r && x >= -1 && x <= 0 && dy >= 1 && dy <= 2;
+        const win = x === -r && z === 0 && dy === 2;
+        if (door) put(data, cx, cz, cx0 + x, by + dy, cz0 + z, AIR);
+        else if (win) put(data, cx, cz, cx0 + x, by + dy, cz0 + z, ice);
+        else put(data, cx, cz, cx0 + x, by + dy, cz0 + z, snow);
+      }
+    }
+  }
+  // 门廊（向南延伸 2 格的雪拱）
+  for (let dz = 1; dz <= 2; dz++) {
+    for (let dx = -1; dx <= 0; dx++) {
+      put(data, cx, cz, cx0 + dx, by + 3, cz0 + R + dz - 1, snow);
+    }
+  }
+}
+
+/** 生成本 chunk 覆盖范围内的结构（检查本区域及相邻区域） */
 export function applyStructures(seedHash: number, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
   const rx = Math.floor((cx * CHUNK_SIZE) / REGION);
   const rz = Math.floor((cz * CHUNK_SIZE) / REGION);
   for (let drx = -1; drx <= 1; drx++) {
     for (let drz = -1; drz <= 1; drz++) {
-      const v = villageAt(seedHash, terrain, rx + drx, rz + drz);
-      if (!v) continue;
-      const structures = villageStructures(seedHash, rx + drx, rz + drz, v.x, v.z);
-      const well = structures[0];
-      for (const s of structures) {
-        if (s.type === 'hut') {
-          writeHut(s, terrain, cx, cz, data);
-          writePath(s, well, terrain, cx, cz, data);
-        } else {
-          writeWell(s, terrain, cx, cz, data);
+      const spot = structureAt(seedHash, terrain, rx + drx, rz + drz);
+      if (!spot) continue;
+      if (spot.kind === 'village' || spot.kind === 'desert_village') {
+        const mats = spot.kind === 'desert_village' ? DESERT_MATS : PLAINS_MATS;
+        const structures = villageStructures(seedHash, rx + drx, rz + drz, spot.x, spot.z);
+        const well = structures[0];
+        for (const s of structures) {
+          if (s.type === 'hut') {
+            writeHut(s, terrain, cx, cz, data, mats);
+            writePath(s, well, terrain, cx, cz, data);
+          } else {
+            writeWell(s, terrain, cx, cz, data, mats);
+          }
         }
+      } else if (spot.kind === 'watchtower') {
+        writeWatchtower(spot, terrain, cx, cz, data);
+      } else {
+        writeIgloo(spot, terrain, cx, cz, data);
       }
     }
   }

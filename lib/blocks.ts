@@ -215,6 +215,7 @@ add('crying_obsidian', '哭泣的黑曜石', 'crying_obsidian', { cat: 'stone', 
 add('coarse_dirt', '砂土', 'coarse_dirt', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
 add('podzol', '灰化土', { side: 'podzol_side', top: 'podzol_top', bottom: 'dirt' }, { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
 add('mycelium', '菌丝体', { side: 'mycelium_side', top: 'mycelium_top', bottom: 'dirt' }, { cat: 'earth', tool: 'shovel', digTime: 0.75, ...GRASS_SND });
+add('snowy_grass', '覆雪草方块', { side: 'grass_block_snow', top: 'snow', bottom: 'dirt' }, { cat: 'earth', tool: 'shovel', digTime: 0.9, ...GRASS_SND });
 add('rooted_dirt', '缠根泥土', 'rooted_dirt', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
 add('mud', '泥巴', 'mud', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
 add('packed_mud', '夯泥', 'packed_mud', { cat: 'earth', tool: 'pickaxe', needsPick: true, digTime: 5 });

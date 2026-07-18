@@ -1,7 +1,8 @@
 // 体素世界：chunk 存储、地形与结构生成、方块读写、脏标记
 
-import { AIR, DIRT, GRASS, LEAVES, LOG, SAND, STONE, WATER } from './blocks';
-import { createTerrain, hashString, SEA_LEVEL, type Terrain } from './noise';
+import { AIR, BLOCK_BY_KEY, STONE, WATER } from './blocks';
+import { BIOME_SURFACE } from './biomes';
+import { createTerrain, hash2, hashString, SEA_LEVEL, type Terrain } from './noise';
 import { applyOres } from './oregen';
 import { applyStructures } from './structures';
 
@@ -30,18 +31,28 @@ export class Chunk {
 export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash = 0): void {
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
-      const h = terrain.heightAt(cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z);
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      const h = terrain.heightAt(wx, wz);
       if (h < 0) continue;
+      const surface = BIOME_SURFACE[terrain.biomeAt(wx, wz)];
       const top = Math.min(h, WORLD_HEIGHT - 1);
       const beach = top <= SEA_LEVEL + 1;
       for (let y = 0; y <= top; y++) {
         let id: number = STONE;
-        if (y === top) id = beach ? SAND : GRASS;
-        else if (y >= top - 3) id = beach ? SAND : DIRT;
+        if (y === top) id = beach ? (surface.beach ?? surface.top) : surface.top;
+        else if (y >= top - 3) id = surface.filler;
         data[localIndex(x, y, z)] = id;
       }
+      // 水下地表：海床/河床换成群系的水下组成（顶两格，按列哈希取材质）
+      if (top < SEA_LEVEL) {
+        const pick = surface.underwater[Math.floor(hash2(seedHash, wx, wz) * surface.underwater.length)];
+        data[localIndex(x, top, z)] = pick;
+        if (top - 1 >= 0) data[localIndex(x, top - 1, z)] = pick;
+      }
+      // 水面：冰原封冻为冰，其余为水
       for (let y = top + 1; y <= SEA_LEVEL; y++) {
-        data[localIndex(x, y, z)] = WATER;
+        data[localIndex(x, y, z)] = y === SEA_LEVEL && surface.waterTop ? surface.waterTop : WATER;
       }
     }
   }
@@ -52,22 +63,25 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
     for (let tz = -2; tz < CHUNK_SIZE + 2; tz++) {
       const wx = cx * CHUNK_SIZE + tx;
       const wz = cz * CHUNK_SIZE + tz;
-      if (!terrain.treeAt(wx, wz)) continue;
+      const kind = terrain.treeAt(wx, wz);
+      if (!kind) continue;
       const h = terrain.heightAt(wx, wz);
       if (h <= SEA_LEVEL + 1 || h + 6 >= WORLD_HEIGHT) continue;
+      const log = BLOCK_BY_KEY[kind === 'oak' ? 'log' : `${kind}_log`].id;
+      const leaves = BLOCK_BY_KEY[kind === 'oak' ? 'leaves' : `${kind}_leaves`].id;
       const put = (lx: number, y: number, lz: number, id: number, onlyAir: boolean) => {
         if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
         const i = localIndex(lx, y, lz);
         if (onlyAir && data[i] !== AIR) return;
         data[i] = id;
       };
-      for (let y = h + 1; y <= h + 4; y++) put(tx, y, tz, LOG, false);
+      for (let y = h + 1; y <= h + 4; y++) put(tx, y, tz, log, false);
       for (const ly of [h + 3, h + 4]) {
         for (let dx = -1; dx <= 1; dx++) {
-          for (let dz = -1; dz <= 1; dz++) put(tx + dx, ly, tz + dz, LEAVES, true);
+          for (let dz = -1; dz <= 1; dz++) put(tx + dx, ly, tz + dz, leaves, true);
         }
       }
-      put(tx, h + 5, tz, LEAVES, true);
+      put(tx, h + 5, tz, leaves, true);
     }
   }
   // 村庄结构（确定性，跨 chunk 一致）
