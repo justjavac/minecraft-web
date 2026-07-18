@@ -418,7 +418,12 @@ export function Player() {
           }
           const blockId = world.getBlock(bx, by, bz);
           if (BLOCKS[blockId]?.unbreakable) {
-            // 基岩/强化深板岩：生存不可破坏（MC 规则），不显示裂纹进度
+            // 基岩/强化深板岩：不可破坏（MC 规则），不显示裂纹进度
+            digState.target = null;
+            digState.progress = 0;
+          } else if (gs.worldMode === 'creative') {
+            // 创造模式：即时破坏（MC 一致），无挖掘计时
+            breakBlock(world, bx, by, bz);
             digState.target = null;
             digState.progress = 0;
           } else {

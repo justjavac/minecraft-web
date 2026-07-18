@@ -104,6 +104,31 @@ export const RECIPES: Recipe[] = [
   { id: 'leather_chestplate', name: '皮革胸甲', out: { kind: 'armor', piece: 'chestplate' }, cost: [{ item: 'material:leather', count: 8 }], needsTable: true },
   { id: 'leather_leggings', name: '皮革护腿', out: { kind: 'armor', piece: 'leggings' }, cost: [{ item: 'material:leather', count: 7 }], needsTable: true },
   { id: 'leather_boots', name: '皮革靴子', out: { kind: 'armor', piece: 'boots' }, cost: [{ item: 'material:leather', count: 4 }], needsTable: true },
+  // —— 铁/钻石工具（配方同木石） ——
+  ...(['iron', 'diamond'] as const).flatMap((tier): Recipe[] => {
+    const mat = tier === 'iron' ? 'material:iron_ingot' : 'material:diamond';
+    const cn = tier === 'iron' ? '铁' : '钻石';
+    return [
+      { id: `${tier}_pickaxe`, name: `${cn}镐`, out: { kind: 'tool', tool: `${tier}_pickaxe` }, cost: [{ item: mat, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
+      { id: `${tier}_axe`, name: `${cn}斧`, out: { kind: 'tool', tool: `${tier}_axe` }, cost: [{ item: mat, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
+      { id: `${tier}_shovel`, name: `${cn}锹`, out: { kind: 'tool', tool: `${tier}_shovel` }, cost: [{ item: mat, count: 1 }, { item: STICK, count: 2 }], needsTable: true },
+      { id: `${tier}_sword`, name: `${cn}剑`, out: { kind: 'tool', tool: `${tier}_sword` }, cost: [{ item: mat, count: 2 }, { item: STICK, count: 1 }], needsTable: true },
+    ];
+  }),
+  // —— 矿物储物块（9 合 1 / 1 拆 9，与 MC 一致） ——
+  ...([
+    ['coal', 'coal_block', '煤'],
+    ['redstone', 'redstone_block', '红石'],
+    ['lapis', 'lapis_block', '青金石'],
+    ['diamond', 'diamond_block', '钻石'],
+    ['emerald', 'emerald_block', '绿宝石'],
+    ['iron_ingot', 'iron_block', '铁'],
+    ['gold_ingot', 'gold_block', '金'],
+    ['copper_ingot', 'copper_block', '铜'],
+  ] as const).flatMap(([mat, block, cn]): Recipe[] => [
+    { id: `${block}`, name: `${cn}块`, out: { kind: 'block', id: KID(block), count: 1 }, cost: [{ item: `material:${mat}`, count: 9 }], needsTable: true },
+    { id: `${mat}_from_block`, name: `${cn} ×9`, out: { kind: 'material', material: mat, count: 9 }, cost: [{ item: K(block), count: 1 }], needsTable: false },
+  ]),
   ...BLOCK_RECIPES,
 ];
 

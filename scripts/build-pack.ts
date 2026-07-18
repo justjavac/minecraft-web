@@ -6,6 +6,8 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+// 副作用导入：材料注册会把物品图标 stem 一并 intern 进 TILE_STEMS
+import '../lib/materials';
 import { TILE_STEMS } from '../lib/blocks';
 
 const SRC = process.argv[2];
@@ -14,6 +16,7 @@ if (!SRC) {
   process.exit(1);
 }
 const BLOCK = `${SRC}/assets/minecraft/textures/block`;
+const TEXROOT = `${SRC}/assets/minecraft/textures`;
 if (!existsSync(BLOCK)) {
   console.error(`错误：找不到 ${BLOCK}（需要现代 MC 贴图包结构）`);
   process.exit(1);
@@ -24,7 +27,8 @@ mkdirSync(OUT, { recursive: true });
 
 const missing: string[] = [];
 for (const [i, stem] of TILE_STEMS.entries()) {
-  const src = `${BLOCK}/${stem}.png`;
+  // 'item/xxx' 形式的 stem 指向 textures/item/（物品图标），其余为方块贴图
+  const src = stem.includes('/') ? `${TEXROOT}/${stem}.png` : `${BLOCK}/${stem}.png`;
   if (!existsSync(src)) {
     missing.push(stem);
     continue;

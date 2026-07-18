@@ -4,7 +4,7 @@ import { Vector3 } from 'three';
 import { AIR, BLOCKS, CRAFTING_TABLE, FURNACE, type BlockId } from './blocks';
 import { dropFurnaceContents, FOODS } from './furnace';
 import { cameraRef, breakParticles, getActiveWorld, playerPosition } from './game';
-import { spawnBlockDrop } from './items';
+import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { raycastBlock } from './raycast';
 import { playSound } from './sound';
 import { useGameStore } from './store';
@@ -41,10 +41,19 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
   if (def) breakParticles.push({ x, y, z, tile: def.side });
   if (def && useGameStore.getState().worldMode === 'survival') {
     const s = useGameStore.getState();
+    // MC：石头系/矿石/金属块挖掘需要镐（needsPick 任意镐；pickTier 限定最低层级）
+    const TIER_ORDER = ['wood', 'stone', 'iron', 'diamond'] as const;
     const held = s.hotbarSlots[s.selectedSlot];
-    const hasPickaxe = held?.kind === 'tool' && TOOLS[held.tool].kind === 'pickaxe';
-    // MC：石头系/矿石/金属块徒手无掉落，必须用镐（BlockDef.needsPick）
-    if (!BLOCKS[oldId]?.needsPick || hasPickaxe) {
+    const heldPick = held?.kind === 'tool' && TOOLS[held.tool].kind === 'pickaxe' ? TOOLS[held.tool].tier : null;
+    const needTier = def.pickTier ?? (def.needsPick ? 0 : null);
+    const tierOk = needTier === null || (heldPick !== null && TIER_ORDER.indexOf(heldPick) >= needTier);
+    if (def.drop) {
+      // 矿石类：镐达标才掉材料（如钻石矿需铁镐以上）
+      if (tierOk) {
+        const [min, max] = def.drop.count;
+        spawnMaterialDrop(def.drop.material, x + 0.5, y + 0.4, z + 0.5, min + Math.floor(Math.random() * (max - min + 1)));
+      }
+    } else if (tierOk) {
       spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
     }
     // 熔炉被破坏：炉内容物一并掉落

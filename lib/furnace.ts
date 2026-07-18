@@ -45,6 +45,10 @@ export const SMELTING: Record<string, SmeltDef> = {
   'material:raw_pork': { out: 'material:cooked_pork', name: '熟猪排' },
   'material:raw_beef': { out: 'material:cooked_beef', name: '熟牛排' },
   'material:raw_chicken': { out: 'material:cooked_chicken', name: '熟鸡肉' },
+  // 粗矿烧炼成锭（MC 一致）
+  'material:raw_iron': { out: 'material:iron_ingot', name: '铁锭' },
+  'material:raw_gold': { out: 'material:gold_ingot', name: '金锭' },
+  'material:raw_copper': { out: 'material:copper_ingot', name: '铜锭' },
   // 石头系烧炼（MC：石头→平滑石头，石砖→裂纹石砖…）
   [K('stone')]: { out: K('smooth_stone'), name: '平滑石头' },
   [K('stone_bricks')]: { out: K('cracked_stone_bricks'), name: '裂纹石砖' },
@@ -71,6 +75,7 @@ export const FUELS: Record<string, number> = {
   [K('coal_block')]: 800,
   'material:stick': 5,
   'material:charcoal': 80,
+  'material:coal': 80, // MC：煤 80s
 };
 
 export const SMELT_TIME = 10; // 秒/件

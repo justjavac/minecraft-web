@@ -1,7 +1,7 @@
 // kimi-mc Service Worker：离线可玩
 // 策略：页面 network-first（保证新版本及时生效），静态资源 cache-first（chunk 带内容哈希，安全长缓存）
 
-const CACHE = 'kimi-mc-v1';
+const CACHE = 'kimi-mc-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

@@ -51,6 +51,10 @@ export const TILE_STEMS = tileStems;
 export function tileOf(stem: string): number {
   return tileIndex.get(stem) ?? 0;
 }
+/** 注册一个 atlas 图标格（材料/物品贴图用，stem 支持 'item/xxx' 物品路径） */
+export function tileIcon(stem: string): number {
+  return t(stem);
+}
 
 /** 音效组（对应 lib/sound.ts 中的文件组） */
 export type SoundGroup =
@@ -83,10 +87,14 @@ export interface BlockDef {
   opaque: boolean;
   /** 参与碰撞 / 可被射线选中 */
   solid: boolean;
-  /** 挖掘加速工具（木 2x / 石 4x） */
+  /** 挖掘加速工具（木 2x / 石 4x / 铁 6x / 钻 8x） */
   tool?: 'pickaxe' | 'axe' | 'shovel';
   /** MC：不用镐挖掘没有任何掉落（石头系/矿石/金属块） */
   needsPick?: boolean;
+  /** 镐的最低层级（0 木 / 1 石 / 2 铁 / 3 钻），低于该层无掉落 */
+  pickTier?: 0 | 1 | 2 | 3;
+  /** 挖掘掉落的材料（矿石类；需满足 pickTier） */
+  drop?: { material: string; count: [number, number] };
   /** 生存模式不可破坏（基岩/强化深板岩） */
   unbreakable?: boolean;
   /** 挖掘音效 */
@@ -219,8 +227,8 @@ add('cracked_deepslate_tiles', '裂纹深板岩瓦', 'cracked_deepslate_tiles', 
 add('chiseled_deepslate', '雕纹深板岩', 'chiseled_deepslate', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 15 });
 add('reinforced_deepslate', '强化深板岩', { side: 'reinforced_deepslate_side', top: 'reinforced_deepslate_top', bottom: 'reinforced_deepslate_bottom' }, { cat: 'stone', unbreakable: true, digTime: 1 });
 add('bedrock', '基岩', 'bedrock', { cat: 'stone', unbreakable: true, digTime: 1 });
-add('obsidian', '黑曜石', 'obsidian', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 250 });
-add('crying_obsidian', '哭泣的黑曜石', 'crying_obsidian', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 250 });
+add('obsidian', '黑曜石', 'obsidian', { cat: 'stone', tool: 'pickaxe', pickTier: 3, digTime: 250 });
+add('crying_obsidian', '哭泣的黑曜石', 'crying_obsidian', { cat: 'stone', tool: 'pickaxe', pickTier: 3, digTime: 250 });
 
 // ——— 土/泥/沙 ———
 add('coarse_dirt', '砂土', 'coarse_dirt', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
@@ -261,16 +269,23 @@ for (const [c, cn] of COLORS16) {
 }
 
 // ——— 矿石/金属块/紫水晶 ———
-const ORES = [
-  ['coal_ore', '煤矿石'], ['iron_ore', '铁矿石'], ['copper_ore', '铜矿石'], ['gold_ore', '金矿石'],
-  ['redstone_ore', '红石矿石'], ['lapis_ore', '青金石矿石'], ['diamond_ore', '钻石矿石'], ['emerald_ore', '绿宝石矿石'],
-] as const;
-for (const [k, cn] of ORES) {
-  add(k, cn, k, { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 15 });
+// pickTier：0 木镐可挖（煤）、1 需石镐（铁/铜/金/青金石）、2 需铁镐（钻石/绿宝石/红石）、3 需钻镐（黑曜石）
+const ORES: [key: string, cn: string, tier: 0 | 1 | 2 | 3, material: string, count: [number, number]][] = [
+  ['coal_ore', '煤矿石', 0, 'coal', [1, 1]],
+  ['iron_ore', '铁矿石', 1, 'raw_iron', [1, 1]],
+  ['copper_ore', '铜矿石', 1, 'raw_copper', [2, 5]],
+  ['gold_ore', '金矿石', 1, 'raw_gold', [1, 1]],
+  ['redstone_ore', '红石矿石', 2, 'redstone', [4, 5]],
+  ['lapis_ore', '青金石矿石', 1, 'lapis', [4, 8]],
+  ['diamond_ore', '钻石矿石', 2, 'diamond', [1, 1]],
+  ['emerald_ore', '绿宝石矿石', 1, 'emerald', [1, 1]],
+];
+for (const [k, cn, tier, material, count] of ORES) {
+  add(k, cn, k, { cat: 'ore', tool: 'pickaxe', pickTier: tier, drop: { material, count }, digTime: 15 });
 }
-for (const [k, cn] of ORES) {
+for (const [k, cn, tier, material, count] of ORES) {
   const dk = `deepslate_${k}`;
-  add(dk, `深层${cn}`, dk, { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 22.5 });
+  add(dk, `深层${cn}`, dk, { cat: 'ore', tool: 'pickaxe', pickTier: tier, drop: { material, count }, digTime: 22.5 });
 }
 add('raw_iron_block', '粗铁块', 'raw_iron_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
 add('raw_gold_block', '粗金块', 'raw_gold_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
