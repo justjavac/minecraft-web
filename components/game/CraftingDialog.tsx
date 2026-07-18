@@ -6,6 +6,7 @@ import { RECIPES, canCraft, type Recipe } from '@/lib/recipes';
 import { countsOf } from '@/lib/slots';
 import { useGameStore } from '@/lib/store';
 import { TOOLS } from '@/lib/tools';
+import { TileIcon } from './TileIcon';
 import {
   Dialog,
   DialogContent,
@@ -16,9 +17,9 @@ import {
 import { Button } from '@/components/ui/button';
 
 /** 输出物显示 */
-function outDisplay(recipe: Recipe): { name: string; icon?: string } {
+function outDisplay(recipe: Recipe): { name: string; tile?: number } {
   if (recipe.out.kind === 'block') {
-    return { name: `${BLOCKS[recipe.out.id].name} ×${recipe.out.count}`, icon: BLOCKS[recipe.out.id].icon };
+    return { name: `${BLOCKS[recipe.out.id].name} ×${recipe.out.count}`, tile: BLOCKS[recipe.out.id].side };
   }
   if (recipe.out.kind === 'material') return { name: `木棍 ×${recipe.out.count}` };
   if (recipe.out.kind === 'armor') return { name: ARMOR_DEFS[recipe.out.piece].name };
@@ -58,10 +59,7 @@ export function CraftingDialog() {
             return (
               <div key={r.id} className="flex items-center justify-between gap-2 rounded-md border p-2">
                 <div className="flex items-center gap-2">
-                  {d.icon && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={`/textures/${d.icon}`} alt="" className="h-8 w-8 [image-rendering:pixelated]" />
-                  )}
+                  {d.tile !== undefined && <TileIcon tile={d.tile} size={32} />}
                   <div>
                     <div className="text-sm font-medium">{d.name}</div>
                     <div className="text-xs text-muted-foreground">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STONE, WATER, GLASS } from '../blocks';
+import { BLOCKS, STONE, WATER, GLASS } from '../blocks';
 import { buildChunkGeometry } from '../mesher';
 import { VOID_TERRAIN } from '../noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, World } from '../world';
@@ -61,7 +61,7 @@ describe('mesher 面剔除', () => {
 
   it('未知方块 id 按空气处理，不抛错', () => {
     const w = voidWorld();
-    w.setBlock(4, 4, 4, 99); // 不存在的 id（如旧版本存档残留）
+    w.setBlock(4, 4, 4, BLOCKS.length + 100); // 超出注册表的 id（如旧版本存档残留）
     w.setBlock(5, 4, 4, STONE);
     const g = buildChunkGeometry(w, w.getChunk(0, 0));
     expect(g.solid.indices.length).toBe(6 * 6); // 只剩石头方块的 6 面

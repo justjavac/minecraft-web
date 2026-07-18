@@ -64,14 +64,14 @@ export function villageCenterNear(seedHash: number, terrain: Terrain, x: number,
   return null;
 }
 
-function put(data: Uint8Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
+function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
   const lx = x - cx * CHUNK_SIZE;
   const lz = z - cz * CHUNK_SIZE;
   if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
   data[localIndex(lx, y, lz)] = id;
 }
 
-function putBase(data: Uint8Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
+function putBase(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
   // 地板 + 地板下空隙回填（最多 3 格，只在本 chunk 内读写）
   put(data, cx, cz, x, y, z, id);
   const lx = x - cx * CHUNK_SIZE;
@@ -85,7 +85,7 @@ function putBase(data: Uint8Array, cx: number, cz: number, x: number, y: number,
 }
 
 /** 小屋：5×5×4，圆石地板、原木角柱、木板墙、门洞、玻璃窗、木板顶 */
-function writeHut(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint8Array): void {
+function writeHut(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
   const by = terrain.heightAt(s.x, s.z) + 1;
   const bx = s.x - 2;
   const bz = s.z - 2;
@@ -114,7 +114,7 @@ function writeHut(s: Structure, terrain: Terrain, cx: number, cz: number, data: 
 }
 
 /** 水井：4×4 圆石环 + 2×2 水 */
-function writeWell(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint8Array): void {
+function writeWell(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
   const by = terrain.heightAt(s.x, s.z) + 1;
   for (let x = -1; x <= 2; x++) {
     for (let z = -1; z <= 2; z++) {
@@ -130,7 +130,7 @@ function writeWell(s: Structure, terrain: Terrain, cx: number, cz: number, data:
 }
 
 /** 土路：从小屋到水井的直线泥土径（仅替换实心地面表层） */
-function writePath(a: Structure, b: Structure, terrain: Terrain, cx: number, cz: number, data: Uint8Array): void {
+function writePath(a: Structure, b: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
   const steps = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z));
   for (let i = 0; i <= steps; i++) {
     const x = Math.round(a.x + ((b.x - a.x) * i) / steps);
@@ -141,7 +141,7 @@ function writePath(a: Structure, b: Structure, terrain: Terrain, cx: number, cz:
 }
 
 /** 生成本 chunk 覆盖范围内的村庄结构（检查本区域及相邻区域的村庄） */
-export function applyStructures(seedHash: number, terrain: Terrain, cx: number, cz: number, data: Uint8Array): void {
+export function applyStructures(seedHash: number, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
   const rx = Math.floor((cx * CHUNK_SIZE) / REGION);
   const rz = Math.floor((cz * CHUNK_SIZE) / REGION);
   for (let drx = -1; drx <= 1; drx++) {

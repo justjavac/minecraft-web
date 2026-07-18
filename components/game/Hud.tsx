@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { BLOCKS, HOTBAR_BLOCKS } from '@/lib/blocks';
+import { BLOCKS } from '@/lib/blocks';
 import { debugInfo, survivalStats } from '@/lib/game';
 import { clearMobs } from '@/lib/mobs';
 import { MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
@@ -17,6 +17,7 @@ import { SettingsDialog } from './SettingsDialog';
 import { CraftingDialog } from './CraftingDialog';
 import { FurnaceDialog } from './FurnaceDialog';
 import { TileIcon } from './TileIcon';
+import { BlockPicker } from './BlockPicker';
 
 /** 一排 10 格像素计量条（心/鸡腿），支持半格 */
 function Meter({ value, color }: { value: number; color: string }) {
@@ -44,15 +45,15 @@ const CELL_CLASS =
   'relative flex h-9 w-9 cursor-pointer items-center justify-center rounded border bg-black/30 transition-transform duration-100 sm:h-12 sm:w-12';
 
 /** 创造模式热键栏格子：固定方块图标 */
-function HotbarCell({ index, active, onClick, title, icon }: { index: number; active: boolean; onClick: () => void; title: string; icon: string }) {
+function HotbarCell({ index, active, onClick, id }: { index: number; active: boolean; onClick: () => void; id: number }) {
+  const def = BLOCKS[id];
   return (
     <div
-      title={title}
+      title={def.name}
       onClick={onClick}
       className={`${CELL_CLASS} ${active ? '-translate-y-0.5 scale-110 border-white ring-2 ring-white/70' : 'border-white/30'}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/textures/${icon}`} alt={title} className="h-7 w-7 [image-rendering:pixelated] sm:h-9 sm:w-9" />
+      <TileIcon tile={def.side} size={28} />
       <span className="absolute left-0.5 top-0 text-[10px] leading-3 text-white/70">{index + 1}</span>
     </div>
   );
@@ -245,6 +246,7 @@ export function Hud() {
   const dead = useGameStore((s) => s.dead);
   const lastDamageAt = useGameStore((s) => s.lastDamageAt);
   const hotbarSlots = useGameStore((s) => s.hotbarSlots);
+  const hotbarBlocks = useGameStore((s) => s.hotbarBlocks);
   const setSlot = useGameStore((s) => s.setSlot);
   const setCraftingOpen = useGameStore((s) => s.setCraftingOpen);
 
@@ -252,7 +254,7 @@ export function Hud() {
   const heldSlot = hotbarSlots[selectedSlot];
   const selectedName =
     worldMode === 'creative'
-      ? BLOCKS[HOTBAR_BLOCKS[selectedSlot]].name
+      ? BLOCKS[hotbarBlocks[selectedSlot]].name
       : !heldSlot
         ? '空手'
         : heldSlot.kind === 'block'
@@ -278,14 +280,23 @@ export function Hud() {
         </div>
         <div className="flex gap-1 rounded-lg bg-black/40 p-1 backdrop-blur-sm">
           {worldMode === 'creative'
-            ? HOTBAR_BLOCKS.map((id, i) => (
-                <HotbarCell key={id} index={i} active={i === selectedSlot} onClick={() => setSlot(i)} title={BLOCKS[id].name} icon={BLOCKS[id].icon} />
+            ? hotbarBlocks.map((id, i) => (
+                <HotbarCell key={i} id={id} index={i} active={i === selectedSlot} onClick={() => setSlot(i)} />
               ))
             : hotbarSlots.map((slot, i) => (
                 <SurvivalCell key={i} index={i} slot={slot} active={i === selectedSlot} onClick={() => setSlot(i)} />
               ))}
         </div>
-        {worldMode === 'survival' && (
+        {worldMode === 'creative' ? (
+          <div className="mt-1 text-center">
+            <button
+              onClick={() => useGameStore.getState().setPickerOpen(true)}
+              className="rounded bg-black/50 px-2 py-0.5 text-xs text-white/80 hover:bg-black/70"
+            >
+              选块 (E)
+            </button>
+          </div>
+        ) : (
           <div className="mt-1 text-center">
             <button
               onClick={() => setCraftingOpen(true, false)}
@@ -318,8 +329,8 @@ export function Hud() {
       {/* 死亡遮罩 */}
       {dead && <DeathOverlay />}
 
-      {/* 合成界面 */}
-      {worldMode === 'survival' && <CraftingDialog />}
+      {/* 合成界面（生存）/ 选块界面（创造） */}
+      {worldMode === 'survival' ? <CraftingDialog /> : <BlockPicker />}
 
       {/* 熔炉界面 */}
       <FurnaceDialog />

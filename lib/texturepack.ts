@@ -7,8 +7,8 @@ export interface CustomPack {
   name: string;
   /** 贴图分辨率（16/32/64…，取导入图片的最大宽度，封顶 64） */
   tilePx: number;
-  /** tile 索引 → PNG dataURL（已裁成正方形，动画条带取首帧） */
-  tiles: Record<number, string>;
+  /** tile 文件名（stem，如 grass_block_top）→ PNG dataURL（已裁成正方形，动画条带取首帧） */
+  tiles: Record<string, string>;
 }
 
 export interface ImportResult {
@@ -40,13 +40,23 @@ const NAME_SET = new Set(TILE_NAMES.flatMap((t) => t.names));
 /** 13 张中至少识别到的张数，否则判定为不支持的包 */
 const MIN_FOUND = 10;
 
+/** tile 索引 → 规范 stem（与 matchTiles 的 TILE_NAMES 顺序一致；导入/旧存档迁移共用） */
+const STEM_BY_INDEX = TILE_NAMES.map((t) => t.names[0]);
+
 export function loadCustomPack(): CustomPack | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(PACK_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw) as CustomPack;
-    return p && typeof p.tilePx === 'number' && p.tiles ? p : null;
+    if (!p || typeof p.tilePx !== 'number' || !p.tiles) return null;
+    // 旧版按数字索引存储 → 迁移为 stem 键
+    if (Object.keys(p.tiles).every((k) => /^\d+$/.test(k))) {
+      p.tiles = Object.fromEntries(
+        Object.entries(p.tiles).map(([k, v]) => [STEM_BY_INDEX[Number(k)] ?? k, v]),
+      );
+    }
+    return p;
   } catch {
     return null;
   }
@@ -93,11 +103,11 @@ async function finishImport(name: string, matched: Map<number, string>, read: (p
   if (matched.size < MIN_FOUND) {
     throw new Error(`无法识别的贴图包：仅匹配到 ${matched.size}/13 张方块贴图（需要现代 MC 包结构）`);
   }
-  const tiles: Record<number, string> = {};
+  const tiles: Record<string, string> = {};
   let tilePx = 16;
   for (const [index, path] of matched) {
     const { url, width } = await toDataUrl(await read(path));
-    tiles[index] = url;
+    tiles[STEM_BY_INDEX[index]] = url;
     tilePx = Math.max(tilePx, width);
   }
   tilePx = Math.min(tilePx, 64); // 防止超大贴图撑爆 atlas

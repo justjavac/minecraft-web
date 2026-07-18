@@ -1,6 +1,6 @@
 // 熔炉烧炼与食物：烧炼配方、燃料、炉状态、每帧推进。纯数据逻辑（可单测）
 
-import { COBBLE, GLASS, LOG, PLANKS, SAND, STONE } from './blocks';
+import { BLOCK_BY_KEY, COBBLE, GLASS, LOG, PLANKS, SAND, STONE } from './blocks';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { addStackToSlots, type Slot } from './slots';
 
@@ -27,20 +27,48 @@ export interface SmeltDef {
   name: string;
 }
 
+const K = (key: string) => `block:${BLOCK_BY_KEY[key].id}`;
+
 /** 输入 item → 输出（每件 10 秒，与 MC 一致） */
 export const SMELTING: Record<string, SmeltDef> = {
   [`block:${COBBLE}`]: { out: `block:${STONE}`, name: '石头' },
   [`block:${SAND}`]: { out: `block:${GLASS}`, name: '玻璃' },
+  [K('red_sand')]: { out: `block:${GLASS}`, name: '玻璃' },
   [`block:${LOG}`]: { out: 'material:charcoal', name: '木炭' },
+  // 其他木材原木也可烧木炭（MC 一致）
+  ...Object.fromEntries(
+    (['spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry'] as const).map((w) => [
+      K(`${w}_log`),
+      { out: 'material:charcoal', name: '木炭' } satisfies SmeltDef,
+    ]),
+  ),
   'material:raw_pork': { out: 'material:cooked_pork', name: '熟猪排' },
   'material:raw_beef': { out: 'material:cooked_beef', name: '熟牛排' },
   'material:raw_chicken': { out: 'material:cooked_chicken', name: '熟鸡肉' },
+  // 石头系烧炼（MC：石头→平滑石头，石砖→裂纹石砖…）
+  [K('stone')]: { out: K('smooth_stone'), name: '平滑石头' },
+  [K('stone_bricks')]: { out: K('cracked_stone_bricks'), name: '裂纹石砖' },
+  [K('sandstone')]: { out: K('smooth_sandstone'), name: '平滑砂岩' },
+  [K('red_sandstone')]: { out: K('smooth_red_sandstone'), name: '平滑红砂岩' },
+  [K('cobbled_deepslate')]: { out: K('deepslate'), name: '深板岩' },
+  [K('deepslate_bricks')]: { out: K('cracked_deepslate_bricks'), name: '裂纹深板岩砖' },
+  [K('deepslate_tiles')]: { out: K('cracked_deepslate_tiles'), name: '裂纹深板岩瓦' },
+  [K('clay')]: { out: K('terracotta'), name: '陶瓦' },
 };
 
-/** 燃料燃烧秒数（MC：木板/原木 15s，木棍 5s，木炭 80s） */
+/** 燃料燃烧秒数（MC：木板/原木 15s，木棍 5s，木炭 80s，干海带块 200s，煤块 800s） */
 export const FUELS: Record<string, number> = {
   [`block:${PLANKS}`]: 15,
   [`block:${LOG}`]: 15,
+  // 其他木材的木板/原木同为 15s（MC 一致）
+  ...Object.fromEntries(
+    (['spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry'] as const).flatMap((w) => [
+      [K(`${w}_planks`), 15],
+      [K(`${w}_log`), 15],
+    ]),
+  ),
+  [K('dried_kelp_block')]: 200,
+  [K('coal_block')]: 800,
   'material:stick': 5,
   'material:charcoal': 80,
 };

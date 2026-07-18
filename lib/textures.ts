@@ -3,7 +3,15 @@
 // 设置里导入的自定义包（lib/texturepack.ts，localStorage）可整格覆盖对应 tile，分辨率随包
 
 import * as THREE from 'three';
-import { ATLAS_COLS, ATLAS_ROWS, TILE_BASE, TILE_PX as DEFAULT_TILE_PX } from './blocks';
+import {
+  ATLAS_COLS,
+  ATLAS_ROWS,
+  ICON_TILE_COUNT,
+  ICON_TILE_START,
+  TILE_STEMS,
+  TILE_PX as DEFAULT_TILE_PX,
+  tileOf,
+} from './blocks';
 import { mulberry32 } from './noise';
 import { loadCustomPack } from './texturepack';
 
@@ -39,10 +47,10 @@ function drawMeat(ctx: CanvasRenderingContext2D, dx: number, dy: number, base: s
   ctx.fillRect(dx + 12, dy + 4, 2, 2);
 }
 
-/** 部分 tile 在贴图基础上用 canvas 叠加绘制（工作台/熔炉/皮革/装备/食物图标） */
+/** 部分 tile 在贴图基础上用 canvas 叠加绘制（工作台/熔炉/皮革/装备/食物图标，格号见 ICON_TILE_START） */
 const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: number, dy: number) => void> = {
   // 工作台顶：深色边框 + 2×2 网格
-  13: (ctx, dx, dy) => {
+  [ICON_TILE_START + 0]: (ctx, dx, dy) => {
     ctx.fillStyle = '#5a4326';
     ctx.fillRect(dx, dy, 16, 2);
     ctx.fillRect(dx, dy + 14, 16, 2);
@@ -52,7 +60,7 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.fillRect(dx + 2, dy + 7, 12, 2);
   },
   // 工作台侧：深色边框 + 中央凹槽
-  14: (ctx, dx, dy) => {
+[ICON_TILE_START + 1]: (ctx, dx, dy) => {
     ctx.fillStyle = '#5a4326';
     ctx.fillRect(dx, dy, 16, 2);
     ctx.fillRect(dx, dy + 14, 16, 2);
@@ -63,7 +71,7 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.fillRect(dx + 5, dy + 5, 6, 6);
   },
   // 熔炉：深色边框 + 黑色炉口 + 底部亮条
-  15: (ctx, dx, dy) => {
+[ICON_TILE_START + 2]: (ctx, dx, dy) => {
     ctx.fillStyle = '#3a3a3a';
     ctx.fillRect(dx, dy, 16, 2);
     ctx.fillRect(dx, dy + 14, 16, 2);
@@ -75,9 +83,9 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.fillRect(dx + 4, dy + 12, 8, 2);
   },
   // 皮革
-  16: (ctx, dx, dy) => speckle(ctx, dx, dy, LEATHER, LEATHER_DARK, 16),
+[ICON_TILE_START + 3]: (ctx, dx, dy) => speckle(ctx, dx, dy, LEATHER, LEATHER_DARK, 16),
   // 皮革头盔：顶部帽檐 + 两侧护耳
-  17: (ctx, dx, dy) => {
+[ICON_TILE_START + 4]: (ctx, dx, dy) => {
     ctx.fillStyle = LEATHER;
     ctx.fillRect(dx + 3, dy + 3, 10, 5);
     ctx.fillRect(dx + 3, dy + 8, 2, 5);
@@ -86,7 +94,7 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.fillRect(dx + 3, dy + 7, 10, 1);
   },
   // 皮革胸甲：躯干 + 短袖
-  18: (ctx, dx, dy) => {
+[ICON_TILE_START + 5]: (ctx, dx, dy) => {
     ctx.fillStyle = LEATHER;
     ctx.fillRect(dx + 4, dy + 3, 8, 10);
     ctx.fillRect(dx + 2, dy + 3, 2, 5);
@@ -95,7 +103,7 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.fillRect(dx + 4, dy + 6, 8, 1);
   },
   // 皮革护腿：两条腿 + 腰带
-  19: (ctx, dx, dy) => {
+[ICON_TILE_START + 6]: (ctx, dx, dy) => {
     ctx.fillStyle = LEATHER;
     ctx.fillRect(dx + 4, dy + 2, 8, 3);
     ctx.fillRect(dx + 4, dy + 5, 3, 9);
@@ -104,7 +112,7 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.fillRect(dx + 4, dy + 4, 8, 1);
   },
   // 皮革靴子：两只靴子
-  20: (ctx, dx, dy) => {
+[ICON_TILE_START + 7]: (ctx, dx, dy) => {
     ctx.fillStyle = LEATHER;
     ctx.fillRect(dx + 3, dy + 7, 5, 7);
     ctx.fillRect(dx + 8, dy + 7, 5, 7);
@@ -113,7 +121,7 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.fillRect(dx + 8, dy + 12, 5, 2);
   },
   // 木棍：两条斜棍
-  21: (ctx, dx, dy) => {
+[ICON_TILE_START + 8]: (ctx, dx, dy) => {
     ctx.strokeStyle = LEATHER_DARK;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -128,14 +136,14 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.stroke();
   },
   // 木炭：黑色块 + 灰点
-  22: (ctx, dx, dy) => speckle(ctx, dx, dy, '#1a1a1a', '#5a5a5a', 22),
+[ICON_TILE_START + 9]: (ctx, dx, dy) => speckle(ctx, dx, dy, '#1a1a1a', '#5a5a5a', 22),
   // 生/熟 猪排、牛肉、鸡肉
-  23: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#e88a94', '#c05a64', 23),
-  24: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#8a5a2b', '#6b4420', 24),
-  25: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#c04848', '#903030', 25),
-  26: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#7a4a22', '#5a3416', 26),
-  27: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#e8d0b0', '#c0a880', 27),
-  28: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#c09040', '#987028', 28),
+[ICON_TILE_START + 10]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#e88a94', '#c05a64', 23),
+[ICON_TILE_START + 11]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#8a5a2b', '#6b4420', 24),
+[ICON_TILE_START + 12]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#c04848', '#903030', 25),
+[ICON_TILE_START + 13]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#7a4a22', '#5a3416', 26),
+[ICON_TILE_START + 14]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#e8d0b0', '#c0a880', 27),
+[ICON_TILE_START + 15]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#c09040', '#987028', 28),
 };
 
 /** atlas 画布的 dataURL（HUD 图标裁剪用），build 完成后可用 */
@@ -196,51 +204,56 @@ export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMa
 async function build(kind: RendererKind): Promise<AtlasMaterials> {
   const pack = loadCustomPack();
   const canvas = document.createElement('canvas');
+  canvas.width = ATLAS_COLS * tilePx;
+  canvas.height = ATLAS_ROWS * tilePx;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
 
-  // 整格覆盖贴图：设置里导入的包（localStorage）> 内置默认 pack/（Faithful 32x）
-  const custom: Partial<Record<number, HTMLImageElement>> = {};
+  // 整格覆盖贴图（按 stem 匹配）：设置里导入的包（localStorage）> 内置默认 pack/（Faithful 32x）
+  const custom: Partial<Record<string, HTMLImageElement>> = {};
   if (pack) {
     tilePx = pack.tilePx;
     await Promise.all(
-      Object.entries(pack.tiles).map(async ([k, url]) => {
-        custom[Number(k)] = await loadImage(url);
+      Object.entries(pack.tiles).map(async ([stem, url]) => {
+        custom[stem] = await loadImage(url);
       }),
     );
   } else {
     tilePx = DEFAULT_TILE_PX;
   }
 
-  // 默认贴图：pack/<n>.png（TILE_BASE 映射；工作台/熔炉借用木板/圆石打底）
-  const base: Partial<Record<number, HTMLImageElement>> = {};
+  // 预载全部 pack 贴图格（atlas 0..TILE_STEMS.length-1 与 pack/<i>.png 一一对应）
+  const packImgs: HTMLImageElement[] = [];
   await Promise.all(
-    [...new Set(TILE_BASE.filter((n): n is number => n !== null))].map(async (n) => {
-      base[n] = await loadImage(`/textures/pack/${n}.png`);
-    }),
-  );
-
-  canvas.width = ATLAS_COLS * tilePx;
-  canvas.height = ATLAS_ROWS * tilePx;
-  ctx.imageSmoothingEnabled = false;
-
-  await Promise.all(
-    TILE_BASE.map(async (baseIdx, i) => {
+    TILE_STEMS.map(async (stem, i) => {
+      const img = custom[stem] ?? (await loadImage(`/textures/pack/${i}.png`));
+      packImgs[i] = img;
       const dx = (i % ATLAS_COLS) * tilePx;
       const dy = Math.floor(i / ATLAS_COLS) * tilePx;
-      // 优先导入包整格；工作台/熔炉等借用底图的 tile 在导入包里也跟随对应方块贴图
-      const img = custom[i] ?? (baseIdx !== null ? custom[baseIdx] ?? base[baseIdx] : undefined);
-      if (img) ctx.drawImage(img, dx, dy, tilePx, tilePx);
-      // 叠加绘制（工作台/熔炉/装备/食物图标）按 16px 坐标系编写，随分辨率缩放
-      const overlay = TEXTURE_OVERLAYS[i];
-      if (overlay) {
-        ctx.save();
-        ctx.scale(tilePx / 16, tilePx / 16);
-        overlay(ctx, (i % ATLAS_COLS) * 16, Math.floor(i / ATLAS_COLS) * 16);
-        ctx.restore();
-      }
+      ctx.drawImage(img, dx, dy, tilePx, tilePx);
     }),
   );
+
+  // 图标格（ICON_TILE_START..+15）：工作台/熔炉先铺木板/圆石底座，再叠加绘制
+  ctx.imageSmoothingEnabled = false;
+  for (let k = 0; k < ICON_TILE_COUNT; k++) {
+    const cell = ICON_TILE_START + k;
+    const dx = (cell % ATLAS_COLS) * tilePx;
+    const dy = Math.floor(cell / ATLAS_COLS) * tilePx;
+    const baseStem = k <= 1 ? 'oak_planks' : k === 2 ? 'cobblestone' : null;
+    if (baseStem) {
+      const img = custom[baseStem] ?? packImgs[tileOf(baseStem)];
+      if (img) ctx.drawImage(img, dx, dy, tilePx, tilePx);
+    }
+    // 叠加绘制（工作台/熔炉/装备/食物图标）按 16px 坐标系编写，随分辨率缩放
+    const overlay = TEXTURE_OVERLAYS[cell];
+    if (overlay) {
+      ctx.save();
+      ctx.scale(tilePx / 16, tilePx / 16);
+      overlay(ctx, (cell % ATLAS_COLS) * 16, Math.floor(cell / ATLAS_COLS) * 16);
+      ctx.restore();
+    }
+  }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;

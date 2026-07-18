@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { ARMOR_DEFS, armorPoints, emptyArmorSlots, type ArmorPiece, type ArmorSlots } from './armor';
-import type { BlockId } from './blocks';
+import { HOTBAR_BLOCKS, type BlockId } from './blocks';
 import { FOODS, getFurnace, putIntoFurnace, takeOutput } from './furnace';
 import { hurtState, playerPosition, survivalStats } from './game';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
@@ -101,10 +101,16 @@ interface GameStore {
   craftingTable: boolean;
   /** 打开的熔炉位置 key（"x,y,z"），null 未打开 */
   furnaceOpen: string | null;
+  /** 创造模式热键栏 9 格内容（选块界面可更换） */
+  hotbarBlocks: BlockId[];
+  /** 创造选块界面开关 */
+  pickerOpen: boolean;
   startNew: (seed: string, worldMode: WorldMode) => void;
   continueGame: () => void;
   backToMenu: () => void;
   setSlot: (i: number) => void;
+  setHotbarBlock: (slot: number, id: BlockId) => void;
+  setPickerOpen: (open: boolean) => void;
   toggleFly: () => void;
   setPaused: (paused: boolean) => void;
   toggleDebug: () => void;
@@ -168,6 +174,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   craftingOpen: false,
   craftingTable: false,
   furnaceOpen: null,
+  hotbarBlocks: [...HOTBAR_BLOCKS],
+  pickerOpen: false,
   touchMode:
     typeof window !== 'undefined' &&
     ('ontouchstart' in window || (window.matchMedia?.('(pointer: coarse)')?.matches ?? false)),
@@ -184,6 +192,17 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null }),
   backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null }),
   setSlot: (i) => set({ selectedSlot: i }),
+  setHotbarBlock: (slot, id) =>
+    set((s) => {
+      if (slot < 0 || slot >= s.hotbarBlocks.length) return s;
+      const hotbarBlocks = [...s.hotbarBlocks];
+      hotbarBlocks[slot] = id;
+      return { hotbarBlocks };
+    }),
+  setPickerOpen: (pickerOpen) => {
+    if (pickerOpen && typeof document !== 'undefined') document.exitPointerLock();
+    set({ pickerOpen });
+  },
   toggleFly: () => set((s) => ({ flying: s.worldMode === 'creative' ? !s.flying : false })),
   setPaused: (paused) => set({ paused }),
   toggleDebug: () => set((s) => ({ debug: !s.debug })),

@@ -2,6 +2,7 @@
 
 import { AIR, DIRT, GRASS, LEAVES, LOG, SAND, STONE, WATER } from './blocks';
 import { createTerrain, hashString, SEA_LEVEL, type Terrain } from './noise';
+import { applyOres } from './oregen';
 import { applyStructures } from './structures';
 
 export const CHUNK_SIZE = 16;
@@ -14,7 +15,7 @@ export const localIndex = (x: number, y: number, z: number): number =>
 export const chunkKey = (cx: number, cz: number): string => `${cx},${cz}`;
 
 export class Chunk {
-  readonly data = new Uint8Array(CHUNK_VOLUME);
+  readonly data = new Uint16Array(CHUNK_VOLUME);
   /** 几何版本号，重建 mesh 时 +1，驱动 React 重新渲染 */
   version = 0;
   /** 被玩家修改过，需要持久化 */
@@ -26,7 +27,7 @@ export class Chunk {
 }
 
 /** 用地形填充 chunk（确定性的；树木含 2 格边缘以跨 chunk 一致）；seedHash 用于村庄结构 */
-export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Uint8Array, seedHash = 0): void {
+export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash = 0): void {
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
       const h = terrain.heightAt(cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z);
@@ -44,6 +45,8 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
       }
     }
   }
+  // 基岩层 + 深板岩渐变 + 团簇矿脉（地形填充后、树木/村庄前）
+  applyOres(seedHash, terrain, cx, cz, data);
   // 树木：检查本 chunk 及周围 2 格内的列，只写入落在本 chunk 的部分
   for (let tx = -2; tx < CHUNK_SIZE + 2; tx++) {
     for (let tz = -2; tz < CHUNK_SIZE + 2; tz++) {
@@ -83,11 +86,11 @@ export class World {
   generation = 0;
   /** chunk 因超出距离被卸载前回调（用于存档） */
   onChunkRemoved: ((chunk: Chunk) => void) | null = null;
-  private readonly saved: Map<string, Uint8Array>;
+  private readonly saved: Map<string, Uint16Array>;
 
   constructor(
     public readonly seed: string,
-    saved?: Map<string, Uint8Array>,
+    saved?: Map<string, Uint16Array>,
     terrain?: Terrain,
   ) {
     this.terrain = terrain ?? createTerrain(seed);
@@ -146,7 +149,7 @@ export class World {
    * chunk 未创建 → 存入备用（创建时优先用存档）；已创建但本局未修改 → 替换为存档版本；
    * 本局已有编辑 → 玩家版本优先，忽略存档
    */
-  applySavedChunk(key: string, data: Uint8Array): void {
+  applySavedChunk(key: string, data: Uint16Array): void {
     if (data.length !== CHUNK_VOLUME) return;
     const existing = this.chunks.get(key);
     if (!existing) {

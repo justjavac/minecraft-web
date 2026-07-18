@@ -1,14 +1,14 @@
 // 放置与破坏动作：鼠标（Player）与触屏按钮（TouchControls）共用
 
 import { Vector3 } from 'three';
-import { AIR, BLOCKS, CRAFTING_TABLE, FURNACE, HOTBAR_BLOCKS, type BlockId } from './blocks';
+import { AIR, BLOCKS, CRAFTING_TABLE, FURNACE, type BlockId } from './blocks';
 import { dropFurnaceContents, FOODS } from './furnace';
 import { cameraRef, breakParticles, getActiveWorld, playerPosition } from './game';
 import { spawnBlockDrop } from './items';
 import { raycastBlock } from './raycast';
 import { playSound } from './sound';
 import { useGameStore } from './store';
-import { REQUIRES_PICKAXE, TOOLS } from './tools';
+import { TOOLS } from './tools';
 import { WORLD_HEIGHT, type World } from './world';
 
 const REACH = 6; // 挖掘/放置距离
@@ -43,8 +43,8 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
     const s = useGameStore.getState();
     const held = s.hotbarSlots[s.selectedSlot];
     const hasPickaxe = held?.kind === 'tool' && TOOLS[held.tool].kind === 'pickaxe';
-    // MC：石头/圆石/砖块/熔炉徒手无掉落，必须用镐
-    if (!REQUIRES_PICKAXE.includes(oldId) || hasPickaxe) {
+    // MC：石头系/矿石/金属块徒手无掉落，必须用镐（BlockDef.needsPick）
+    if (!BLOCKS[oldId]?.needsPick || hasPickaxe) {
       spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
     }
     // 熔炉被破坏：炉内容物一并掉落
@@ -104,7 +104,7 @@ export function tryPlace(): boolean {
     id = s.consumeSelectedBlock();
     if (id === null) return false;
   } else {
-    id = HOTBAR_BLOCKS[s.selectedSlot];
+    id = s.hotbarBlocks[s.selectedSlot];
   }
   world.setBlock(px, py, pz, id);
   playSound(BLOCKS[id]?.placeSound ?? 'place');

@@ -1,6 +1,6 @@
 // 合成配方（与 MC 原版一致）：随身 2×2 + 工作台 3×3
 
-import { COBBLE, CRAFTING_TABLE, FURNACE, LOG, PLANKS, type BlockId } from './blocks';
+import { BLOCK_BY_KEY, COBBLE, CRAFTING_TABLE, FURNACE, LOG, PLANKS, type BlockId } from './blocks';
 import { countsOf, type Slot } from './slots';
 import type { ArmorPiece } from './armor';
 import type { ToolType } from './tools';
@@ -41,6 +41,49 @@ const PLANKS_ITEM = `block:${PLANKS}`;
 const COBBLE_ITEM = `block:${COBBLE}`;
 const STICK = 'material:stick';
 
+const K = (key: string) => `block:${BLOCK_BY_KEY[key].id}`;
+const KID = (key: string) => BLOCK_BY_KEY[key].id;
+
+/** 新方块的批量配方（方块↔方块，均可用随身 2×2） */
+const BLOCK_RECIPES: Recipe[] = [
+  // 每种木材：原木 → 木板 ×4（橡木已由上方 planks 配方覆盖）
+  ...(['spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry'] as const).map(
+    (w): Recipe => ({
+      id: `${w}_planks`,
+      name: `${BLOCK_BY_KEY[`${w}_planks`].name} ×4`,
+      out: { kind: 'block', id: KID(`${w}_planks`), count: 4 },
+      cost: [{ item: K(`${w}_log`), count: 1 }],
+      needsTable: false,
+    }),
+  ),
+  // 石砖链
+  { id: 'stone_bricks', name: '石砖 ×4', out: { kind: 'block', id: KID('stone_bricks'), count: 4 }, cost: [{ item: K('stone'), count: 4 }], needsTable: false },
+  { id: 'mossy_cobblestone', name: '苔石', out: { kind: 'block', id: KID('mossy_cobblestone'), count: 1 }, cost: [{ item: COBBLE_ITEM, count: 1 }, { item: K('moss_block'), count: 1 }], needsTable: false },
+  { id: 'mossy_stone_bricks', name: '苔石砖', out: { kind: 'block', id: KID('mossy_stone_bricks'), count: 1 }, cost: [{ item: K('stone_bricks'), count: 1 }, { item: K('moss_block'), count: 1 }], needsTable: false },
+  // 磨制岩石 ×4
+  ...(['granite', 'diorite', 'andesite'] as const).map(
+    (r): Recipe => ({
+      id: `polished_${r}`,
+      name: `${BLOCK_BY_KEY[`polished_${r}`].name} ×4`,
+      out: { kind: 'block', id: KID(`polished_${r}`), count: 4 },
+      cost: [{ item: K(r), count: 4 }],
+      needsTable: false,
+    }),
+  ),
+  // 深板岩链
+  { id: 'polished_deepslate', name: '磨制深板岩 ×4', out: { kind: 'block', id: KID('polished_deepslate'), count: 4 }, cost: [{ item: K('cobbled_deepslate'), count: 4 }], needsTable: false },
+  { id: 'deepslate_bricks', name: '深板岩砖 ×4', out: { kind: 'block', id: KID('deepslate_bricks'), count: 4 }, cost: [{ item: K('polished_deepslate'), count: 4 }], needsTable: false },
+  { id: 'deepslate_tiles', name: '深板岩瓦 ×4', out: { kind: 'block', id: KID('deepslate_tiles'), count: 4 }, cost: [{ item: K('deepslate_bricks'), count: 4 }], needsTable: false },
+  // 砂岩
+  { id: 'sandstone', name: '砂岩', out: { kind: 'block', id: KID('sandstone'), count: 1 }, cost: [{ item: K('sand'), count: 4 }], needsTable: false },
+  { id: 'cut_sandstone', name: '切制砂岩 ×4', out: { kind: 'block', id: KID('cut_sandstone'), count: 4 }, cost: [{ item: K('sandstone'), count: 4 }], needsTable: false },
+  { id: 'red_sandstone', name: '红砂岩', out: { kind: 'block', id: KID('red_sandstone'), count: 1 }, cost: [{ item: K('red_sand'), count: 4 }], needsTable: false },
+  { id: 'cut_red_sandstone', name: '切制红砂岩 ×4', out: { kind: 'block', id: KID('cut_red_sandstone'), count: 4 }, cost: [{ item: K('red_sandstone'), count: 4 }], needsTable: false },
+  // 泥砖（夯泥为捷径配方：原版需泥巴+小麦）
+  { id: 'packed_mud', name: '夯泥 ×4', out: { kind: 'block', id: KID('packed_mud'), count: 4 }, cost: [{ item: K('mud'), count: 4 }], needsTable: false },
+  { id: 'mud_bricks', name: '泥砖 ×4', out: { kind: 'block', id: KID('mud_bricks'), count: 4 }, cost: [{ item: K('packed_mud'), count: 4 }], needsTable: false },
+];
+
 export const RECIPES: Recipe[] = [
   // —— 随身 2×2 ——
   { id: 'planks', name: '木板 ×4', out: { kind: 'block', id: PLANKS, count: 4 }, cost: [{ item: LOG_ITEM, count: 1 }], needsTable: false },
@@ -61,6 +104,7 @@ export const RECIPES: Recipe[] = [
   { id: 'leather_chestplate', name: '皮革胸甲', out: { kind: 'armor', piece: 'chestplate' }, cost: [{ item: 'material:leather', count: 8 }], needsTable: true },
   { id: 'leather_leggings', name: '皮革护腿', out: { kind: 'armor', piece: 'leggings' }, cost: [{ item: 'material:leather', count: 7 }], needsTable: true },
   { id: 'leather_boots', name: '皮革靴子', out: { kind: 'armor', piece: 'boots' }, cost: [{ item: 'material:leather', count: 4 }], needsTable: true },
+  ...BLOCK_RECIPES,
 ];
 
 /** 材料是否足够 */

@@ -14,7 +14,7 @@ import { aabbFree, collideAxis, type Aabb } from '@/lib/physics';
 import { playSound } from '@/lib/sound';
 import { useGameStore } from '@/lib/store';
 import { resetSurvivalMem, tickSurvival, type SurvivalMem } from '@/lib/survival';
-import { EFFECTIVE_ON, TOOLS } from '@/lib/tools';
+import { TOOLS } from '@/lib/tools';
 import { WORLD_HEIGHT, type World } from '@/lib/world';
 
 const HALF_W = 0.3; // 玩家半宽
@@ -87,11 +87,16 @@ export function Player() {
       keys.current[e.code] = true;
       if (e.repeat) return;
       if (e.code === 'KeyF') useGameStore.getState().toggleFly();
-      if (e.code === 'KeyE' && useGameStore.getState().worldMode === 'survival') {
-        // MC 的背包键：切换随身 2×2 合成界面
+      if (e.code === 'KeyE') {
         const s = useGameStore.getState();
-        if (s.craftingOpen) s.setCraftingOpen(false);
-        else s.setCraftingOpen(true, false);
+        if (s.worldMode === 'survival') {
+          // MC 的背包键：切换随身 2×2 合成界面
+          if (s.craftingOpen) s.setCraftingOpen(false);
+          else s.setCraftingOpen(true, false);
+        } else {
+          // 创造模式：切换选块界面
+          s.setPickerOpen(!s.pickerOpen);
+        }
       }
       if (e.code === 'F3') {
         e.preventDefault();
@@ -411,25 +416,31 @@ export function Player() {
             digState.progress = 0;
           }
           const blockId = world.getBlock(bx, by, bz);
-          const digTime = BLOCKS[blockId]?.digTime ?? 1;
-          // 持有对应工具时按倍率加速（MC：木 2x 石 4x）
-          const held = gs.hotbarSlots[gs.selectedSlot];
-          let speedMul = 1;
-          if (held?.kind === 'tool') {
-            const def = TOOLS[held.tool];
-            if (def.kind !== 'sword' && EFFECTIVE_ON[def.kind].includes(blockId)) {
-              speedMul = def.speed;
-            }
-          }
-          digState.progress += (dt * speedMul) / digTime;
-          if (digState.progress >= 1) {
-            breakBlock(world, bx, by, bz);
-            if (gs.worldMode === 'survival') {
-              survivalStats.exhaustion += 0.005; // MC：挖掘消耗
-              if (held?.kind === 'tool') gs.damageHeldTool(1); // MC：挖掘耗 1 点耐久
-            }
+          if (BLOCKS[blockId]?.unbreakable) {
+            // 基岩/强化深板岩：生存不可破坏（MC 规则），不显示裂纹进度
             digState.target = null;
             digState.progress = 0;
+          } else {
+            const digTime = BLOCKS[blockId]?.digTime ?? 1;
+            // 持有对应工具时按倍率加速（MC：木 2x 石 4x）
+            const held = gs.hotbarSlots[gs.selectedSlot];
+            let speedMul = 1;
+            if (held?.kind === 'tool') {
+              const def = TOOLS[held.tool];
+              if (def.kind !== 'sword' && BLOCKS[blockId]?.tool === def.kind) {
+                speedMul = def.speed;
+              }
+            }
+            digState.progress += (dt * speedMul) / digTime;
+            if (digState.progress >= 1) {
+              breakBlock(world, bx, by, bz);
+              if (gs.worldMode === 'survival') {
+                survivalStats.exhaustion += 0.005; // MC：挖掘消耗
+                if (held?.kind === 'tool') gs.damageHeldTool(1); // MC：挖掘耗 1 点耐久
+              }
+              digState.target = null;
+              digState.progress = 0;
+            }
           }
         } else {
           digState.target = null;

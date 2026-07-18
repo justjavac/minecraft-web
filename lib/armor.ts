@@ -1,5 +1,7 @@
 // 皮甲装备：部件定义、护甲点数（数值对齐 MC 皮革套装）
 
+import { ICON_TILE_START } from './blocks';
+
 export type ArmorPiece = 'helmet' | 'chestplate' | 'leggings' | 'boots';
 
 export interface ArmorDef {
@@ -16,10 +18,10 @@ export interface ArmorDef {
 }
 
 export const ARMOR_DEFS: Record<ArmorPiece, ArmorDef> = {
-  helmet: { piece: 'helmet', name: '皮革头盔', points: 1, durability: 55, cost: 5, iconTile: 17 },
-  chestplate: { piece: 'chestplate', name: '皮革胸甲', points: 3, durability: 80, cost: 8, iconTile: 18 },
-  leggings: { piece: 'leggings', name: '皮革护腿', points: 2, durability: 75, cost: 7, iconTile: 19 },
-  boots: { piece: 'boots', name: '皮革靴子', points: 1, durability: 65, cost: 4, iconTile: 20 },
+  helmet: { piece: 'helmet', name: '皮革头盔', points: 1, durability: 55, cost: 5, iconTile: ICON_TILE_START + 4 },
+  chestplate: { piece: 'chestplate', name: '皮革胸甲', points: 3, durability: 80, cost: 8, iconTile: ICON_TILE_START + 5 },
+  leggings: { piece: 'leggings', name: '皮革护腿', points: 2, durability: 75, cost: 7, iconTile: ICON_TILE_START + 6 },
+  boots: { piece: 'boots', name: '皮革靴子', points: 1, durability: 65, cost: 4, iconTile: ICON_TILE_START + 7 },
 };
 
 export interface ArmorSlots {

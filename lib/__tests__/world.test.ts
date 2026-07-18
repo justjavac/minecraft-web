@@ -84,13 +84,13 @@ describe('地形生成', () => {
   it('存档数据覆盖重新生成的地形', () => {
     const w1 = new World('save-seed');
     w1.setBlock(5, 40, 5, STONE);
-    const saved = new Map([['0,0', new Uint8Array(w1.getChunk(0, 0).data)]]);
+    const saved = new Map([['0,0', new Uint16Array(w1.getChunk(0, 0).data)]]);
     const w2 = new World('save-seed', saved);
     expect(w2.getBlock(5, 40, 5)).toBe(STONE);
   });
 
   it('applySavedChunk 三种到达时序', () => {
-    const saved = new Uint8Array(CHUNK_VOLUME);
+    const saved = new Uint16Array(CHUNK_VOLUME);
     saved[0] = STONE;
 
     // chunk 未创建：stash 后创建时生效
@@ -114,11 +114,11 @@ describe('地形生成', () => {
   });
 
   it('默认地形生成非空且幂等', () => {
-    const data = new Uint8Array(16 * 16 * 64);
+    const data = new Uint16Array(16 * 16 * 64);
     generateChunk((new World('fill-test')).terrain, 0, 0, data);
     expect(data.some((v) => v !== AIR)).toBe(true);
     expect(Array.from(data)).toContain(STONE); // 任何地形列底部都有石头
-    const again = new Uint8Array(16 * 16 * 64);
+    const again = new Uint16Array(16 * 16 * 64);
     generateChunk((new World('fill-test')).terrain, 0, 0, again);
     expect(Buffer.from(data).equals(Buffer.from(again))).toBe(true);
   });

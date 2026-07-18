@@ -49,7 +49,7 @@ export interface WorldMeta extends SaveExtras {
   updatedAt: number;
 }
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -94,12 +94,12 @@ export async function listChunkKeys(): Promise<string[]> {
 }
 
 /** 按需读取指定 key 的 chunk 数据（不存在的 key 自动跳过） */
-export async function loadChunks(keys: string[]): Promise<Map<string, Uint8Array>> {
-  const map = new Map<string, Uint8Array>();
+export async function loadChunks(keys: string[]): Promise<Map<string, Uint16Array>> {
+  const map = new Map<string, Uint16Array>();
   if (keys.length === 0) return map;
   const d = await db();
   const tx = d.transaction('chunks', 'readonly');
-  const values = await Promise.all(keys.map((k) => tx.store.get(k) as Promise<Uint8Array | undefined>));
+  const values = await Promise.all(keys.map((k) => tx.store.get(k) as Promise<Uint16Array | undefined>));
   await tx.done;
   keys.forEach((k, i) => {
     const v = values[i];
@@ -108,7 +108,7 @@ export async function loadChunks(keys: string[]): Promise<Map<string, Uint8Array
   return map;
 }
 
-export async function saveChunk(key: string, data: Uint8Array): Promise<void> {
+export async function saveChunk(key: string, data: Uint16Array): Promise<void> {
   const d = await db();
   await d.put('chunks', data, key);
 }

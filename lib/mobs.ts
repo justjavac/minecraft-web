@@ -1,6 +1,6 @@
 // 生物系统：类型化怪物（敌对/被动）+ 骷髅箭 + 苦力怕爆炸。纯数据逻辑（不依赖 three，可单测）
 
-import { AIR, BLOCKS, GRASS, WATER } from './blocks';
+import { AIR, BLOCKS, GRASS, tileOf, WATER } from './blocks';
 import { breakParticles, dayFactorAt, worldClock } from './game';
 import { spawnMaterialDrop } from './items';
 import { aabbFree, collideAxis } from './physics';
@@ -197,7 +197,7 @@ function explode(
   }
   const pd = Math.hypot(playerPos.x - m.x, playerPos.y + 0.9 - m.y, playerPos.z - m.z);
   if (pd < 4.5) onAttackPlayer(Math.max(1, Math.round(22 * (1 - pd / 4.5))));
-  for (let i = 0; i < 12; i++) breakParticles.push({ x: cx, y: cy, z: cz, tile: 3 });
+  for (let i = 0; i < 12; i++) breakParticles.push({ x: cx, y: cy, z: cz, tile: tileOf('stone') });
   playSound('dig_cracky', 1.2);
 }
 

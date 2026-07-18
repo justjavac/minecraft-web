@@ -42,7 +42,7 @@ describe('村庄结构', () => {
     const hut = villageStructures(sh, rx, rz, v.x, v.z).find((s) => s.type === 'hut')!;
     const cx = Math.floor(hut.x / CHUNK_SIZE);
     const cz = Math.floor(hut.z / CHUNK_SIZE);
-    const data = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
+    const data = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
     // 铺一块平地当地基
     const h = t.heightAt(hut.x, hut.z);
     for (let x = 0; x < CHUNK_SIZE; x++) {
