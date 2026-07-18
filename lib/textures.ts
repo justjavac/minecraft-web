@@ -167,6 +167,8 @@ export interface MaterialOptions {
 export interface AtlasMaterials {
   kind: RendererKind;
   texture: THREE.Texture;
+  /** 水面动画纹理（32 帧竖排条带，帧 0 在底部；offset 驱动） */
+  waterTex: THREE.Texture;
   /** chunk 不透明材质（alphaTest 镂空 + 顶点色 AO） */
   solid: THREE.Material;
   /** chunk 半透明水 */
@@ -191,6 +193,14 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 const cache = new Map<RendererKind, Promise<AtlasMaterials>>();
+
+/** 当前生效的水面条带纹理（AtlasMaterials 构建后可用） */
+let waterStrip: THREE.Texture | null = null;
+
+/** 水面动画：每 ~62ms 前进一帧（32 帧循环；DayNight 每帧调用） */
+export function tickWaterTexture(ms: number): void {
+  if (waterStrip) waterStrip.offset.y = Math.floor(ms / 62 % 32) / 32;
+}
 
 export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMaterials> {
   let p = cache.get(kind);
@@ -264,6 +274,25 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   texture.colorSpace = THREE.SRGBColorSpace;
   atlasDataUrl = canvas.toDataURL();
 
+  // 水面动画条带：帧倒序重排（帧 0 在底部，对应 mesher 写出的 v∈[0,1/32]）
+  const stripImg = await loadImage('/textures/water_still.png');
+  const frames = Math.floor(stripImg.height / DEFAULT_TILE_PX);
+  const stripCanvas = document.createElement('canvas');
+  stripCanvas.width = DEFAULT_TILE_PX;
+  stripCanvas.height = stripImg.height;
+  const sctx = stripCanvas.getContext('2d');
+  if (!sctx) throw new Error('无法创建 canvas 2d 上下文');
+  for (let f = 0; f < frames; f++) {
+    sctx.drawImage(stripImg, 0, f * DEFAULT_TILE_PX, DEFAULT_TILE_PX, DEFAULT_TILE_PX, 0, (frames - 1 - f) * DEFAULT_TILE_PX, DEFAULT_TILE_PX, DEFAULT_TILE_PX);
+  }
+  waterStrip = new THREE.CanvasTexture(stripCanvas);
+  waterStrip.magFilter = THREE.NearestFilter;
+  waterStrip.minFilter = THREE.NearestFilter;
+  waterStrip.generateMipmaps = false;
+  waterStrip.colorSpace = THREE.SRGBColorSpace;
+  waterStrip.wrapS = THREE.RepeatWrapping;
+  waterStrip.wrapT = THREE.RepeatWrapping;
+
   if (kind === 'webgpu') {
     // WebGPU 节点材质（three/webgpu 动态加载，不进默认包）
     const webgpu = await import('three/webgpu');
@@ -305,8 +334,9 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     return {
       kind,
       texture,
+      waterTex: waterStrip!,
       solid: lambert({ map: texture, alphaTest: 0.5, vertexColors: true }),
-      water: lambert({ map: texture, transparent: true, opacity: 0.7, depthWrite: false, vertexColors: true }),
+      water: lambert({ map: waterStrip, transparent: true, opacity: 0.7, depthWrite: false, vertexColors: true }),
       lambert,
       basic,
       sprite,
@@ -351,8 +381,9 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   return {
     kind,
     texture,
+    waterTex: waterStrip!,
     solid: lambert({ map: texture, alphaTest: 0.5, vertexColors: true }),
-    water: lambert({ map: texture, transparent: true, opacity: 0.7, depthWrite: false, vertexColors: true }),
+    water: lambert({ map: waterStrip, transparent: true, opacity: 0.7, depthWrite: false, vertexColors: true }),
     lambert,
     basic,
     sprite,

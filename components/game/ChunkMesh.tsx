@@ -28,38 +28,16 @@ interface ChunkMeshProps {
 
 export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materials }: ChunkMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
+  /** 当前展示中的 mesh（新几何就绪后才替换，消除加载闪烁） */
+  const currentRef = useRef<THREE.Mesh[]>([]);
 
-  // 网格化优先交给 Worker 池（后台线程，流式加载不卡主线程）；
-  // Worker 不可用时回退主线程同步构建。mesh 命令式创建/销毁——几何生命周期与
-  // effect 严格成对（StrictMode 安全）；每次重建都是新 mesh（three#30398）
+  // 网格化优先交给 Worker 池（后台线程）；Worker 不可用或出错时回退主线程同步构建。
+  // 旧 mesh 保留到新几何就绪再交换；mesh 命令式创建（three#30398），几何与 effect 成对释放
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
     let cancelled = false;
-    const meshes: THREE.Mesh[] = [];
     const key = `${chunk.cx},${chunk.cz}`;
-
-    const attach = (solid: GeometryData, water: GeometryData) => {
-      if (cancelled) return;
-      for (const [data, mat] of [
-        [solid, materials.solid],
-        [water, materials.water],
-      ] as const) {
-        const geo = toGeometry(data);
-        if (!geo) continue;
-        const mesh = new THREE.Mesh(geo, mat);
-        meshes.push(mesh);
-        group.add(mesh);
-      }
-    };
-    const detach = () => {
-      cancelled = true;
-      for (const mesh of meshes) {
-        mesh.removeFromParent();
-        mesh.geometry.dispose();
-      }
-      meshes.length = 0;
-    };
 
     const datas: (Uint16Array | null)[] = [];
     for (let gz = -1; gz <= 1; gz++) {
@@ -68,19 +46,71 @@ export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materi
       }
     }
 
+    const swap = (solid: GeometryData, water: GeometryData): void => {
+      if (cancelled) return;
+      const next: THREE.Mesh[] = [];
+      for (const [data, mat] of [
+        [solid, materials.solid],
+        [water, materials.water],
+      ] as const) {
+        const geo = toGeometry(data);
+        if (!geo) continue;
+        const mesh = new THREE.Mesh(geo, mat);
+        next.push(mesh);
+        group.add(mesh);
+      }
+      for (const m of currentRef.current) {
+        m.removeFromParent();
+        m.geometry.dispose();
+      }
+      currentRef.current = next;
+    };
+
+    const fallback = () => {
+      // 微任务延后：StrictMode 模拟卸载先跑完 cleanup，避免同步构建出的几何被误销毁
+      queueMicrotask(() => {
+        if (cancelled) return;
+        const { solid, water } = buildChunkGeometry(world, chunk);
+        swap(solid, water);
+      });
+    };
+
     const pool = getMesherPool();
     if (pool) {
-      void pool.build(key, version, chunk.cx, chunk.cz, datas).then(({ solid, water, version: v }) => {
-        // 版本已更新或已卸载：丢弃过期结果（几何数组未使用，随 GC 回收）
-        if (cancelled || v !== version) return;
-        attach(solid, water);
-      });
+      pool
+        .build(key, version, chunk.cx, chunk.cz, datas)
+        .then(({ solid, water, version: v }) => {
+          if (cancelled) return;
+          if (v !== version) return; // 过期结果
+          // Worker 结果为空但中心 chunk 实际有内容：说明 worker 出错，回退主线程
+          if (solid.indices.length === 0 && water.indices.length === 0 && datas[4]?.some((b) => b !== 0)) {
+            fallback();
+            return;
+          }
+          swap(solid, water);
+        })
+        .catch(() => {
+          if (!cancelled) fallback();
+        });
     } else {
-      const { solid, water } = buildChunkGeometry(world, chunk);
-      attach(solid, water);
+      fallback();
     }
-    return detach;
+    return () => {
+      cancelled = true;
+    };
   }, [world, chunk, version, materials]);
+
+  // 组件卸载时清理当前 mesh（StrictMode 模拟卸载发生在任何构建完成之前，数组必为空，安全）
+  useEffect(
+    () => () => {
+      for (const m of currentRef.current) {
+        m.removeFromParent();
+        m.geometry.dispose();
+      }
+      currentRef.current = [];
+    },
+    [],
+  );
 
   return <group ref={groupRef} />;
 });

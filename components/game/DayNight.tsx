@@ -18,11 +18,11 @@ import {
   type Sprite,
   type SpriteMaterial,
 } from 'three';
-import { WATER } from '@/lib/blocks';
+import { isWaterId } from '@/lib/blocks';
 import { atmosphere, debugInfo, getActiveWorld, worldClock } from '@/lib/game';
 import { mulberry32 } from '@/lib/noise';
 import { useGameStore } from '@/lib/store';
-import { getAtlasMaterials } from '@/lib/textures';
+import { getAtlasMaterials, tickWaterTexture } from '@/lib/textures';
 import { useRendererKind } from './renderer-kind';
 
 const CYCLE_SECONDS = 600; // 一昼夜 10 分钟
@@ -114,6 +114,7 @@ export function DayNight() {
 
   useFrame(({ scene, camera }, delta) => {
     const dt = Math.min(delta, 0.05);
+    tickWaterTexture(performance.now());
     // 昼夜时钟在 game.ts 共享（0=日出 0.25=正午 0.5=日落 0.75=午夜），随存档持久化；暂停时冻结
     if (!useGameStore.getState().paused) {
       worldClock.t = (worldClock.t + delta / CYCLE_SECONDS) % 1;
@@ -135,11 +136,13 @@ export function DayNight() {
     // 水下时天空/雾色交给 UnderwaterFX，避免互相覆盖
     const world = getActiveWorld();
     const underwater = world
-      ? world.getBlock(
-          Math.floor(camera.position.x),
-          Math.floor(camera.position.y),
-          Math.floor(camera.position.z),
-        ) === WATER
+      ? isWaterId(
+          world.getBlock(
+            Math.floor(camera.position.x),
+            Math.floor(camera.position.y),
+            Math.floor(camera.position.z),
+          ),
+        )
       : false;
     if (!underwater) {
       (scene.background as Color | null)?.copy(sky);

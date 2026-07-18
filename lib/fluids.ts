@@ -1,0 +1,62 @@
+// 流体传播（水源 + 流水 1-7 级）：队列驱动、每 tick 限量。v1 只传播不消退
+
+import { AIR, WATER, WATER_FLOW_1, type BlockId } from './blocks';
+import type { World } from './world';
+
+const FLOW_BASE = WATER_FLOW_1;
+const FLOW_MAX = FLOW_BASE + 6; // WATER_FLOW_7
+
+/** 水位等级：源 0，流水 1-7；非水返回 -1 */
+export function waterLevel(id: BlockId): number {
+  if (id === WATER) return 0;
+  if (id >= FLOW_BASE && id <= FLOW_MAX) return id - FLOW_BASE + 1;
+  return -1;
+}
+
+const pending = new Set<string>();
+
+/** 方块变动时把自身与邻居加入流体检查队列（world.setBlock 统一调用） */
+export function enqueueFluid(x: number, y: number, z: number): void {
+  pending.add(`${x},${y},${z}`);
+  pending.add(`${x + 1},${y},${z}`);
+  pending.add(`${x - 1},${y},${z}`);
+  pending.add(`${x},${y},${z + 1}`);
+  pending.add(`${x},${y},${z - 1}`);
+  pending.add(`${x},${y - 1},${z}`);
+}
+
+export function fluidQueueSize(): number {
+  return pending.size;
+}
+
+/**
+ * 每 ~0.4s 调用一次：从队列取最多 budget 个水系格子尝试传播。
+ * 规则（对齐 MC 观感）：下方为空则流下（源产生 1 级流、流水等级不变——瀑布水柱）；
+ * 落地后向四方扩散（等级 +1，至多 7 级）
+ */
+export function tickFluids(world: World, budget = 128): void {
+  if (pending.size === 0) return;
+  let drained = 0;
+  for (const key of pending) {
+    if (drained >= budget) break;
+    pending.delete(key);
+    drained++;
+    const [x, y, z] = key.split(',').map(Number);
+    const id = world.getBlock(x, y, z);
+    const level = waterLevel(id);
+    if (level < 0) continue;
+    if (world.getBlock(x, y - 1, z) === AIR) {
+      world.setBlock(x, y - 1, z, level === 0 ? FLOW_BASE : FLOW_BASE + level - 1);
+      pending.add(`${x},${y - 1},${z}`);
+      continue;
+    }
+    if (level < 7) {
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        if (world.getBlock(x + dx, y, z + dz) === AIR) {
+          world.setBlock(x + dx, y, z + dz, FLOW_BASE + level);
+          pending.add(`${x + dx},${y},${z + dz}`);
+        }
+      }
+    }
+  }
+}

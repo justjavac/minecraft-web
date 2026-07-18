@@ -2,7 +2,7 @@
 
 import { useFrame } from '@react-three/fiber';
 import type { Color, Fog } from 'three';
-import { WATER } from '@/lib/blocks';
+import { isWaterId } from '@/lib/blocks';
 import { atmosphere, getActiveWorld } from '@/lib/game';
 import { useGameStore } from '@/lib/store';
 
@@ -31,7 +31,7 @@ export function UnderwaterFX() {
       Math.floor(camera.position.y),
       Math.floor(camera.position.z),
     );
-    if (head === WATER) {
+    if (isWaterId(head)) {
       bg.set(WATER_COLOR);
       fog.color.set(WATER_COLOR);
       fog.near = WATER_FOG_NEAR;

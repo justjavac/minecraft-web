@@ -2,6 +2,7 @@
 
 import { AIR, BLOCK_BY_KEY, STONE, WATER } from './blocks';
 import { BIOME_SURFACE } from './biomes';
+import { enqueueFluid } from './fluids';
 import { createTerrain, hash2, hashString, SEA_LEVEL, type Terrain } from './noise';
 import { applyOres } from './oregen';
 import { applyStructures } from './structures';
@@ -151,6 +152,8 @@ export class World {
     if ((x & 15) === CHUNK_SIZE - 1) this.markDirty(cx + 1, cz);
     if ((z & 15) === 0) this.markDirty(cx, cz - 1);
     if ((z & 15) === CHUNK_SIZE - 1) this.markDirty(cx, cz + 1);
+    // 水及其邻域进入流体检查队列（生成过程直接写 data 不走这里，不会触发）
+    enqueueFluid(x, y, z);
   }
 
   private markDirty(cx: number, cz: number): void {

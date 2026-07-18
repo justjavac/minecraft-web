@@ -30,12 +30,13 @@ for (const [i, stem] of TILE_STEMS.entries()) {
     continue;
   }
   if (stem === 'water_still') {
-    // 动画条带（32x1024）只取首帧正方形
+    // 动画条带（32x1024）只取首帧正方形；完整条带另存为 water_still.png 供水面动画用
     execFileSync('python', [
       '-c',
-      'import sys; from PIL import Image; im = Image.open(sys.argv[1]); im.crop((0, 0, im.width, im.width)).save(sys.argv[2])',
+      'import sys; from PIL import Image; im = Image.open(sys.argv[1]); im.crop((0, 0, im.width, im.width)).save(sys.argv[2]); im.save(sys.argv[3])',
       src,
       `${OUT}/${i}.png`,
+      `${OUT}/../water_still.png`,
     ]);
   } else {
     copyFileSync(src, `${OUT}/${i}.png`);

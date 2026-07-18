@@ -97,6 +97,8 @@ export interface BlockDef {
   stepSound: SoundGroup | null;
   /** 长按挖掘时长（秒） */
   digTime: number;
+  /** 流体（水/流水）：可游泳、不可选中、参与水渲染 */
+  fluid?: boolean;
   cat: BlockCat;
 }
 
@@ -169,8 +171,17 @@ add('brick', '砖块', 'bricks', { cat: 'stone', tool: 'pickaxe', needsPick: tru
 defs[WATER] = {
   id: WATER, key: 'water', name: '水',
   top: t('water_still'), bottom: t('water_still'), side: t('water_still'),
-  opaque: false, solid: false, digSound: null, placeSound: 'place', stepSound: null, digTime: 0, cat: 'ocean',
+  opaque: false, solid: false, digSound: null, placeSound: 'place', stepSound: null, digTime: 0, cat: 'ocean', fluid: true,
 };
+// 流水 1-7 级（level 越小越满，7 为最浅；渲染高度见 mesher 的 WATER_TOP）
+export const WATER_FLOW_1 = 14;
+for (let lv = 1; lv <= 7; lv++) {
+  defs.push({
+    id: defs.length, key: `water_flow_${lv}`, name: '流水',
+    top: tileOf('water_still'), bottom: tileOf('water_still'), side: tileOf('water_still'),
+    opaque: false, solid: false, digSound: null, placeSound: 'place', stepSound: null, digTime: 0, cat: 'ocean', fluid: true,
+  });
+}
 defs[CRAFTING_TABLE] = {
   id: CRAFTING_TABLE, key: 'crafting_table', name: '工作台',
   top: ICON_TILE_START + 0, bottom: tileOf('oak_planks'), side: ICON_TILE_START + 1,
@@ -344,6 +355,11 @@ export const BLOCKS: BlockDef[] = defs;
 
 /** key → 方块（配方/选块等按 key 查找用） */
 export const BLOCK_BY_KEY: Record<string, BlockDef> = Object.fromEntries(defs.map((d) => [d.key, d]));
+
+/** 是否水系方块（水源或流水，可游泳/参与水渲染） */
+export function isWaterId(id: BlockId): boolean {
+  return BLOCKS[id]?.fluid === true;
+}
 
 /** 热键栏 9 格（创造模式初始值，可在选块界面更换） */
 export const HOTBAR_BLOCKS: BlockId[] = [GRASS, DIRT, STONE, COBBLE, LOG, PLANKS, GLASS, BRICK, CRAFTING_TABLE];

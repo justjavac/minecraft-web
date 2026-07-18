@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls } from '@react-three/drei';
 import { Euler, PerspectiveCamera, Vector3 } from 'three';
-import { BLOCKS, WATER } from '@/lib/blocks';
+import { BLOCKS, isWaterId } from '@/lib/blocks';
 import { breakBlock, tryPlace } from '@/lib/actions';
 import { cameraRef, debugInfo, digState, getActiveWorld, playerPosition, survivalStats, targetBlock, touchInput } from '@/lib/game';
 import { raycastBlock } from '@/lib/raycast';
@@ -241,8 +241,8 @@ export function Player() {
 
     // 水体检测：脚或头在水中（飞行时忽略）
     const inWater =
-      world.getBlock(Math.floor(p.x), Math.floor(p.y + 0.1), Math.floor(p.z)) === WATER ||
-      world.getBlock(Math.floor(p.x), Math.floor(p.y + EYE), Math.floor(p.z)) === WATER;
+      isWaterId(world.getBlock(Math.floor(p.x), Math.floor(p.y + 0.1), Math.floor(p.z))) ||
+      isWaterId(world.getBlock(Math.floor(p.x), Math.floor(p.y + EYE), Math.floor(p.z)));
 
     // 按相机实际朝向（投影到水平面）计算移动方向。
     // 注意不能读 camera.rotation.y：rotation 是 XYZ 欧拉角分解，俯仰时 .y 不是真实偏航角
@@ -323,8 +323,9 @@ export function Player() {
     }
 
     // —— 生存模式数值（掉落/溺水/消耗度/回血，逻辑在 lib/survival.ts） ——
-    const headInWater =
-      world.getBlock(Math.floor(p.x), Math.floor(p.y + EYE), Math.floor(p.z)) === WATER;
+    const headInWater = isWaterId(
+      world.getBlock(Math.floor(p.x), Math.floor(p.y + EYE), Math.floor(p.z)),
+    );
     tickSurvival(
       { dt, flying, inWater, headInWater, onGround: onGround.current, velY: velY.current },
       survivalMem.current,

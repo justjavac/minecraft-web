@@ -1,6 +1,6 @@
 // 生物系统：类型化怪物（敌对/被动）+ 骷髅箭 + 苦力怕爆炸。纯数据逻辑（不依赖 three，可单测）
 
-import { AIR, BLOCKS, GRASS, tileOf, WATER } from './blocks';
+import { AIR, BLOCKS, GRASS, isWaterId, tileOf } from './blocks';
 import { breakParticles, dayFactorAt, worldClock } from './game';
 import { spawnMaterialDrop } from './items';
 import { aabbFree, collideAxis } from './physics';
@@ -145,7 +145,7 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     let y = WORLD_HEIGHT - 1;
     while (y > 0 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
     if (y <= 0) continue;
-    if (world.getBlock(bx, y, bz) === WATER) continue; // 不在水面生成
+    if (isWaterId(world.getBlock(bx, y, bz))) continue; // 不在水面生成
     if (!def.hostile && world.getBlock(bx, y, bz) !== GRASS) continue; // 被动只在草地上
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;

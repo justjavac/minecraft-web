@@ -1,6 +1,6 @@
 // chunk 网格化：隐藏面剔除 + 逐顶点环境光遮蔽（AO）+ atlas UV，输出纯数据（不依赖 three，可单测）
 
-import { AIR, ATLAS_COLS, ATLAS_ROWS, BLOCKS, WATER } from './blocks';
+import { AIR, ATLAS_COLS, ATLAS_ROWS, BLOCKS, isWaterId, WATER, WATER_FLOW_1 } from './blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT, type Chunk, type World } from './world';
 
 export interface GeometryData {
@@ -96,10 +96,15 @@ class GeometryBuilder {
       const py = c.pos[1] === 1 ? topY : c.pos[1];
       this.positions.push(x + c.pos[0], y + py, z + c.pos[2]);
       this.normals.push(face.dir[0], face.dir[1], face.dir[2]);
-      // CanvasTexture flipY=true：atlas 第 0 行在 v 顶部
-      const u = (col + c.uv[0]) / ATLAS_COLS;
-      const v = 1 - (row + 1 - c.uv[1]) / ATLAS_ROWS;
-      this.uvs.push(u, v);
+      if (tile === WATER_UV_TILE) {
+        // 独立 water strip 纹理：单帧 v∈[0,1/32]（动画由纹理 offset 驱动）
+        this.uvs.push(c.uv[0], c.uv[1] / 32);
+      } else {
+        // CanvasTexture flipY=true：atlas 第 0 行在 v 顶部
+        const u = (col + c.uv[0]) / ATLAS_COLS;
+        const v = 1 - (row + 1 - c.uv[1]) / ATLAS_ROWS;
+        this.uvs.push(u, v);
+      }
       const b = AO_CURVE[ao[i]];
       this.colors.push(b, b, b);
     }
@@ -127,6 +132,11 @@ const aoScratch = [0, 0, 0, 0];
 /** 不透明查找表（id → 1/0）：替代热路径上的 BLOCKS[id]?.opaque 属性链访问 */
 const OPAQUE = new Uint8Array(BLOCKS.length);
 for (const d of BLOCKS) OPAQUE[d.id] = d.opaque ? 1 : 0;
+
+/** 水面高度表（源 0.875，流水 1-7 逐级变浅） */
+const WATER_TOP = [0.875, 0.766, 0.656, 0.547, 0.437, 0.328, 0.219, 0.109];
+/** addFace 的 tile 特殊值：水系方块，UV 写到独立 water strip 纹理空间 */
+const WATER_UV_TILE = -2;
 
 // 3×3 chunk 邻居网格（48×48 截面 + 上下各 1 格缓冲），模块级复用避免逐次分配
 // （JS 单线程：主线程/每个 worker 各自持有独立模块实例，无共享冲突）
@@ -174,7 +184,9 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
         for (const face of FACES) {
           const n = idGrid[gidx(x + face.dir[0], y + face.dir[1], z + face.dir[2])];
           // 同类透明方块之间不画（玻璃-玻璃、树叶-树叶、水-水）；不透明邻居挡住的面剔除
-          const visible = id === WATER ? n !== WATER && opGrid[gidx(x + face.dir[0], y + face.dir[1], z + face.dir[2])] !== 1 : opGrid[gidx(x + face.dir[0], y + face.dir[1], z + face.dir[2])] !== 1 && n !== id;
+          const visible = isWaterId(id)
+            ? !isWaterId(n) && opGrid[gidx(x + face.dir[0], y + face.dir[1], z + face.dir[2])] !== 1
+            : opGrid[gidx(x + face.dir[0], y + face.dir[1], z + face.dir[2])] !== 1 && n !== id;
           if (!visible) continue;
           const tile = face.dir[1] === 1 ? def.top : face.dir[1] === -1 ? def.bottom : def.side;
           // 逐顶点 AO：探测邻层（面外侧那一格）的两个侧边与对角
@@ -192,9 +204,10 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
             );
             aoScratch[i] = aoValue(s1, s2, cc);
           }
-          // 水面略低于方块顶（上方还有水则保持满格）
-          const topY = id === WATER && idGrid[gidx(x, y + 1, z)] !== WATER ? 0.875 : 1;
-          (id === WATER ? water : solid).addFace(wx, y, wz, face, tile, aoScratch, topY);
+          // 水面按水位下沉；上方还有水则满格
+          const level = id === WATER ? 0 : id - WATER_FLOW_1 + 1;
+          const topY = isWaterId(id) ? (isWaterId(idGrid[gidx(x, y + 1, z)]) ? 1 : WATER_TOP[level]) : 1;
+          (isWaterId(id) ? water : solid).addFace(wx, y, wz, face, isWaterId(id) ? WATER_UV_TILE : tile, aoScratch, topY);
         }
       }
     }
@@ -218,7 +231,7 @@ const FULL_AO = [3, 3, 3, 3];
 export function buildBlockGeometry(id: number): GeometryData {
   const builder = new GeometryBuilder();
   const def = BLOCKS[id];
-  if (def && id !== AIR && id !== WATER) {
+  if (def && id !== AIR && !isWaterId(id)) {
     for (const face of FACES) {
       const tile = face.dir[1] === 1 ? def.top : face.dir[1] === -1 ? def.bottom : def.side;
       builder.addFace(0, 0, 0, face, tile, FULL_AO);

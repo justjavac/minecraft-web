@@ -17,6 +17,7 @@ import {
 } from '@/lib/persistence';
 import { playerPosition, setActiveWorld, debugInfo, worldClock } from '@/lib/game';
 import { clearFurnaces, furnaces, tickFurnaces } from '@/lib/furnace';
+import { tickFluids } from '@/lib/fluids';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
 import { emptySlots } from '@/lib/slots';
@@ -47,6 +48,7 @@ export function WorldRenderer() {
   const [chunkList, setChunkList] = useState<Chunk[]>([]);
   const worldRef = useRef<World | null>(null);
   const lastUpdate = useRef(0);
+  const lastFluid = useRef(0);
   const lastGeneration = useRef(-1);
 
   // 创建/加载世界 + 贴图
@@ -131,7 +133,7 @@ export function WorldRenderer() {
     };
   }, [world]);
 
-  // 每帧：重建脏 chunk 网格（限流）+ 按玩家位置调度 chunk + 推进熔炉烧炼
+  // 每帧：重建脏 chunk 网格（限流）+ 按玩家位置调度 chunk + 推进熔炉烧炼 + 流体传播
   useFrame((_, delta) => {
     const w = worldRef.current;
     if (!w) return;
@@ -151,6 +153,10 @@ export function WorldRenderer() {
         playerPosition.z,
         useGameStore.getState().settings.renderDistance,
       );
+    }
+    if (now - lastFluid.current > 400) {
+      lastFluid.current = now;
+      tickFluids(w);
     }
     if (!useGameStore.getState().paused) {
       tickFurnaces(Math.min(delta, 0.05));
