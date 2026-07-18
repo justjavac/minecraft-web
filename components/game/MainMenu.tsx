@@ -99,7 +99,7 @@ export function MainMenu() {
           </div>
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground">
-          贴图与音效来自 Minetest Game（CC BY-SA 3.0），详见 public/*/CREDITS.md
+          贴图 Faithful 32x（faithfulpack.net）· 音效 Minetest Game（CC BY-SA 3.0）· 详见 public/*/CREDITS.md
         </CardFooter>
       </Card>
     </div>
