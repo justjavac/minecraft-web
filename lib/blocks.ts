@@ -17,45 +17,46 @@ export const WATER = 11;
 export const CRAFTING_TABLE = 12;
 export const FURNACE = 13;
 
-/** atlas 布局：8×4 格，每格 16px */
+/** atlas 布局：8×4 格，单格分辨率随贴图包（默认贴图为 32px Faithful） */
 export const ATLAS_COLS = 8;
 export const ATLAS_ROWS = 4;
-export const TILE_PX = 16;
+/** 默认贴图的单格分辨率（内置 Faithful 32x） */
+export const TILE_PX = 32;
 
 /**
- * 每个 tile 对应的贴图文件（按 atlas 顺序）。
- * 多个文件表示按顺序叠加绘制（草方块侧面 = dirt 底 + grass_side 透明层）。
+ * 每个 tile 的默认贴图：`public/textures/pack/<n>.png` 的索引；null 表示纯 canvas 绘制。
+ * 0-12 为方块贴图；工作台/熔炉借用木板/圆石打底再叠加绘制；其余为图标（全 canvas）。
  */
-export const TILE_FILES: string[][] = [
-  ['default_grass.png'], // 0 草顶
-  ['default_dirt.png', 'default_grass_side.png'], // 1 草侧面（合成）
-  ['default_dirt.png'], // 2 泥土
-  ['default_stone.png'], // 3 石头
-  ['default_cobble.png'], // 4 圆石
-  ['default_sand.png'], // 5 沙子
-  ['default_tree.png'], // 6 树干侧面
-  ['default_tree_top.png'], // 7 树干顶/底
-  ['default_wood.png'], // 8 木板
-  ['default_leaves.png'], // 9 树叶
-  ['default_glass.png'], // 10 玻璃
-  ['default_brick.png'], // 11 砖块
-  ['default_water.png'], // 12 水
-  ['default_wood.png'], // 13 工作台顶（canvas 叠加网格线）
-  ['default_wood.png'], // 14 工作台侧（canvas 叠加边框）
-  ['default_cobble.png'], // 15 熔炉（canvas 叠加炉口）
-  [], // 16 皮革（canvas 全绘）
-  [], // 17 皮革头盔图标
-  [], // 18 皮革胸甲图标
-  [], // 19 皮革护腿图标
-  [], // 20 皮革靴子图标
-  [], // 21 木棍图标
-  [], // 22 木炭图标
-  [], // 23 生猪排图标
-  [], // 24 熟猪排图标
-  [], // 25 生牛肉图标
-  [], // 26 熟牛肉图标
-  [], // 27 生鸡肉图标
-  [], // 28 熟鸡肉图标
+export const TILE_BASE: (number | null)[] = [
+  0, // 0 草顶
+  1, // 1 草侧面
+  2, // 2 泥土
+  3, // 3 石头
+  4, // 4 圆石
+  5, // 5 沙子
+  6, // 6 树干侧面
+  7, // 7 树干顶/底
+  8, // 8 木板
+  9, // 9 树叶
+  10, // 10 玻璃
+  11, // 11 砖块
+  12, // 12 水
+  8, // 13 工作台顶（木板底 + canvas 网格线）
+  8, // 14 工作台侧（木板底 + canvas 边框）
+  4, // 15 熔炉（圆石底 + canvas 炉口）
+  null, // 16 皮革（canvas 全绘）
+  null, // 17 皮革头盔图标
+  null, // 18 皮革胸甲图标
+  null, // 19 皮革护腿图标
+  null, // 20 皮革靴子图标
+  null, // 21 木棍图标
+  null, // 22 木炭图标
+  null, // 23 生猪排图标
+  null, // 24 熟猪排图标
+  null, // 25 生牛肉图标
+  null, // 26 熟牛肉图标
+  null, // 27 生鸡肉图标
+  null, // 28 熟鸡肉图标
 ];
 
 /** 音效组（对应 lib/sound.ts 中的文件组） */

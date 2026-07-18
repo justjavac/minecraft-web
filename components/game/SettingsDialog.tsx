@@ -54,21 +54,7 @@ export function SettingsDialog() {
 
   useEffect(() => {
     // 挂载后读取本地贴图包（避免 SSR 水合不一致；微任务绕过同步 setState 限制）
-    queueMicrotask(async () => {
-      const pack = loadCustomPack();
-      if (pack) {
-        setPackName(pack.name);
-        return;
-      }
-      // 无导入包时探测系统级安装包（public/textures/pack/，gitignored）
-      const installed = await new Promise<boolean>((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve(true);
-        img.onerror = () => resolve(false);
-        img.src = '/textures/pack/0.png';
-      });
-      if (installed) setPackName('本地安装包（textures/pack/）');
-    });
+    queueMicrotask(() => setPackName(loadCustomPack()?.name ?? null));
   }, []);
 
   const onImport = async (importFn: () => Promise<{ name: string; found: number; tilePx: number }>) => {
@@ -155,7 +141,7 @@ export function SettingsDialog() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>贴图包</Label>
-              <span className="text-sm text-muted-foreground">{packName ?? '默认（Minetest Game）'}</span>
+              <span className="text-sm text-muted-foreground">{packName ?? '默认（Faithful 32x）'}</span>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => zipRef.current?.click()}>

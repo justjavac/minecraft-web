@@ -1,9 +1,10 @@
 # 贴图署名 / Texture Credits
 
-本目录下的贴图来自 Luanti（原 Minetest）官方基础游戏 **Minetest Game**：
+本目录 `pack/` 下的方块贴图（0.png–12.png）来自 **Faithful 32x**：
 
-- 来源：https://github.com/luanti-org/minetest_game （`mods/default/textures/`）
-- 许可证：媒体资源采用 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
-- 作者：Various Minetest Game developers（详见上游仓库 `LICENSE.txt`）
+- 来源：https://faithfulpack.net/
+- 作者：Faithful Resource Pack 团队
+- 许可证：Faithful License V3（原文见 [pack/LICENSE.txt](pack/LICENSE.txt)，按其要求随贴图附带）
+- 要求：署名 + 链接回 https://faithfulpack.net/ + 不得用于盈利内容
 
-草方块侧面贴图为运行时由 `default_dirt.png` 与 `default_grass_side.png` 透明层合成。
+音效仍来自 Minetest Game（CC BY-SA 3.0），见 `public/sounds/CREDITS.md`。

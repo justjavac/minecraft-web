@@ -1,13 +1,13 @@
-// 浏览器端把 16px PNG 拼成贴图 atlas（CanvasTexture + NearestFilter 保持像素风）
-// 覆盖贴图来源（整格替换、分辨率随包）：设置里导入的包（lib/texturepack.ts，localStorage）
-// > 本地安装包 public/textures/pack/（scripts/install-texture-pack.sh，gitignored）> 默认 Minetest
+// 浏览器端把贴图拼成 atlas（CanvasTexture + NearestFilter 保持像素风）
+// 默认贴图为内置的 public/textures/pack/（Faithful 32x，许可见 pack/LICENSE.txt）；
+// 设置里导入的自定义包（lib/texturepack.ts，localStorage）可整格覆盖对应 tile，分辨率随包
 
 import * as THREE from 'three';
-import { ATLAS_COLS, ATLAS_ROWS, TILE_FILES, TILE_PX as DEFAULT_TILE_PX } from './blocks';
+import { ATLAS_COLS, ATLAS_ROWS, TILE_BASE, TILE_PX as DEFAULT_TILE_PX } from './blocks';
 import { mulberry32 } from './noise';
 import { loadCustomPack } from './texturepack';
 
-/** 当前 atlas 的单格分辨率（默认 16，随自定义贴图包变为 32/64） */
+/** 当前 atlas 的单格分辨率（默认 32，随导入的自定义贴图包变化） */
 export let tilePx = DEFAULT_TILE_PX;
 
 const LEATHER = '#a06830';
@@ -182,15 +182,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** loadImage 的容错版：加载失败（如本地安装包缺失某 tile）返回 null，调用方回退默认贴图 */
-async function tryLoadImage(src: string): Promise<HTMLImageElement | null> {
-  try {
-    return await loadImage(src);
-  } catch {
-    return null;
-  }
-}
-
 const cache = new Map<RendererKind, Promise<AtlasMaterials>>();
 
 export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMaterials> {
@@ -208,8 +199,7 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
 
-  // 覆盖贴图来源（整格替换对应 tile），优先级：设置里导入的包（localStorage）>
-  // 本地安装包 public/textures/pack/（scripts/install-texture-pack.sh，gitignored）> 默认 Minetest
+  // 整格覆盖贴图：设置里导入的包（localStorage）> 内置默认 pack/（Faithful 32x）
   const custom: Partial<Record<number, HTMLImageElement>> = {};
   if (pack) {
     tilePx = pack.tilePx;
@@ -220,37 +210,27 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     );
   } else {
     tilePx = DEFAULT_TILE_PX;
-    const probe = await tryLoadImage('/textures/pack/0.png');
-    if (probe) {
-      tilePx = Math.min(probe.width, 64);
-      custom[0] = probe;
-      await Promise.all(
-        Array.from({ length: 12 }, (_, n) => n + 1).map(async (i) => {
-          const img = await tryLoadImage(`/textures/pack/${i}.png`);
-          if (img) custom[i] = img;
-        }),
-      );
-    }
   }
+
+  // 默认贴图：pack/<n>.png（TILE_BASE 映射；工作台/熔炉借用木板/圆石打底）
+  const base: Partial<Record<number, HTMLImageElement>> = {};
+  await Promise.all(
+    [...new Set(TILE_BASE.filter((n): n is number => n !== null))].map(async (n) => {
+      base[n] = await loadImage(`/textures/pack/${n}.png`);
+    }),
+  );
 
   canvas.width = ATLAS_COLS * tilePx;
   canvas.height = ATLAS_ROWS * tilePx;
   ctx.imageSmoothingEnabled = false;
 
   await Promise.all(
-    TILE_FILES.map(async (files, i) => {
+    TILE_BASE.map(async (baseIdx, i) => {
       const dx = (i % ATLAS_COLS) * tilePx;
       const dy = Math.floor(i / ATLAS_COLS) * tilePx;
-      if (custom[i]) {
-        // 自定义 tile 整格替换（16px 默认图按最近邻放大到单元格）
-        ctx.drawImage(custom[i], dx, dy, tilePx, tilePx);
-      } else {
-        // 多文件按顺序叠加（草侧面 = dirt + grass_side 透明层）
-        for (const f of files) {
-          const img = await loadImage(`/textures/${f}`);
-          ctx.drawImage(img, dx, dy, tilePx, tilePx);
-        }
-      }
+      // 优先导入包整格；工作台/熔炉等借用底图的 tile 在导入包里也跟随对应方块贴图
+      const img = custom[i] ?? (baseIdx !== null ? custom[baseIdx] ?? base[baseIdx] : undefined);
+      if (img) ctx.drawImage(img, dx, dy, tilePx, tilePx);
       // 叠加绘制（工作台/熔炉/装备/食物图标）按 16px 坐标系编写，随分辨率缩放
       const overlay = TEXTURE_OVERLAYS[i];
       if (overlay) {
