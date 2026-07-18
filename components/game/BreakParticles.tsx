@@ -3,9 +3,9 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { BoxGeometry, Mesh, MeshBasicMaterial, Vector3, type Group } from 'three';
-import { ATLAS_COLS, ATLAS_ROWS, BLOCKS, TILE_PX } from '@/lib/blocks';
+import { ATLAS_COLS, ATLAS_ROWS, BLOCKS } from '@/lib/blocks';
 import { breakParticles, getActiveWorld, type BreakParticleEvent } from '@/lib/game';
-import { getAtlasMaterials } from '@/lib/textures';
+import { getAtlasMaterials, tilePx } from '@/lib/textures';
 import { useRendererKind } from './renderer-kind';
 
 const POOL_SIZE = 32;
@@ -13,8 +13,6 @@ const PARTICLES_PER_BREAK = 10;
 const LIFE = 0.85; // 秒
 const GRAVITY = 22;
 const BASE_SIZE = 0.12;
-/** 碎块取方块贴图的随机 CROP_PX×CROP_PX 局部（MC 的 4×4 碎块样式） */
-const CROP_PX = 4;
 
 interface Particle {
   mesh: Mesh;
@@ -132,14 +130,15 @@ function spawn(e: BreakParticleEvent): void {
     p.spin.set((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, 0);
     p.mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
     p.mesh.scale.setScalar(p.size);
-    // 每颗粒取贴图的随机 CROP_PX×CROP_PX 局部，看起来像真正的碎屑而非整块缩小
-    const cx = Math.floor(Math.random() * (TILE_PX - CROP_PX));
-    const cy = Math.floor(Math.random() * (TILE_PX - CROP_PX));
+    // 每颗粒取贴图的随机 1/4 局部（MC 的 4×4 碎块样式），看起来像真正的碎屑而非整块缩小
+    const crop = tilePx / 4;
+    const cx = Math.floor(Math.random() * (tilePx - crop));
+    const cy = Math.floor(Math.random() * (tilePx - crop));
     const map = (p.mesh.material as MeshBasicMaterial).map!;
-    map.repeat.set(CROP_PX / TILE_PX / ATLAS_COLS, CROP_PX / TILE_PX / ATLAS_ROWS);
+    map.repeat.set(crop / tilePx / ATLAS_COLS, crop / tilePx / ATLAS_ROWS);
     map.offset.set(
-      (col + cx / TILE_PX) / ATLAS_COLS,
-      1 - (row + (cy + CROP_PX) / TILE_PX) / ATLAS_ROWS,
+      (col + cx / tilePx) / ATLAS_COLS,
+      1 - (row + (cy + crop) / tilePx) / ATLAS_ROWS,
     );
     if (++spawned >= PARTICLES_PER_BREAK) break;
   }

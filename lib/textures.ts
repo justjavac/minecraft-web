@@ -1,8 +1,13 @@
 // 浏览器端把 16px PNG 拼成贴图 atlas（CanvasTexture + NearestFilter 保持像素风）
+// 支持用户导入的自定义贴图包（lib/texturepack.ts）：整格替换对应 tile，分辨率随包
 
 import * as THREE from 'three';
-import { ATLAS_COLS, ATLAS_ROWS, TILE_FILES, TILE_PX } from './blocks';
+import { ATLAS_COLS, ATLAS_ROWS, TILE_FILES, TILE_PX as DEFAULT_TILE_PX } from './blocks';
 import { mulberry32 } from './noise';
+import { loadCustomPack } from './texturepack';
+
+/** 当前 atlas 的单格分辨率（默认 16，随自定义贴图包变为 32/64） */
+export let tilePx = DEFAULT_TILE_PX;
 
 const LEATHER = '#a06830';
 const LEATHER_DARK = '#6b4420';
@@ -188,23 +193,47 @@ export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMa
 }
 
 async function build(kind: RendererKind): Promise<AtlasMaterials> {
+  const pack = loadCustomPack();
+  tilePx = pack?.tilePx ?? DEFAULT_TILE_PX;
   const canvas = document.createElement('canvas');
-  canvas.width = ATLAS_COLS * TILE_PX;
-  canvas.height = ATLAS_ROWS * TILE_PX;
+  canvas.width = ATLAS_COLS * tilePx;
+  canvas.height = ATLAS_ROWS * tilePx;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
   ctx.imageSmoothingEnabled = false;
 
+  // 自定义贴图包的 tile 图片（dataURL 已是正方形首帧）
+  const custom: Partial<Record<number, HTMLImageElement>> = {};
+  if (pack) {
+    await Promise.all(
+      Object.entries(pack.tiles).map(async ([k, url]) => {
+        custom[Number(k)] = await loadImage(url);
+      }),
+    );
+  }
+
   await Promise.all(
     TILE_FILES.map(async (files, i) => {
-      const dx = (i % ATLAS_COLS) * TILE_PX;
-      const dy = Math.floor(i / ATLAS_COLS) * TILE_PX;
-      // 多文件按顺序叠加（草侧面 = dirt + grass_side 透明层）
-      for (const f of files) {
-        const img = await loadImage(`/textures/${f}`);
-        ctx.drawImage(img, dx, dy);
+      const dx = (i % ATLAS_COLS) * tilePx;
+      const dy = Math.floor(i / ATLAS_COLS) * tilePx;
+      if (custom[i]) {
+        // 自定义 tile 整格替换（16px 默认图按最近邻放大到单元格）
+        ctx.drawImage(custom[i], dx, dy, tilePx, tilePx);
+      } else {
+        // 多文件按顺序叠加（草侧面 = dirt + grass_side 透明层）
+        for (const f of files) {
+          const img = await loadImage(`/textures/${f}`);
+          ctx.drawImage(img, dx, dy, tilePx, tilePx);
+        }
       }
-      TEXTURE_OVERLAYS[i]?.(ctx, dx, dy);
+      // 叠加绘制（工作台/熔炉/装备/食物图标）按 16px 坐标系编写，随分辨率缩放
+      const overlay = TEXTURE_OVERLAYS[i];
+      if (overlay) {
+        ctx.save();
+        ctx.scale(tilePx / 16, tilePx / 16);
+        overlay(ctx, (i % ATLAS_COLS) * 16, Math.floor(i / ATLAS_COLS) * 16);
+        ctx.restore();
+      }
     }),
   );
 
