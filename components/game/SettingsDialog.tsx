@@ -54,7 +54,21 @@ export function SettingsDialog() {
 
   useEffect(() => {
     // 挂载后读取本地贴图包（避免 SSR 水合不一致；微任务绕过同步 setState 限制）
-    queueMicrotask(() => setPackName(loadCustomPack()?.name ?? null));
+    queueMicrotask(async () => {
+      const pack = loadCustomPack();
+      if (pack) {
+        setPackName(pack.name);
+        return;
+      }
+      // 无导入包时探测系统级安装包（public/textures/pack/，gitignored）
+      const installed = await new Promise<boolean>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = '/textures/pack/0.png';
+      });
+      if (installed) setPackName('本地安装包（textures/pack/）');
+    });
   }, []);
 
   const onImport = async (importFn: () => Promise<{ name: string; found: number; tilePx: number }>) => {

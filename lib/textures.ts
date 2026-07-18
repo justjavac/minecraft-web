@@ -1,5 +1,6 @@
 // 浏览器端把 16px PNG 拼成贴图 atlas（CanvasTexture + NearestFilter 保持像素风）
-// 支持用户导入的自定义贴图包（lib/texturepack.ts）：整格替换对应 tile，分辨率随包
+// 覆盖贴图来源（整格替换、分辨率随包）：设置里导入的包（lib/texturepack.ts，localStorage）
+// > 本地安装包 public/textures/pack/（scripts/install-texture-pack.sh，gitignored）> 默认 Minetest
 
 import * as THREE from 'three';
 import { ATLAS_COLS, ATLAS_ROWS, TILE_FILES, TILE_PX as DEFAULT_TILE_PX } from './blocks';
@@ -181,6 +182,15 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+/** loadImage 的容错版：加载失败（如本地安装包缺失某 tile）返回 null，调用方回退默认贴图 */
+async function tryLoadImage(src: string): Promise<HTMLImageElement | null> {
+  try {
+    return await loadImage(src);
+  } catch {
+    return null;
+  }
+}
+
 const cache = new Map<RendererKind, Promise<AtlasMaterials>>();
 
 export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMaterials> {
@@ -194,23 +204,38 @@ export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMa
 
 async function build(kind: RendererKind): Promise<AtlasMaterials> {
   const pack = loadCustomPack();
-  tilePx = pack?.tilePx ?? DEFAULT_TILE_PX;
   const canvas = document.createElement('canvas');
-  canvas.width = ATLAS_COLS * tilePx;
-  canvas.height = ATLAS_ROWS * tilePx;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
-  ctx.imageSmoothingEnabled = false;
 
-  // 自定义贴图包的 tile 图片（dataURL 已是正方形首帧）
+  // 覆盖贴图来源（整格替换对应 tile），优先级：设置里导入的包（localStorage）>
+  // 本地安装包 public/textures/pack/（scripts/install-texture-pack.sh，gitignored）> 默认 Minetest
   const custom: Partial<Record<number, HTMLImageElement>> = {};
   if (pack) {
+    tilePx = pack.tilePx;
     await Promise.all(
       Object.entries(pack.tiles).map(async ([k, url]) => {
         custom[Number(k)] = await loadImage(url);
       }),
     );
+  } else {
+    tilePx = DEFAULT_TILE_PX;
+    const probe = await tryLoadImage('/textures/pack/0.png');
+    if (probe) {
+      tilePx = Math.min(probe.width, 64);
+      custom[0] = probe;
+      await Promise.all(
+        Array.from({ length: 12 }, (_, n) => n + 1).map(async (i) => {
+          const img = await tryLoadImage(`/textures/pack/${i}.png`);
+          if (img) custom[i] = img;
+        }),
+      );
+    }
   }
+
+  canvas.width = ATLAS_COLS * tilePx;
+  canvas.height = ATLAS_ROWS * tilePx;
+  ctx.imageSmoothingEnabled = false;
 
   await Promise.all(
     TILE_FILES.map(async (files, i) => {

@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local npm cache
 /.npm-cache/
+
+# 本地安装的第三方贴图包（scripts/install-texture-pack.sh 生成，不分发不入库）
+/public/textures/pack/
