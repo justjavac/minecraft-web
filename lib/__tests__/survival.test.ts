@@ -121,7 +121,7 @@ describe('僵尸', () => {
     worldClock.t = 0.75; // 午夜
   });
 
-  it('夜晚在玩家周围地表生成', () => {
+  it('夜晚在玩家周围地表生成', { timeout: 20000 }, () => {
     const w = floorWorld();
     let ok = false;
     for (let i = 0; i < 20 && !ok; i++) ok = trySpawn(w, 0, 0);

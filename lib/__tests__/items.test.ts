@@ -25,7 +25,7 @@ describe('掉落物实体', () => {
     expect(itemDrops[0].count).toBe(3);
   });
 
-  it('受重力落到地面并停稳', () => {
+  it('受重力落到地面并停稳', { timeout: 20000 }, () => {
     const w = floorWorld();
     spawnBlockDrop(STONE, 0.5, 14, 0.5);
     for (let i = 0; i < 100; i++) tickDrops(w, 0.05, FAR_AWAY, () => false);

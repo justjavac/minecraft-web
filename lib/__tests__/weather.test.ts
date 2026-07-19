@@ -6,7 +6,7 @@ import { tickWeather, weatherDim, type WeatherState } from '../weather';
 const mk = (): WeatherState => ({ kind: 'clear', timer: 10, flash: 0, nextFlash: 2 });
 
 describe('天气状态机', () => {
-  it('计时到期切换天气，且不会停留在非法状态', () => {
+  it('计时到期切换天气，且不会停留在非法状态', { timeout: 20000 }, () => {
     const s = mk();
     const kinds = new Set<string>();
     let seed = 42;

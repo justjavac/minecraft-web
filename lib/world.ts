@@ -80,6 +80,19 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
       }
     }
   }
+  // 海底洞穴灌水：海平面以下被雕空的洞腔，上方是水的向下灌满（MC 含水层观感，避免出现水下黑色气穴）
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      const h = terrain.heightAt(wx, wz);
+      if (h < 0 || h >= SEA_LEVEL) continue;
+      for (let y = SEA_LEVEL; y >= 4; y--) {
+        const i = localIndex(x, y, z);
+        if (data[i] === AIR && data[localIndex(x, y + 1, z)] === WATER) data[i] = WATER;
+      }
+    }
+  }
   // 深层岩浆湖：y≤10 的雕空洞腔自底向上灌岩浆（下方非空非水才灌，形成平整湖面）
   const LAVA_LAKE_TOP = 10;
   for (let x = 0; x < CHUNK_SIZE; x++) {
