@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls } from '@react-three/drei';
 import { Euler, PerspectiveCamera, Vector3 } from 'three';
-import { BLOCKS, isWaterId } from '@/lib/blocks';
+import { BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
 import { breakBlock, tryPlace } from '@/lib/actions';
 import { cameraRef, debugInfo, digState, getActiveWorld, playerPosition, survivalStats, targetBlock, touchInput } from '@/lib/game';
 import { raycastBlock } from '@/lib/raycast';
@@ -70,6 +70,8 @@ export function Player() {
   const appliedFov = useRef(0);
   /** 生存：下落/憋气/回血计时（逻辑在 lib/survival.ts） / 攻击冷却 / 死亡边沿 */
   const survivalMem = useRef<SurvivalMem>({ fallDist: 0, air: 15, regenTick: 0 });
+  /** 岩浆灼烧累计（满 1 点扣 1 血） */
+  const lavaAcc = useRef(0);
   const attackCd = useRef(0);
   const wasDead = useRef(false);
 
@@ -243,6 +245,11 @@ export function Player() {
     const inWater =
       isWaterId(world.getBlock(Math.floor(p.x), Math.floor(p.y + 0.1), Math.floor(p.z))) ||
       isWaterId(world.getBlock(Math.floor(p.x), Math.floor(p.y + EYE), Math.floor(p.z)));
+    // 岩浆检测：接触即受伤，泳动比水更粘滞
+    const inLava =
+      isLavaId(world.getBlock(Math.floor(p.x), Math.floor(p.y + 0.1), Math.floor(p.z))) ||
+      isLavaId(world.getBlock(Math.floor(p.x), Math.floor(p.y + EYE), Math.floor(p.z)));
+    const inFluid = inWater || inLava;
 
     // 按相机实际朝向（投影到水平面）计算移动方向。
     // 注意不能读 camera.rotation.y：rotation 是 XYZ 欧拉角分解，俯仰时 .y 不是真实偏航角
@@ -265,7 +272,7 @@ export function Player() {
     let mx = fx * f - fz * r;
     let mz = fz * f + fx * r;
     const mLen = Math.hypot(mx, mz);
-    const speed = flying ? FLY_SPEED : inWater ? WALK_SPEED * 0.6 : WALK_SPEED;
+    const speed = flying ? FLY_SPEED : inFluid ? WALK_SPEED * (inLava ? 0.4 : 0.6) : WALK_SPEED;
     // 摇杆为模拟量：mLen ≤ 1 时保留力度，超过 1（键盘对角线）才归一化
     const scale = mLen > 1 ? speed / mLen : speed;
     mx *= scale;
@@ -296,12 +303,13 @@ export function Player() {
       const up = (space ? 1 : 0) - (shift ? 1 : 0);
       velY.current = up * FLY_SPEED;
       onGround.current = false;
-    } else if (inWater) {
-      // 游泳：弱化重力缓慢下沉，按住空格持续上浮；站在水底时可小跳上岸
-      velY.current -= GRAVITY * 0.35 * dt;
+    } else if (inFluid) {
+      // 游泳：弱化重力缓慢下沉，按住空格持续上浮；站在底面时可小跳上岸（岩浆里更粘）
+      const visc = inLava ? 0.55 : 1;
+      velY.current -= GRAVITY * 0.35 * visc * dt;
       if (space) {
         if (onGround.current) velY.current = JUMP_VEL * 0.7;
-        else velY.current += GRAVITY * 1.1 * dt;
+        else velY.current += GRAVITY * 1.1 * visc * dt;
       }
       velY.current = Math.min(Math.max(velY.current, -3), 4);
     } else {
@@ -338,14 +346,26 @@ export function Player() {
       },
     );
 
+    // 岩浆灼烧：接触即掉血（2 心/秒），离开后清零计时
+    if (inLava && gs.worldMode === 'survival') {
+      lavaAcc.current += dt * 4;
+      const dmg = Math.floor(lavaAcc.current);
+      if (dmg > 0) {
+        lavaAcc.current -= dmg;
+        gs.damagePlayer(dmg);
+      }
+    } else {
+      lavaAcc.current = 0;
+    }
+
     // 脚步声：着地行走时按实际位移触发（顶墙走不响）
     const hDist = Math.hypot(p.x - prevStep.current.x, p.z - prevStep.current.z);
     prevStep.current = { x: p.x, z: p.z };
     // MC 消耗度：步行 0.01/格，游泳 0.015/格
     if (gs.worldMode === 'survival') {
-      survivalStats.exhaustion += hDist * (inWater ? 0.015 : 0.01);
+      survivalStats.exhaustion += hDist * (inFluid ? 0.015 : 0.01);
     }
-    if (!flying && !inWater && onGround.current && hDist > 0.001) {
+    if (!flying && !inFluid && onGround.current && hDist > 0.001) {
       stepAcc.current += hDist;
       if (stepAcc.current >= 2.2) {
         stepAcc.current = 0;

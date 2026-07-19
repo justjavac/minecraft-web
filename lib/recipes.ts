@@ -89,8 +89,23 @@ export const RECIPES: Recipe[] = [
   { id: 'planks', name: '木板 ×4', out: { kind: 'block', id: PLANKS, count: 4 }, cost: [{ item: LOG_ITEM, count: 1 }], needsTable: false },
   { id: 'stick', name: '木棍 ×4', out: { kind: 'material', material: 'stick', count: 4 }, cost: [{ item: PLANKS_ITEM, count: 2 }], needsTable: false },
   { id: 'crafting_table', name: '工作台', out: { kind: 'block', id: CRAFTING_TABLE, count: 1 }, cost: [{ item: PLANKS_ITEM, count: 4 }], needsTable: false },
+  // 线 → 羊毛（MC：2×2 线合 1 羊毛）
+  { id: 'white_wool', name: '白色羊毛', out: { kind: 'block', id: KID('white_wool'), count: 1 }, cost: [{ item: 'material:string', count: 4 }], needsTable: false },
   // —— 工作台 3×3：工具（配方与 MC 一致） ——
   { id: 'furnace', name: '熔炉', out: { kind: 'block', id: FURNACE, count: 1 }, cost: [{ item: `block:${COBBLE}`, count: 8 }], needsTable: true },
+  // 床：3 羊毛 + 3 木板（MC 配方）
+  { id: 'red_bed', name: '红色床', out: { kind: 'block', id: KID('red_bed'), count: 1 }, cost: [{ item: K('white_wool'), count: 3 }, { item: PLANKS_ITEM, count: 3 }], needsTable: true },
+  // 弓：3 线 + 3 木棍（MC 配方）；箭：羽毛+木棍（简化，无燧石）
+  { id: 'bow', name: '弓', out: { kind: 'tool', tool: 'bow' }, cost: [{ item: 'material:string', count: 3 }, { item: STICK, count: 3 }], needsTable: true },
+  { id: 'arrow', name: '箭 ×4', out: { kind: 'material', material: 'arrow', count: 4 }, cost: [{ item: 'material:feather', count: 1 }, { item: STICK, count: 1 }], needsTable: false },
+  // 容器：箱子 8 木板（MC）；木桶 6 木板 + 2 台阶（MC）
+  { id: 'chest', name: '箱子', out: { kind: 'block', id: KID('chest'), count: 1 }, cost: [{ item: PLANKS_ITEM, count: 8 }], needsTable: true },
+  { id: 'barrel', name: '木桶', out: { kind: 'block', id: KID('barrel'), count: 1 }, cost: [{ item: PLANKS_ITEM, count: 6 }, { item: K('planks_slab'), count: 2 }], needsTable: true },
+  // 锄头：2 材料 + 2 木棍（MC 配方）；面包：3 小麦（MC）
+  { id: 'wooden_hoe', name: '木锄', out: { kind: 'tool', tool: 'wooden_hoe' }, cost: [{ item: PLANKS_ITEM, count: 2 }, { item: STICK, count: 2 }], needsTable: true },
+  { id: 'stone_hoe', name: '石锄', out: { kind: 'tool', tool: 'stone_hoe' }, cost: [{ item: COBBLE_ITEM, count: 2 }, { item: STICK, count: 2 }], needsTable: true },
+  { id: 'iron_hoe', name: '铁锄', out: { kind: 'tool', tool: 'iron_hoe' }, cost: [{ item: 'material:iron_ingot', count: 2 }, { item: STICK, count: 2 }], needsTable: true },
+  { id: 'bread', name: '面包', out: { kind: 'material', material: 'bread', count: 1 }, cost: [{ item: 'material:wheat', count: 3 }], needsTable: false },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_pickaxe', name: '石镐', out: { kind: 'tool', tool: 'stone_pickaxe' }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'wooden_axe', name: '木斧', out: { kind: 'tool', tool: 'wooden_axe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
@@ -118,7 +133,6 @@ export const RECIPES: Recipe[] = [
   // —— 矿物储物块（9 合 1 / 1 拆 9，与 MC 一致） ——
   ...([
     ['coal', 'coal_block', '煤'],
-    ['redstone', 'redstone_block', '红石'],
     ['lapis', 'lapis_block', '青金石'],
     ['diamond', 'diamond_block', '钻石'],
     ['emerald', 'emerald_block', '绿宝石'],

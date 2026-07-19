@@ -47,4 +47,32 @@ describe('createTerrain', () => {
     expect(SEA_LEVEL).toBeGreaterThan(0);
     expect(SEA_LEVEL).toBeLessThan(WORLD_HEIGHT - 10);
   });
+
+  it('洞穴：确定性一致，地下存在洞腔，基岩层不雕，地表大体完整', () => {
+    const t = createTerrain('cave-check');
+    // 确定性
+    for (const [x, y, z] of [[10, 20, 30], [-50, 12, 70]]) {
+      expect(t.caveAt(x, y, z)).toBe(t.caveAt(x, y, z));
+    }
+    // 基岩层保护
+    for (let x = -100; x < 100; x += 7) {
+      expect(t.caveAt(x, 0, 0)).toBe(false);
+      expect(t.caveAt(x, 3, 0)).toBe(false);
+    }
+    // 地下有洞（大样本中至少有洞腔）
+    let caves = 0;
+    let surfaceCaves = 0;
+    for (let x = -300; x < 300; x += 3) {
+      for (let z = -300; z < 300; z += 3) {
+        const h = t.heightAt(x, z);
+        for (let y = 6; y < h - 3; y += 2) {
+          if (t.caveAt(x, y, z)) caves++;
+        }
+        if (t.caveAt(x, h - 1, z)) surfaceCaves++;
+      }
+    }
+    expect(caves).toBeGreaterThan(1000);
+    // 地表破开率低（隧道不出地表，仅奶酪偶尔）
+    expect(surfaceCaves).toBeLessThan(2000);
+  });
 });

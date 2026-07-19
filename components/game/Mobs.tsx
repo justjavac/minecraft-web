@@ -189,11 +189,11 @@ export function Mobs() {
       mesh.rotation.y = def && m.wanderMoving
         ? Math.atan2(Math.cos(m.wanderDir), Math.sin(m.wanderDir))
         : Math.atan2(playerPosition.x - m.x, playerPosition.z - m.z);
-      // 苦力怕引爆时闪烁膨胀
+      // 苦力怕引爆时闪烁膨胀；幼体体型 0.55
       if (m.type === 'creeper' && m.ignite >= 0) {
         mesh.scale.setScalar(1 + 0.08 * Math.sin(performance.now() / 50));
       } else {
-        mesh.scale.setScalar(1);
+        mesh.scale.setScalar(m.baby ? 0.55 : 1);
       }
       }
       for (const [id, mesh] of meshMap.current) {

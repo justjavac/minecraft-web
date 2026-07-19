@@ -8,6 +8,7 @@ import { hurtState, playerPosition, survivalStats } from './game';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
 import { applyCraft, canCraft, hasSpaceFor, type Recipe } from './recipes';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptySlots, type Slot } from './slots';
+import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS, type ToolType } from './tools';
 
 export type Screen = 'menu' | 'playing';
@@ -101,6 +102,8 @@ interface GameStore {
   craftingTable: boolean;
   /** 打开的熔炉位置 key（"x,y,z"），null 未打开 */
   furnaceOpen: string | null;
+  /** 打开的容器（箱子/木桶）位置 key，null 未打开 */
+  storageOpen: string | null;
   /** 创造模式热键栏 9 格内容（选块界面可更换） */
   hotbarBlocks: BlockId[];
   /** 创造选块界面开关 */
@@ -129,6 +132,11 @@ interface GameStore {
   loadSurvival: (s: { health: number; hunger: number; saturation?: number; slots?: Slot[]; armor?: ArmorSlots }) => void;
   setCraftingOpen: (open: boolean, withTable?: boolean) => void;
   setFurnaceOpen: (key: string | null) => void;
+  setStorageOpen: (key: string | null) => void;
+  /** 把热键栏 slotIndex 的整叠物品移入打开的容器 */
+  storagePut: (slotIndex: number) => void;
+  /** 把打开容器的 index 整叠物品移到热键栏 */
+  storageTake: (index: number) => void;
   /** 吃选中槽位的食物（MC：回复饥饿与饱和度），非食物返回 false */
   eatSelectedFood: () => boolean;
   /** 把热键栏 slotIndex 的物品移 1 个进打开的熔炉（force 指定去向） */
@@ -147,6 +155,11 @@ interface GameStore {
   consumeSelectedBlock: () => BlockId | null;
   /** 扣选中工具的耐久，耗尽则移除该槽位 */
   damageHeldTool: (amount: number) => void;
+  /** 从热键栏任意槽位消耗材料，不足则一个不扣并返回 false */
+  consumeMaterial: (material: string, count?: number) => boolean;
+  /** 短暂提示条（睡觉/合成等反馈），HUD 定时清除 */
+  notice: string | null;
+  setNotice: (text: string | null) => void;
   /** 执行一次合成（材料与空间预检），成功返回 true */
   craft: (recipe: Recipe) => boolean;
 }
@@ -174,8 +187,11 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   craftingOpen: false,
   craftingTable: false,
   furnaceOpen: null,
+  storageOpen: null,
   hotbarBlocks: [...HOTBAR_BLOCKS],
   pickerOpen: false,
+  notice: null,
+  setNotice: (notice) => set({ notice }),
   touchMode:
     typeof window !== 'undefined' &&
     ('ontouchstart' in window || (window.matchMedia?.('(pointer: coarse)')?.matches ?? false)),
@@ -280,6 +296,20 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (furnaceOpen && typeof document !== 'undefined') document.exitPointerLock();
     set({ furnaceOpen });
   },
+  setStorageOpen: (storageOpen) => {
+    if (storageOpen && typeof document !== 'undefined') document.exitPointerLock();
+    set({ storageOpen });
+  },
+  storagePut: (slotIndex) => {
+    const s = get();
+    if (!s.storageOpen) return;
+    set({ hotbarSlots: putIntoStorage(s.hotbarSlots, slotIndex, getStorage(s.storageOpen)) });
+  },
+  storageTake: (index) => {
+    const s = get();
+    if (!s.storageOpen) return;
+    set({ hotbarSlots: takeFromStorage(s.hotbarSlots, getStorage(s.storageOpen), index) });
+  },
   eatSelectedFood: () => {
     const s = get();
     const slot = s.hotbarSlots[s.selectedSlot];
@@ -356,6 +386,24 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       slots[s.selectedSlot] = durability > 0 ? { ...slot, durability } : null;
       return { hotbarSlots: slots };
     }),
+  consumeMaterial: (material, count = 1) => {
+    let ok = false;
+    set((s) => {
+      let remaining = count;
+      const slots = s.hotbarSlots.map((slot) => {
+        if (remaining > 0 && slot?.kind === 'material' && slot.material === material) {
+          const take = Math.min(slot.count, remaining);
+          remaining -= take;
+          return slot.count > take ? { ...slot, count: slot.count - take } : null;
+        }
+        return slot;
+      });
+      if (remaining > 0) return s; // 不够，一个都不扣
+      ok = true;
+      return { hotbarSlots: slots };
+    });
+    return ok;
+  },
   craft: (recipe) => {
     const s = get();
     if (!canCraft(s.hotbarSlots, recipe)) return false;

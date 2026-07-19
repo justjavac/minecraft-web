@@ -11,7 +11,9 @@ import { CrackOverlay } from './CrackOverlay';
 import { BreakParticles } from './BreakParticles';
 import { Mobs } from './Mobs';
 import { ItemDrops } from './ItemDrops';
+import { Tnt } from './Tnt';
 import { DayNight } from './DayNight';
+import { Rain } from './Rain';
 import { UnderwaterFX, skyFog } from './UnderwaterFX';
 import { RendererKindContext, type RendererKind } from './renderer-kind';
 import { useGameStore } from '@/lib/store';
@@ -81,10 +83,12 @@ export function GameCanvas() {
         <color attach="background" args={['#87ceeb']} />
         <fog attach="fog" args={['#87ceeb', fog.near, fog.far]} />
         <DayNight />
+        <Rain />
         <WorldRenderer />
         <Player />
         <Mobs />
         <ItemDrops />
+        <Tnt />
         <BlockHighlight />
         <PlacePreview />
         <CrackOverlay />

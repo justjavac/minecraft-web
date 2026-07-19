@@ -18,11 +18,12 @@ import {
   type Sprite,
   type SpriteMaterial,
 } from 'three';
-import { isWaterId } from '@/lib/blocks';
+import { isLavaId, isWaterId } from '@/lib/blocks';
 import { atmosphere, debugInfo, getActiveWorld, worldClock } from '@/lib/game';
 import { mulberry32 } from '@/lib/noise';
 import { useGameStore } from '@/lib/store';
 import { getAtlasMaterials, tickWaterTexture } from '@/lib/textures';
+import { tickWeather, weather, weatherDim } from '@/lib/weather';
 import { useRendererKind } from './renderer-kind';
 
 const CYCLE_SECONDS = 600; // 一昼夜 10 分钟
@@ -35,6 +36,7 @@ const CLOUD_SPEED = 2.5; // 纹理偏移速度
 const SKY_DAY = new Color('#87ceeb');
 const SKY_NIGHT = new Color('#0b1026');
 const SKY_DUSK = new Color('#e8935c');
+const SKY_FLASH = new Color('#e8ecff');
 const sky = new Color();
 const sunDir = new Vector3();
 
@@ -118,42 +120,45 @@ export function DayNight() {
     // 昼夜时钟在 game.ts 共享（0=日出 0.25=正午 0.5=日落 0.75=午夜），随存档持久化；暂停时冻结
     if (!useGameStore.getState().paused) {
       worldClock.t = (worldClock.t + delta / CYCLE_SECONDS) % 1;
+      tickWeather(weather, delta);
     }
     const t = worldClock.t;
     const a = t * Math.PI * 2;
     const elevation = Math.sin(a);
 
-    // 昼夜系数与黄昏系数（日出日落附近）
+    // 昼夜系数与黄昏系数（日出日落附近）；天气压暗，雷暴闪电瞬间增亮
     const dayFactor = smoothstep(-0.12, 0.15, elevation);
     const duskFactor = Math.max(0, 1 - Math.abs(elevation) / 0.22) * 0.55;
+    const dim = weatherDim(weather.kind);
     sky.lerpColors(SKY_NIGHT, SKY_DAY, dayFactor);
     sky.lerp(SKY_DUSK, duskFactor);
+    sky.multiplyScalar(dim);
+    if (weather.flash > 0) sky.lerp(SKY_FLASH, weather.flash * 0.75);
     atmosphere.r = sky.r;
     atmosphere.g = sky.g;
     atmosphere.b = sky.b;
     debugInfo.hour = Math.floor(((t + 0.25) % 1) * 24);
 
-    // 水下时天空/雾色交给 UnderwaterFX，避免互相覆盖
+    // 水下/岩浆里时天空/雾色交给 UnderwaterFX，避免互相覆盖
     const world = getActiveWorld();
-    const underwater = world
-      ? isWaterId(
-          world.getBlock(
-            Math.floor(camera.position.x),
-            Math.floor(camera.position.y),
-            Math.floor(camera.position.z),
-          ),
+    const headBlock = world
+      ? world.getBlock(
+          Math.floor(camera.position.x),
+          Math.floor(camera.position.y),
+          Math.floor(camera.position.z),
         )
-      : false;
-    if (!underwater) {
+      : 0;
+    const immersed = isWaterId(headBlock) || isLavaId(headBlock);
+    if (!immersed) {
       (scene.background as Color | null)?.copy(sky);
       (scene.fog as Fog | null)?.color.copy(sky);
     }
 
-    // 光照随昼夜渐变
+    // 光照随昼夜与天气渐变；闪电瞬间打亮
     sunDir.set(Math.cos(a), elevation, 0.25).normalize();
     const dir = dirRef.current;
     if (dir) {
-      dir.intensity = 0.15 + dayFactor * 0.95;
+      dir.intensity = (0.15 + dayFactor * 0.95) * dim + weather.flash * 2.2;
       dir.position.set(
         camera.position.x + sunDir.x * 120,
         camera.position.y + sunDir.y * 120,
@@ -161,11 +166,12 @@ export function DayNight() {
       );
     }
     const amb = ambRef.current;
-    if (amb) amb.intensity = 0.35 + dayFactor * 0.45;
+    if (amb) amb.intensity = (0.35 + dayFactor * 0.45) * (0.55 + 0.45 * dim) + weather.flash * 0.7;
 
-    // 太阳 / 月亮沿轨道（跟随相机，保持视距）
+    // 太阳 / 月亮沿轨道（跟随相机，保持视距）；雨雪天被云遮住
     const sun = sunRef.current;
     if (sun) {
+      sun.visible = weather.kind === 'clear';
       sun.position.set(
         camera.position.x + sunDir.x * ORBIT_RADIUS,
         camera.position.y + sunDir.y * ORBIT_RADIUS,
@@ -174,6 +180,7 @@ export function DayNight() {
     }
     const moon = moonRef.current;
     if (moon) {
+      moon.visible = weather.kind === 'clear';
       moon.position.set(
         camera.position.x - sunDir.x * ORBIT_RADIUS,
         camera.position.y - sunDir.y * ORBIT_RADIUS,
@@ -181,11 +188,15 @@ export function DayNight() {
       );
     }
 
-    // 云层跟随相机平移 + 纹理漂移
+    // 云层跟随相机平移 + 纹理漂移；雨雪天云层变灰变厚
     const cloud = cloudRef.current;
     if (cloud) {
       cloud.position.set(camera.position.x, CLOUD_Y, camera.position.z);
-      const map = (cloud.material as MeshBasicMaterial).map;
+      const mat = cloud.material as MeshBasicMaterial;
+      const gray = 0.45 + 0.55 * dim;
+      mat.color.setRGB(gray, gray, gray);
+      mat.opacity = weather.kind === 'clear' ? 0.55 : 0.85;
+      const map = mat.map;
       if (map) map.offset.x = (map.offset.x + (dt * CLOUD_SPEED) / 100) % 1;
     }
   });

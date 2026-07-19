@@ -34,7 +34,7 @@ class MesherPool {
     }
   }
 
-  build(key: string, version: number, cx: number, cz: number, datas: (Uint16Array | null)[]): Promise<MeshResponse> {
+  build(key: string, version: number, cx: number, cz: number, datas: (Uint16Array | null)[], lights: (Uint8Array | null)[], skys: (Uint8Array | null)[]): Promise<MeshResponse> {
     // 同 key 排队中的旧请求作废：版本已被更新取代，结果必然过期
     const prev = this.byKey.get(key);
     if (prev) {
@@ -44,7 +44,7 @@ class MesherPool {
     return new Promise<MeshResponse>((resolve) => {
       const pending: Pending = { key, version, resolve };
       this.byKey.set(key, pending);
-      this.queue.push({ req: { key, version, cx, cz, datas }, pending });
+      this.queue.push({ req: { key, version, cx, cz, datas, lights, skys }, pending });
       this.pump();
     });
   }

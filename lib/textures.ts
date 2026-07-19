@@ -144,6 +144,19 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
 [ICON_TILE_START + 13]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#7a4a22', '#5a3416', 26),
 [ICON_TILE_START + 14]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#e8d0b0', '#c0a880', 27),
 [ICON_TILE_START + 15]: (ctx, dx, dy) => drawMeat(ctx, dx, dy, '#c09040', '#987028', 28),
+  // 箱子侧：深色包边 + 盖缝 + 锁扣（底座为木板）
+  [ICON_TILE_START + 16]: (ctx, dx, dy) => {
+    ctx.fillStyle = '#4a3418';
+    ctx.fillRect(dx, dy, 16, 2);
+    ctx.fillRect(dx, dy + 14, 16, 2);
+    ctx.fillRect(dx, dy, 2, 16);
+    ctx.fillRect(dx + 14, dy, 2, 16);
+    ctx.fillRect(dx + 2, dy + 5, 12, 1); // 盖缝
+    ctx.fillStyle = '#26241f';
+    ctx.fillRect(dx + 7, dy + 4, 2, 4); // 锁扣
+    ctx.fillStyle = '#b8b8b8';
+    ctx.fillRect(dx + 7, dy + 5, 2, 1);
+  },
 };
 
 /** atlas 画布的 dataURL（HUD 图标裁剪用），build 完成后可用 */
@@ -255,7 +268,7 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     const cell = ICON_TILE_START + k;
     const dx = (cell % ATLAS_COLS) * tilePx;
     const dy = Math.floor(cell / ATLAS_COLS) * tilePx;
-    const baseStem = k <= 1 ? 'oak_planks' : k === 2 ? 'cobblestone' : null;
+    const baseStem = k <= 1 || k === 16 ? 'oak_planks' : k === 2 ? 'cobblestone' : null;
     if (baseStem) drawTile(tileOf(baseStem), dx, dy);
     // 叠加绘制（工作台/熔炉/装备/食物图标）按 16px 坐标系编写，随分辨率缩放
     const overlay = TEXTURE_OVERLAYS[cell];

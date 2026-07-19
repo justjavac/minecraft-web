@@ -1,6 +1,6 @@
 // 流体传播（水源 + 流水 1-7 级）：队列驱动、每 tick 限量。v1 只传播不消退
 
-import { AIR, WATER, WATER_FLOW_1, type BlockId } from './blocks';
+import { AIR, BLOCKS, isWaterId, WATER, WATER_FLOW_1, type BlockId } from './blocks';
 import type { World } from './world';
 
 const FLOW_BASE = WATER_FLOW_1;
@@ -45,6 +45,30 @@ export function tickFluids(world: World, budget = 128): void {
     const id = world.getBlock(x, y, z);
     const level = waterLevel(id);
     if (level < 0) continue;
+    // 消退（仅流水）：上方供水 或 同级上游（level-1）邻居，缺失则退化为空气（MC 规则）
+    if (level > 0 && !isWaterId(world.getBlock(x, y + 1, z))) {
+      const parentLevel = level - 1;
+      const hasParent = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(
+        ([dx, dz]) => waterLevel(world.getBlock(x + dx, y, z + dz)) === parentLevel,
+      );
+      if (!hasParent) {
+        world.setBlock(x, y, z, AIR);
+        continue;
+      }
+    }
+    // 无限水源（MC 规则）：水平两侧都是水源 且 下方是水源或实心方块 → 本格成源
+    if (level > 0) {
+      const sources = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(
+        ([dx, dz]) => world.getBlock(x + dx, y, z + dz) === WATER,
+      ).length;
+      if (sources >= 2) {
+        const below = world.getBlock(x, y - 1, z);
+        if (below === WATER || BLOCKS[below]?.opaque) {
+          world.setBlock(x, y, z, WATER);
+          continue;
+        }
+      }
+    }
     if (world.getBlock(x, y - 1, z) === AIR) {
       world.setBlock(x, y - 1, z, level === 0 ? FLOW_BASE : FLOW_BASE + level - 1);
       pending.add(`${x},${y - 1},${z}`);

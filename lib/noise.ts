@@ -1,6 +1,6 @@
-// 程序化地形：多噪声场（大陆/山丘/温度/湿度/河流/盆地）+ 生物群系判定 + 分群系树木分布
+// 程序化地形：多噪声场（大陆/山丘/温度/湿度/河流/盆地）+ 生物群系判定 + 分群系树木分布 + 3D 噪声洞穴
 
-import { createNoise2D } from 'simplex-noise';
+import { createNoise2D, createNoise3D } from 'simplex-noise';
 
 export const SEA_LEVEL = 22;
 
@@ -17,6 +17,8 @@ export interface Terrain {
   biomeAt(x: number, z: number): Biome;
   /** 该列长什么树（null = 无树，按群系密度与种类） */
   treeAt(x: number, z: number): TreeKind | null;
+  /** 该位置是否被洞穴雕刻（3D 噪声：意面隧道 + 奶酪洞腔） */
+  caveAt(x: number, y: number, z: number): boolean;
 }
 
 export function hashString(s: string): number {
@@ -63,6 +65,10 @@ export function createTerrain(seed: string): Terrain {
   const nEro = createNoise2D(mulberry32(sh ^ 0xa3b4c5));
   const nTemp = createNoise2D(mulberry32(sh ^ 0xd6e7f8));
   const nHumid = createNoise2D(mulberry32(sh ^ 0x091a2b));
+  // 洞穴 3D 噪声：意面隧道双场 + 奶酪洞腔
+  const nCaveA = createNoise3D(mulberry32(sh ^ 0x1f2e3d));
+  const nCaveB = createNoise3D(mulberry32(sh ^ 0x4c5a6b));
+  const nCheese = createNoise3D(mulberry32(sh ^ 0x7d8e9f));
 
   const riverField = (x: number, z: number) => nRiver(x * 0.006, z * 0.006);
   const erosion = (x: number, z: number) => nEro(x * 0.0022, z * 0.0022);
@@ -86,6 +92,19 @@ export function createTerrain(seed: string): Terrain {
       h = Math.min(h, SEA_LEVEL - 1 - Math.floor(depth * 3));
     }
     return Math.max(1, Math.floor(h));
+  }
+
+  function caveAt(x: number, y: number, z: number): boolean {
+    if (y < 4) return false; // 基岩层保护区
+    const h = heightAt(x, z);
+    // 意面隧道：双 3D 噪声叠加出蜿蜒通道，埋藏在地下
+    if (y <= h - 3) {
+      const t = Math.abs(nCaveA(x * 0.03, y * 0.03, z * 0.03) + nCaveB(x * 0.03 + 500, y * 0.03, z * 0.03 + 500));
+      if (t < 0.11) return true;
+    }
+    // 奶酪洞腔：大型洞窟，偶尔破出地表
+    if (y <= h - 1 && nCheese(x * 0.011, y * 0.02, z * 0.011) > 0.72) return true;
+    return false;
   }
 
   /** 群系分类（heightAt 由调用方算好传入，避免重复求值） */
@@ -137,7 +156,7 @@ export function createTerrain(seed: string): Terrain {
     return kinds[Math.floor(hash2(sh ^ 0x31c8d2, x, z) * kinds.length)];
   }
 
-  return { heightAt, biomeAt, treeAt };
+  return { heightAt, biomeAt, treeAt, caveAt };
 }
 
 /** 全空地形，供测试使用 */
@@ -145,4 +164,5 @@ export const VOID_TERRAIN: Terrain = {
   heightAt: () => -1,
   biomeAt: () => 'plains',
   treeAt: () => null,
+  caveAt: () => false,
 };

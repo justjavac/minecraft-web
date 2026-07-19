@@ -1,10 +1,13 @@
 // 体素世界：chunk 存储、地形与结构生成、方块读写、脏标记
 
-import { AIR, BLOCK_BY_KEY, STONE, WATER } from './blocks';
+import { AIR, BLOCK_BY_KEY, BLOCKS, LAVA, STONE, WATER } from './blocks';
 import { BIOME_SURFACE } from './biomes';
 import { enqueueFluid } from './fluids';
+import { notifyCropBlockSet } from './crops';
+import { notifyBlockSet } from './saplings';
 import { createTerrain, hash2, hashString, SEA_LEVEL, type Terrain } from './noise';
 import { applyOres } from './oregen';
+import { cascadeLight } from './lights';
 import { applyStructures } from './structures';
 
 export const CHUNK_SIZE = 16;
@@ -18,6 +21,12 @@ export const chunkKey = (cx: number, cz: number): string => `${cx},${cz}`;
 
 export class Chunk {
   readonly data = new Uint16Array(CHUNK_VOLUME);
+  /** 方块光照 0-15（lights.ts 维护） */
+  readonly light = new Uint8Array(CHUNK_VOLUME);
+  /** 天空光 0-15（lights.ts 维护；露天 15，遮光递减） */
+  readonly sky = new Uint8Array(CHUNK_VOLUME);
+  /** 有未冲刷的光照变更（setBlock 打标记，建网前统一重算） */
+  lightDirty = false;
   /** 几何版本号，重建 mesh 时 +1，驱动 React 重新渲染 */
   version = 0;
   /** 被玩家修改过，需要持久化 */
@@ -59,6 +68,30 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
   }
   // 基岩层 + 深板岩渐变 + 团簇矿脉（地形填充后、树木/村庄前）
   applyOres(seedHash, terrain, cx, cz, data);
+  // 洞穴雕刻（3D 噪声：意面隧道 + 奶酪洞腔；矿石填完后刻空，洞壁即现矿脉）
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      const h = terrain.heightAt(wx, wz);
+      if (h < 0) continue;
+      for (let y = 4; y <= h; y++) {
+        if (terrain.caveAt(wx, y, wz)) data[localIndex(x, y, z)] = AIR;
+      }
+    }
+  }
+  // 深层岩浆湖：y≤10 的雕空洞腔自底向上灌岩浆（下方非空非水才灌，形成平整湖面）
+  const LAVA_LAKE_TOP = 10;
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      for (let y = 2; y <= LAVA_LAKE_TOP; y++) {
+        const i = localIndex(x, y, z);
+        if (data[i] !== AIR) continue;
+        const below = data[localIndex(x, y - 1, z)];
+        if (below !== AIR && below !== WATER) data[i] = LAVA;
+      }
+    }
+  }
   // 树木：检查本 chunk 及周围 2 格内的列，只写入落在本 chunk 的部分
   for (let tx = -2; tx < CHUNK_SIZE + 2; tx++) {
     for (let tz = -2; tz < CHUNK_SIZE + 2; tz++) {
@@ -144,7 +177,10 @@ export class World {
     const chunk = new Chunk(cx, cz);
     const s = this.saved.get(key);
     if (s && s.length === CHUNK_VOLUME) chunk.data.set(s);
-    else generateChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
+    else {
+      generateChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
+      cascadeLight(this, chunk);
+    }
     this.chunks.set(key, chunk);
     this.dirtyChunks.add(key);
     // 相邻已存在 chunk 需要重网格化，避免共享边界面重复
@@ -167,6 +203,7 @@ export class World {
     const cz = z >> 4;
     const key = chunkKey(cx, cz);
     const chunk = this.getChunk(cx, cz);
+    const oldId = chunk.data[localIndex(x & 15, y, z & 15)];
     chunk.data[localIndex(x & 15, y, z & 15)] = id;
     chunk.modified = true;
     this.modifiedChunks.add(key);
@@ -178,6 +215,18 @@ export class World {
     if ((z & 15) === CHUNK_SIZE - 1) this.markDirty(cx, cz + 1);
     // 水及其邻域进入流体检查队列（生成过程直接写 data 不走这里，不会触发）
     enqueueFluid(x, y, z);
+    // 光照变更打标记（建网前由 flushLight 统一重算，避免批量编辑雪崩）。
+    // 仅当不透明度或发光值变化才需要重算——流水/作物/树叶凋零等非透明变化不影响光照，
+    // 大面积水蔓延时这条能省掉成片的无效重算，避免阻塞主线程
+    const oldDef = BLOCKS[oldId];
+    const newDef = BLOCKS[id];
+    if ((oldDef?.opaque ?? false) !== (newDef?.opaque ?? false) || (oldDef?.light ?? 0) !== (newDef?.light ?? 0)) {
+      chunk.lightDirty = true;
+    }
+    // 树苗登记 / 原木断供触发树叶凋零（生成过程直接写 data 不走这里）
+    notifyBlockSet(this, x, y, z, oldId, id);
+    // 小麦作物登记（同上）
+    notifyCropBlockSet(x, y, z, id);
   }
 
   private markDirty(cx: number, cz: number): void {
@@ -199,6 +248,7 @@ export class World {
     }
     if (existing.modified) return;
     existing.data.set(data);
+    cascadeLight(this, existing);
     this.dirtyChunks.add(key);
     // 边界面可能变化，相邻 chunk 也要重建，避免接缝
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {

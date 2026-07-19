@@ -1,11 +1,11 @@
 // 生物系统：类型化怪物（敌对/被动）+ 骷髅箭 + 苦力怕爆炸。纯数据逻辑（不依赖 three，可单测）
 
-import { AIR, BLOCKS, GRASS, isWaterId, tileOf } from './blocks';
-import { breakParticles, dayFactorAt, worldClock } from './game';
+import { BLOCKS, GRASS, isWaterId } from './blocks';
+import { dayFactorAt, worldClock } from './game';
+import { explodeAt } from './explosion';
 import { spawnMaterialDrop } from './items';
 import { aabbFree, collideAxis } from './physics';
 import { raycastBlock } from './raycast';
-import { playSound } from './sound';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
@@ -29,11 +29,11 @@ export interface MobDef {
 export const MOB_DEFS: Record<MobType, MobDef> = {
   zombie: { name: '僵尸', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [] },
   skeleton: { name: '骷髅', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 3, attackRange: 16, attackCd: 2, drops: [] },
-  spider: { name: '蜘蛛', hp: 16, speed: 3.2, hostile: true, burnsAtDay: false, damage: 2, attackRange: 1.4, attackCd: 1, drops: [] },
+  spider: { name: '蜘蛛', hp: 16, speed: 3.2, hostile: true, burnsAtDay: false, damage: 2, attackRange: 1.4, attackCd: 1, drops: [{ material: 'string', count: [0, 2] }] },
   creeper: { name: '苦力怕', hp: 20, speed: 2.2, hostile: true, burnsAtDay: false, damage: 0, attackRange: 3, attackCd: 1.5, drops: [] },
   pig: { name: '猪', hp: 10, speed: 1.5, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'raw_pork', count: [1, 3] }] },
   cow: { name: '牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
-  chicken: { name: '鸡', hp: 4, speed: 1.6, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'raw_chicken', count: [1, 1] }] },
+  chicken: { name: '鸡', hp: 4, speed: 1.6, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'feather', count: [0, 2] }, { material: 'raw_chicken', count: [1, 1] }] },
   villager: { name: '村民', hp: 20, speed: 1.2, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [] },
 };
 
@@ -59,6 +59,10 @@ export interface Mob {
   arrowCd: number;
   /** 苦力怕引爆倒计时（<0 未引爆） */
   ignite: number;
+  /** 幼体（喂食繁殖产生；体型 0.55，growUp 倒计时结束长成） */
+  baby?: boolean;
+  /** 幼体成长剩余秒数 */
+  growUp?: number;
 }
 
 export interface Arrow {
@@ -70,6 +74,8 @@ export interface Arrow {
   vy: number;
   vz: number;
   age: number;
+  /** 玩家发射（命中生物而非玩家；缺省为骷髅射向玩家的箭） */
+  fromPlayer?: boolean;
 }
 
 export const mobs: Mob[] = [];
@@ -112,6 +118,15 @@ function pickSpawnType(night: boolean): MobType {
   if (r < 0.4) return 'pig';
   if (r < 0.7) return 'cow';
   return 'chicken';
+}
+
+/** 喂食繁殖：在亲代身旁生成同种幼体（90s 长成） */
+export function breedMob(parent: Mob): Mob {
+  const baby = makeMob(parent.type, parent.x + 0.6, parent.y, parent.z + 0.6);
+  baby.baby = true;
+  baby.growUp = 90;
+  mobs.push(baby);
+  return baby;
 }
 
 function makeMob(type: MobType, x: number, y: number, z: number): Mob {
@@ -174,31 +189,29 @@ function spawnArrow(m: Mob, target: { x: number; y: number; z: number }): void {
   });
 }
 
-/** 苦力怕爆炸：破坏周围方块（概率随距离衰减）+ 按距离伤玩家 */
+/** 玩家射箭（弓）：初速快、无抬升补偿，命中生物扣 9 血 */
+export function firePlayerArrow(origin: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }): void {
+  const d = Math.max(Math.hypot(dir.x, dir.y, dir.z), 0.01);
+  const speed = 22;
+  arrows.push({
+    id: nextArrowId++,
+    x: origin.x, y: origin.y, z: origin.z,
+    vx: (dir.x / d) * speed,
+    vy: (dir.y / d) * speed,
+    vz: (dir.z / d) * speed,
+    age: 0,
+    fromPlayer: true,
+  });
+}
+
+/** 苦力怕爆炸：委托共享爆炸逻辑（防爆方块除外，MC 一致） */
 function explode(
   world: World,
   m: Mob,
   playerPos: { x: number; y: number; z: number },
   onAttackPlayer: (damage: number) => void,
 ): void {
-  const R = 3;
-  const cx = Math.floor(m.x);
-  const cy = Math.floor(m.y);
-  const cz = Math.floor(m.z);
-  for (let x = cx - R; x <= cx + R; x++) {
-    for (let y = cy - R; y <= cy + R; y++) {
-      for (let z = cz - R; z <= cz + R; z++) {
-        const d = Math.hypot(x + 0.5 - m.x, y + 0.5 - m.y, z + 0.5 - m.z);
-        if (d <= R + 0.5 && Math.random() < 1 - d / (R + 2)) {
-          world.setBlock(x, y, z, AIR);
-        }
-      }
-    }
-  }
-  const pd = Math.hypot(playerPos.x - m.x, playerPos.y + 0.9 - m.y, playerPos.z - m.z);
-  if (pd < 4.5) onAttackPlayer(Math.max(1, Math.round(22 * (1 - pd / 4.5))));
-  for (let i = 0; i < 12; i++) breakParticles.push({ x: cx, y: cy, z: cz, tile: tileOf('stone') });
-  playSound('dig_cracky', 1.2);
+  explodeAt(world, m.x, m.y, m.z, playerPos, onAttackPlayer, { radius: 3, maxDamage: 22, hurtRadius: 4.5 });
 }
 
 function tickArrows(
@@ -218,8 +231,22 @@ function tickArrows(
       arrows.splice(i, 1);
       continue;
     }
-    // 命中玩家（AABB 粗略判定）
-    if (
+    // 玩家射出的箭：命中生物（AABB 粗略判定）
+    if (a.fromPlayer) {
+      const hitMob = mobs.find(
+        (m) =>
+          Math.abs(m.x - a.x) < 0.55 &&
+          a.y > m.y - 0.2 &&
+          a.y < m.y + 2 &&
+          Math.abs(m.z - a.z) < 0.55,
+      );
+      if (hitMob) {
+        damageMob(hitMob, 9, { x: a.x - a.vx, z: a.z - a.vz });
+        arrows.splice(i, 1);
+        continue;
+      }
+    } else if (
+      // 骷髅的箭：命中玩家（AABB 粗略判定）
       Math.abs(playerPos.x - a.x) < 0.5 &&
       a.y > playerPos.y &&
       a.y < playerPos.y + 1.8 &&
@@ -253,6 +280,14 @@ export function tickMobs(
   for (let i = mobs.length - 1; i >= 0; i--) {
     const m = mobs[i];
     const def = MOB_DEFS[m.type];
+    // 幼体成长
+    if (m.baby && m.growUp !== undefined) {
+      m.growUp -= dt;
+      if (m.growUp <= 0) {
+        m.baby = false;
+        m.growUp = undefined;
+      }
+    }
     // 白天自燃
     if (!night && def.burnsAtDay) {
       m.hp -= BURN_DAMAGE * dt;

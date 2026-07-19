@@ -18,6 +18,7 @@ export const FOODS: Record<string, FoodDef> = {
   cooked_beef: { name: '熟牛排', hunger: 8, saturation: 3 },
   raw_chicken: { name: '生鸡肉', hunger: 2, saturation: 1 },
   cooked_chicken: { name: '熟鸡肉', hunger: 6, saturation: 2 },
+  bread: { name: '面包', hunger: 5, saturation: 1 },
 };
 
 // ——— 烧炼配方与燃料 ———

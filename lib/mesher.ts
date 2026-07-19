@@ -86,7 +86,7 @@ class GeometryBuilder {
   private colors: number[] = [];
   private indices: number[] = [];
 
-  addFace(x: number, y: number, z: number, face: Face, tile: number, ao: readonly number[], topY = 1): void {
+  addFace(x: number, y: number, z: number, face: Face, tile: number, ao: readonly number[], topY = 1, light = 0, sky = 1): void {
     const ndx = this.positions.length / 3;
     const col = tile % ATLAS_COLS;
     const row = Math.floor(tile / ATLAS_COLS);
@@ -105,7 +105,7 @@ class GeometryBuilder {
         const v = 1 - (row + 1 - c.uv[1]) / ATLAS_ROWS;
         this.uvs.push(u, v);
       }
-      const b = AO_CURVE[ao[i]];
+      const b = Math.max(AO_CURVE[ao[i]] * sky, light);
       this.colors.push(b, b, b);
     }
     // AO 各向异性修正：按两条对角线的亮度选择翻转三角剖分
@@ -127,7 +127,7 @@ class GeometryBuilder {
   }
 
   /** 单面（朝上）补面：楼梯前缘顶面等专用，区域 [x0,z0]-[x1,z1] */
-  addFlatTop(x: number, y: number, z: number, rect: [number, number, number, number], tile: number, ao: readonly number[]): void {
+  addFlatTop(x: number, y: number, z: number, rect: [number, number, number, number], tile: number, ao: readonly number[], light = 0, sky = 1): void {
     const [x0, z0, x1, z1] = rect;
     const col = tile % ATLAS_COLS;
     const row = Math.floor(tile / ATLAS_COLS);
@@ -142,7 +142,29 @@ class GeometryBuilder {
       this.positions.push(x + px, y, z + pz);
       this.normals.push(0, 1, 0);
       this.uvs.push((col + u) / ATLAS_COLS, 1 - (row + 1 - v) / ATLAS_ROWS);
-      const b = AO_CURVE[ao[3]];
+      const b = Math.max(AO_CURVE[ao[3]] * sky, light);
+      this.colors.push(b, b, b);
+    }
+    this.indices.push(ndx, ndx + 1, ndx + 2, ndx + 1, ndx + 3, ndx + 2);
+  }
+
+  /** 单面（朝下）补面：倒置楼梯的前缘底面，区域 [x0,z0]-[x1,z1] */
+  addFlatBottom(x: number, y: number, z: number, rect: [number, number, number, number], tile: number, ao: readonly number[], light = 0, sky = 1): void {
+    const [x0, z0, x1, z1] = rect;
+    const col = tile % ATLAS_COLS;
+    const row = Math.floor(tile / ATLAS_COLS);
+    const corners: [number, number, number, number][] = [
+      [x0, z0, 0, 0],
+      [x0, z1, 0, 1],
+      [x1, z0, 1, 0],
+      [x1, z1, 1, 1],
+    ];
+    const ndx = this.positions.length / 3;
+    for (const [px, pz, u, v] of corners) {
+      this.positions.push(x + px, y, z + pz);
+      this.normals.push(0, -1, 0);
+      this.uvs.push((col + u) / ATLAS_COLS, 1 - (row + 1 - v) / ATLAS_ROWS);
+      const b = Math.max(AO_CURVE[ao[0]] * sky, light);
       this.colors.push(b, b, b);
     }
     this.indices.push(ndx, ndx + 1, ndx + 2, ndx + 1, ndx + 3, ndx + 2);
@@ -156,6 +178,7 @@ class GeometryBuilder {
     def: BlockDef,
     ao: readonly number[],
     cull: (dir: Vec3) => boolean,
+    lightFor: (dir: Vec3) => [number, number] = () => [0, 1],
   ): void {
     for (const face of FACES) {
       if (cull(face.dir)) continue;
@@ -163,6 +186,7 @@ class GeometryBuilder {
       const tile = d[1] === 1 ? def.top : d[1] === -1 ? def.bottom : def.side;
       const col = tile % ATLAS_COLS;
       const row = Math.floor(tile / ATLAS_COLS);
+      const [light, sky] = lightFor(d);
       const ndx = this.positions.length / 3;
       for (let i = 0; i < 4; i++) {
         const c = face.corners[i];
@@ -174,7 +198,7 @@ class GeometryBuilder {
         const u = (col + c.uv[0]) / ATLAS_COLS;
         const v = 1 - (row + 1 - c.uv[1]) / ATLAS_ROWS;
         this.uvs.push(u, v);
-        const b = AO_CURVE[ao[i]];
+        const b = Math.max(AO_CURVE[ao[i]] * sky, light);
         this.colors.push(b, b, b);
       }
       if (ao[0] + ao[3] < ao[1] + ao[2]) {
@@ -185,14 +209,16 @@ class GeometryBuilder {
     }
   }
 
-  /** 花草十字面片（双面成对发射以兼容 FrontSide 材质，朝上法线满亮度） */
-  addCross(x: number, y: number, z: number, tile: number): void {
+  /** 花草十字面片（双面成对发射以兼容 FrontSide 材质，朝上法线满亮度；可偏移/缩放用于墙上火把） */
+  addCross(x: number, y: number, z: number, tile: number, light = 0.04, ox = 0, oz = 0, scale = 1): void {
     const col = tile % ATLAS_COLS;
     const row = Math.floor(tile / ATLAS_COLS);
+    const lo = 0.5 - 0.4 * scale;
+    const hi = 0.5 + 0.4 * scale;
     const quads: [number, number, number, number][][] = [
       // 两条对角面片（每片双向）
-      [[0.1, 0, 0.1, 0], [0.9, 0, 0.9, 1], [0.9, 1, 0.9, 1], [0.1, 1, 0.1, 0]],
-      [[0.9, 0, 0.1, 0], [0.1, 0, 0.9, 1], [0.1, 1, 0.9, 1], [0.9, 1, 0.1, 0]],
+      [[lo + ox, 0, lo + oz, 0], [hi + ox, 0, hi + oz, 1], [hi + ox, 1, hi + oz, 1], [lo + ox, 1, lo + oz, 0]],
+      [[hi + ox, 0, lo + oz, 0], [lo + ox, 0, hi + oz, 1], [lo + ox, 1, hi + oz, 1], [hi + ox, 1, lo + oz, 0]],
     ];
     for (const q of quads) {
       for (const flip of [false, true]) {
@@ -201,7 +227,7 @@ class GeometryBuilder {
           this.positions.push(x + px, y + py, z + pz);
           this.normals.push(0, 1, 0);
           this.uvs.push((col + u) / ATLAS_COLS, 1 - (row + 1 - (py as number)) / ATLAS_ROWS);
-          this.colors.push(1, 1, 1);
+          this.colors.push(light, light, light);
         }
         if (flip) this.indices.push(ndx, ndx + 2, ndx + 1, ndx, ndx + 3, ndx + 2);
         else this.indices.push(ndx, ndx + 1, ndx + 2, ndx + 2, ndx + 1, ndx + 3);
@@ -227,26 +253,36 @@ const GW = 48;
 const GH = WORLD_HEIGHT + 2;
 const idGrid = new Uint16Array(GW * GW * GH);
 const opGrid = new Uint8Array(idGrid.length);
+/** 光照网格（与 idGrid 同布局，0-15） */
+const ltGrid = new Uint8Array(idGrid.length);
+/** 天空光网格（与 idGrid 同布局，0-15） */
+const skGrid = new Uint8Array(idGrid.length);
 const gidx = (x: number, y: number, z: number): number => ((y + 1) * GW + (z + CHUNK_SIZE)) * GW + (x + CHUNK_SIZE);
 
 /**
  * 纯数据网格化：输入 3×3 邻居 chunk 的方块数据（datas[9]，索引 (gz+1)*3+(gx+1)，可为 null），
  * 输出几何。与 World/Chunk 解耦，主线程与 Web Worker 共用
  */
-export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null)[]): { solid: GeometryData; water: GeometryData } {
+export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null)[], lights: (Uint8Array | null)[], skys: (Uint8Array | null)[]): { solid: GeometryData; water: GeometryData } {
   const solid = new GeometryBuilder();
   const water = new GeometryBuilder();
 
   // 把 3×3 chunk 数据摊平进邻居网格：热路径全部变成无闭包的直接数组读
   idGrid.fill(0);
+  ltGrid.fill(0);
+  skGrid.fill(0);
   for (let gz = -1; gz <= 1; gz++) {
     for (let gx = -1; gx <= 1; gx++) {
-      const c = datas[(gz + 1) * 3 + (gx + 1)];
-      if (!c) continue;
+      const k = (gz + 1) * 3 + (gx + 1);
+      const c = datas[k];
+      const cl = lights[k];
+      const cs = skys[k];
       for (let y = 0; y < WORLD_HEIGHT; y++) {
         for (let lz = 0; lz < CHUNK_SIZE; lz++) {
-          const src = c.subarray((y * CHUNK_SIZE + lz) * CHUNK_SIZE, (y * CHUNK_SIZE + lz + 1) * CHUNK_SIZE);
-          idGrid.set(src, ((y + 1) * GW + (gz + 1) * CHUNK_SIZE + lz) * GW + (gx + 1) * CHUNK_SIZE);
+          const off = ((y + 1) * GW + (gz + 1) * CHUNK_SIZE + lz) * GW + (gx + 1) * CHUNK_SIZE;
+          if (c) idGrid.set(c.subarray((y * CHUNK_SIZE + lz) * CHUNK_SIZE, (y * CHUNK_SIZE + lz + 1) * CHUNK_SIZE), off);
+          if (cl) ltGrid.set(cl.subarray((y * CHUNK_SIZE + lz) * CHUNK_SIZE, (y * CHUNK_SIZE + lz + 1) * CHUNK_SIZE), off);
+          if (cs) skGrid.set(cs.subarray((y * CHUNK_SIZE + lz) * CHUNK_SIZE, (y * CHUNK_SIZE + lz + 1) * CHUNK_SIZE), off);
         }
       }
     }
@@ -268,7 +304,12 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
 
         // ——— 非立方体形状 ———
         if (def.shape === 'cross') {
-          solid.addCross(wx, y, wz, def.side);
+          // 花草原地十字；墙上火把按朝向贴墙偏移并缩小
+          const f = def.facing;
+          const ox = f === 1 ? 0.25 : f === 3 ? -0.25 : 0;
+          const oz = f === 2 ? 0.25 : f === 0 ? -0.25 : 0;
+          const wall = f !== undefined;
+          solid.addCross(wx, y, wz, def.side, Math.max(ltGrid[gidx(x, y, z)] / 15, skGrid[gidx(x, y, z)] / 15, 0.04), ox, oz, wall ? 0.75 : 1);
           continue;
         }
         if (def.shape === 'slab') {
@@ -285,36 +326,55 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
             }
             const n = idAt(x + dir[0], y, z + dir[2]);
             return isOpaque(x + dir[0], y, z + dir[2]) || n === id;
-          });
+          }, (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
           continue;
         }
         if (def.shape === 'stairs') {
-          // 楼梯：底半满铺 + 背向顶半；相接面由 addBox 内部剔除，前缘顶面单独补
+          // 楼梯：正立=底半满铺+背向顶半；倒置=顶半满铺+背向底半（前缘由 addFlatBottom 补）
           const f = def.facing ?? 0;
           const sideCull = (dir: Vec3): boolean => {
             if (dir[1] !== 0) return false;
             return isOpaque(x + dir[0], y, z + dir[2]) || idAt(x + dir[0], y, z + dir[2]) === id;
           };
-          // 底箱：顶面整面剔除（前缘顶面在顶箱旁单独补）
-          solid.addBox(wx, y, wz, 0, 0, 0, 1, 0.5, 1, def, FULL_AO, (dir) => {
-            if (dir[1] === 1) return true;
-            if (dir[1] === -1) return isOpaque(x, y - 1, z);
-            return sideCull(dir);
-          });
-          // 顶箱（背半）：底面剔除；外侧看邻居；前缘立面保留
           const [hx0, hz0, hx1, hz1] = f === 0 ? [0, 0, 1, 0.5] : f === 1 ? [0.5, 0, 1, 1] : f === 2 ? [0, 0.5, 1, 1] : [0, 0, 0.5, 1];
-          solid.addBox(wx, y, wz, hx0, 0.5, hz0, hx1, 1, hz1, def, FULL_AO, (dir) => {
-            if (dir[1] === -1) return true;
-            if (dir[1] === 1) return false;
-            return sideCull(dir);
-          });
-          // 前缘顶面（底箱未被顶箱盖住的那一半）
-          solid.addFlatTop(wx, y + 0.5, wz, f === 0 ? [0, 0.5, 1, 1] : f === 1 ? [0, 0, 0.5, 1] : f === 2 ? [0, 0, 1, 0.5] : [0.5, 0, 1, 1], def.top, FULL_AO);
+          if (def.slabTop) {
+            // 倒置：顶箱满铺（底面整面剔除）+ 背向底箱（顶面整面剔除）+ 前缘底面
+            solid.addBox(wx, y, wz, 0, 0.5, 0, 1, 1, 1, def, FULL_AO, (dir) => {
+              if (dir[1] === -1) return true;
+              if (dir[1] === 1) return isOpaque(x, y + 1, z);
+              return sideCull(dir);
+            }, (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
+            solid.addBox(wx, y, wz, hx0, 0, hz0, hx1, 0.5, hz1, def, FULL_AO, (dir) => {
+              if (dir[1] === 1) return true;
+              if (dir[1] === -1) return isOpaque(x, y - 1, z);
+              return sideCull(dir);
+            }, (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
+            solid.addFlatBottom(wx, y + 0.5, wz, f === 0 ? [0, 0.5, 1, 1] : f === 1 ? [0, 0, 0.5, 1] : f === 2 ? [0, 0, 1, 0.5] : [0.5, 0, 1, 1], def.bottom, FULL_AO, ltGrid[gidx(x, y - 1, z)] / 15, skGrid[gidx(x, y - 1, z)] / 15);
+          } else {
+            // 正立：底箱满铺（顶面整面剔除）+ 背向顶箱（底面整面剔除）+ 前缘顶面
+            solid.addBox(wx, y, wz, 0, 0, 0, 1, 0.5, 1, def, FULL_AO, (dir) => {
+              if (dir[1] === 1) return true;
+              if (dir[1] === -1) return isOpaque(x, y - 1, z);
+              return sideCull(dir);
+            }, (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
+            solid.addBox(wx, y, wz, hx0, 0.5, hz0, hx1, 1, hz1, def, FULL_AO, (dir) => {
+              if (dir[1] === -1) return true;
+              if (dir[1] === 1) return false;
+              return sideCull(dir);
+            }, (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
+            solid.addFlatTop(wx, y + 0.5, wz, f === 0 ? [0, 0.5, 1, 1] : f === 1 ? [0, 0, 0.5, 1] : f === 2 ? [0, 0, 1, 0.5] : [0.5, 0, 1, 1], def.top, FULL_AO, ltGrid[gidx(x, y + 1, z)] / 15, skGrid[gidx(x, y + 1, z)] / 15);
+          }
+          continue;
+        }
+        if (def.shape === 'door') {
+          // 门：闭合/打开的薄面板（box3 即面板盒），不剔除
+          const [x0, y0, z0, x1, y1, z1] = def.box3!;
+          solid.addBox(wx, y, wz, x0, y0, z0, x1, y1, z1, def, FULL_AO, () => false, (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
           continue;
         }
         if (def.shape === 'fence') {
           // 栅栏：中柱 + 向实心/同型邻居伸臂（臂两端剔除避免重叠）
-          solid.addBox(wx, y, wz, 0.375, 0, 0.375, 0.625, 1, 0.625, def, FULL_AO, () => false);
+          solid.addBox(wx, y, wz, 0.375, 0, 0.375, 0.625, 1, 0.625, def, FULL_AO, () => false, (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
           for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
             const n = idAt(x + dx, y, z + dz);
             const sameFence = n === id;
@@ -330,7 +390,7 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
               if (dx !== 0 && dir[0] !== 0) return true;
               if (dz !== 0 && dir[2] !== 0) return true;
               return false;
-            });
+            }, (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
           }
           continue;
         }
@@ -361,7 +421,7 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
           // 水面按水位下沉；上方还有水则满格
           const level = id === WATER ? 0 : id - WATER_FLOW_1 + 1;
           const topY = isWaterId(id) ? (isWaterId(idGrid[gidx(x, y + 1, z)]) ? 1 : WATER_TOP[level]) : 1;
-          (isWaterId(id) ? water : solid).addFace(wx, y, wz, face, isWaterId(id) ? WATER_UV_TILE : tile, aoScratch, topY);
+          (isWaterId(id) ? water : solid).addFace(wx, y, wz, face, isWaterId(id) ? WATER_UV_TILE : tile, aoScratch, topY, ltGrid[gidx(bx, by, bz)] / 15, skGrid[gidx(bx, by, bz)] / 15);
         }
       }
     }
@@ -371,12 +431,17 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
 
 export function buildChunkGeometry(world: World, chunk: Chunk): { solid: GeometryData; water: GeometryData } {
   const datas: (Uint16Array | null)[] = [];
+  const lights: (Uint8Array | null)[] = [];
+  const skys: (Uint8Array | null)[] = [];
   for (let gz = -1; gz <= 1; gz++) {
     for (let gx = -1; gx <= 1; gx++) {
-      datas.push(world.chunks.get(`${chunk.cx + gx},${chunk.cz + gz}`)?.data ?? null);
+      const c = world.chunks.get(`${chunk.cx + gx},${chunk.cz + gz}`);
+      datas.push(c?.data ?? null);
+      lights.push(c?.light ?? null);
+      skys.push(c?.sky ?? null);
     }
   }
-  return buildFromGrid(chunk.cx, chunk.cz, datas);
+  return buildFromGrid(chunk.cx, chunk.cz, datas, lights, skys);
 }
 
 const FULL_AO = [3, 3, 3, 3];

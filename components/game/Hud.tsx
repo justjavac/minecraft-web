@@ -16,8 +16,26 @@ import { TouchControls } from './TouchControls';
 import { SettingsDialog } from './SettingsDialog';
 import { CraftingDialog } from './CraftingDialog';
 import { FurnaceDialog } from './FurnaceDialog';
+import { StorageDialog } from './StorageDialog';
 import { TileIcon } from './TileIcon';
 import { BlockPicker } from './BlockPicker';
+
+/** 短暂提示条（睡觉/交互反馈），2.5s 自动消失 */
+function Notice() {
+  const notice = useGameStore((s) => s.notice);
+  const setNotice = useGameStore((s) => s.setNotice);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 2500);
+    return () => clearTimeout(timer);
+  }, [notice, setNotice]);
+  if (!notice) return null;
+  return (
+    <div className="absolute left-1/2 top-[18%] -translate-x-1/2 rounded bg-black/60 px-3 py-1.5 text-sm text-white shadow">
+      {notice}
+    </div>
+  );
+}
 
 /** 一排 10 格像素计量条（心/鸡腿），支持半格 */
 function Meter({ value, color }: { value: number; color: string }) {
@@ -272,6 +290,8 @@ export function Hud() {
         +
       </div>
 
+      <Notice />
+
       {/* 热键栏（可点选，移动端小屏缩小；创造=固定面板，生存=槽位背包） */}
       <div className="pointer-events-auto absolute bottom-3 left-1/2 z-20 -translate-x-1/2">
         <div className="mb-1 text-center text-sm text-white drop-shadow-md">
@@ -334,6 +354,9 @@ export function Hud() {
 
       {/* 熔炉界面 */}
       <FurnaceDialog />
+
+      {/* 容器界面（箱子/木桶） */}
+      <StorageDialog />
 
       {/* F3 调试面板 */}
       {debug && <DebugPanel />}

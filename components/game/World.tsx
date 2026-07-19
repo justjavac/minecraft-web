@@ -18,6 +18,9 @@ import {
 import { playerPosition, setActiveWorld, debugInfo, worldClock } from '@/lib/game';
 import { clearFurnaces, furnaces, tickFurnaces } from '@/lib/furnace';
 import { tickFluids } from '@/lib/fluids';
+import { tickCrops } from '@/lib/crops';
+import { tickSaplings } from '@/lib/saplings';
+import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
 import { emptySlots } from '@/lib/slots';
@@ -137,6 +140,8 @@ export function WorldRenderer() {
   useFrame((_, delta) => {
     const w = worldRef.current;
     if (!w) return;
+    // 先冲刷光照脏标记（本帧建网读到的是最新光照；批量编辑也只重算一次）
+    flushLight(w);
     let drained = 0;
     while (drained < 6) {
       const key = w.pollDirty();
@@ -157,6 +162,8 @@ export function WorldRenderer() {
     if (now - lastFluid.current > 400) {
       lastFluid.current = now;
       tickFluids(w);
+      tickSaplings(w, 0.4); // 内部按 2s 累计触发生长/凋零
+      tickCrops(w, 0.4); // 同上节奏推进小麦生长
     }
     if (!useGameStore.getState().paused) {
       tickFurnaces(Math.min(delta, 0.05));

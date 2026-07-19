@@ -1,14 +1,16 @@
 // 工具定义：挖掘速度倍率、耐久、近战伤害（数值对齐 MC Java：木/石/铁/钻 2x/4x/6x/8x）
 
-import { tileOf } from './blocks';
+import { tileIcon, tileOf } from './blocks';
 
-export type ToolKind = 'pickaxe' | 'axe' | 'shovel' | 'sword';
+export type ToolKind = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'bow';
 export type ToolTier = 'wood' | 'stone' | 'iron' | 'diamond';
 export type ToolType =
   | 'wooden_pickaxe' | 'stone_pickaxe' | 'iron_pickaxe' | 'diamond_pickaxe'
   | 'wooden_axe' | 'stone_axe' | 'iron_axe' | 'diamond_axe'
   | 'wooden_shovel' | 'stone_shovel' | 'iron_shovel' | 'diamond_shovel'
-  | 'wooden_sword' | 'stone_sword' | 'iron_sword' | 'diamond_sword';
+  | 'wooden_sword' | 'stone_sword' | 'iron_sword' | 'diamond_sword'
+  | 'wooden_hoe' | 'stone_hoe' | 'iron_hoe'
+  | 'bow';
 
 export interface ToolDef {
   type: ToolType;
@@ -49,4 +51,10 @@ export const TOOLS: Record<ToolType, ToolDef> = {
   stone_sword: { type: 'stone_sword', kind: 'sword', tier: 'stone', name: '石剑', speed: 1, durability: 131, attackDamage: 5, attackCd: 0.625, iconTile: COBBLE_TILE },
   iron_sword: { type: 'iron_sword', kind: 'sword', tier: 'iron', name: '铁剑', speed: 1, durability: 250, attackDamage: 6, attackCd: 0.625, iconTile: IRON_TILE },
   diamond_sword: { type: 'diamond_sword', kind: 'sword', tier: 'diamond', name: '钻石剑', speed: 1, durability: 1561, attackDamage: 7, attackCd: 0.625, iconTile: DIAMOND_TILE },
+  // 弓：远程武器（MC 耐久 384），射箭消耗箭矢，近战极弱
+  bow: { type: 'bow', kind: 'bow', tier: 'wood', name: '弓', speed: 1, durability: 384, attackDamage: 1, attackCd: 0.5, iconTile: tileIcon('item/bow') },
+  // 锄头：整地工具（草方块/泥土 → 耕地），挖掘无加成
+  wooden_hoe: { type: 'wooden_hoe', kind: 'hoe', tier: 'wood', name: '木锄', speed: 1, durability: 59, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/wooden_hoe') },
+  stone_hoe: { type: 'stone_hoe', kind: 'hoe', tier: 'stone', name: '石锄', speed: 1, durability: 131, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/stone_hoe') },
+  iron_hoe: { type: 'iron_hoe', kind: 'hoe', tier: 'iron', name: '铁锄', speed: 1, durability: 250, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/iron_hoe') },
 };

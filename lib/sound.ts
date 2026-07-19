@@ -68,6 +68,29 @@ export function preloadSounds(): void {
   else preloadQueued = true;
 }
 
+export function boom(volume = 1): void {
+  const ac = audioCtx();
+  if (!ac) return;
+  const dur = 0.7;
+  const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * dur), ac.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    const t = i / data.length;
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 2.2);
+  }
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const lp = ac.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 500;
+  const gain = ac.createGain();
+  gain.gain.value = useGameStore.getState().settings.volume * volume;
+  src.connect(lp);
+  lp.connect(gain);
+  gain.connect(ac.destination);
+  src.start();
+}
+
 export function playSound(group: SoundGroup, volume = 1): void {
   const files = GROUP_FILES[group];
   const file = files[(Math.random() * files.length) | 0];

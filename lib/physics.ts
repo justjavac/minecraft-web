@@ -1,4 +1,4 @@
-// AABB 碰撞与占位检测：玩家（Player）与怪物（mobs）共用；碰撞盒按方块形状（台阶半高/栅栏 1.5/花草无）
+// AABB 碰撞与占位检测：玩家（Player）与怪物（mobs）共用；碰撞盒按方块形状（台阶半高/栅栏 1.5/门薄面板/花草无）
 
 import { BLOCKS, type BlockId } from './blocks';
 import type { World } from './world';
@@ -9,14 +9,29 @@ export interface Aabb {
   z: number;
 }
 
-/** 方块碰撞盒 y 范围（[min,max]；无碰撞返回 null：花草/水/空气） */
-export function blockBox(id: BlockId): readonly [number, number] | null {
+export type Box3 = readonly [number, number, number, number, number, number];
+
+/** 方块碰撞盒 [minX,minY,minZ,maxX,maxY,maxZ]（无碰撞返回 null：花草/水/空气） */
+export function blockBox(id: BlockId): Box3 | null {
   const def = BLOCKS[id];
   if (!def?.solid) return null;
-  return def.box ?? [0, 1];
+  return def.box3 ?? [0, 0, 0, 1, 1, 1];
 }
 
-/** 逐轴 AABB 碰撞：移动后若与实心方块重叠则推回，返回是否碰撞 */
+const EPS = 0.001;
+
+function overlaps(p: Aabb, halfW: number, height: number, x: number, y: number, z: number, b: Box3): boolean {
+  return (
+    p.x + halfW > x + b[0] + EPS &&
+    p.x - halfW < x + b[3] - EPS &&
+    p.y + height > y + b[1] + EPS &&
+    p.y < y + b[4] - EPS &&
+    p.z + halfW > z + b[2] + EPS &&
+    p.z - halfW < z + b[5] - EPS
+  );
+}
+
+/** 逐轴 AABB 碰撞：移动后若与实心方块碰撞盒重叠则推回，返回是否碰撞 */
 export function collideAxis(
   world: World,
   p: Aabb,
@@ -29,7 +44,7 @@ export function collideAxis(
   const minX = Math.floor(p.x - halfW);
   const maxX = Math.floor(p.x + halfW);
   const minY = Math.floor(p.y);
-  const maxY = Math.floor(p.y + height - 0.001);
+  const maxY = Math.floor(p.y + height - EPS);
   const minZ = Math.floor(p.z - halfW);
   const maxZ = Math.floor(p.z + halfW);
   let hit = false;
@@ -38,15 +53,14 @@ export function collideAxis(
       for (let x = minX; x <= maxX; x++) {
         const box = blockBox(world.getBlock(x, y, z));
         if (!box) continue;
-        // 盒与玩家 AABB 相交才计碰撞（半高台阶只挡下半部分）
-        if (p.y + height <= y + box[0] + 0.001 || p.y >= y + box[1] - 0.001) continue;
+        if (!overlaps(p, halfW, height, x, y, z, box)) continue;
         hit = true;
         if (axis === 0) {
-          p.x = delta > 0 ? Math.min(p.x, x - halfW - 0.001) : Math.max(p.x, x + 1 + halfW + 0.001);
+          p.x = delta > 0 ? Math.min(p.x, x + box[0] - halfW - EPS) : Math.max(p.x, x + box[3] + halfW + EPS);
         } else if (axis === 1) {
-          p.y = delta > 0 ? Math.min(p.y, y + box[0] - height - 0.001) : Math.max(p.y, y + box[1] + 0.001);
+          p.y = delta > 0 ? Math.min(p.y, y + box[1] - height - EPS) : Math.max(p.y, y + box[4] + EPS);
         } else {
-          p.z = delta > 0 ? Math.min(p.z, z - halfW - 0.001) : Math.max(p.z, z + 1 + halfW + 0.001);
+          p.z = delta > 0 ? Math.min(p.z, z + box[2] - halfW - EPS) : Math.max(p.z, z + box[5] + halfW + EPS);
         }
       }
     }
@@ -59,7 +73,7 @@ export function aabbFree(world: World, x: number, y: number, z: number, halfW: n
   const minX = Math.floor(x - halfW);
   const maxX = Math.floor(x + halfW);
   const minY = Math.floor(y);
-  const maxY = Math.floor(y + height - 0.001);
+  const maxY = Math.floor(y + height - EPS);
   const minZ = Math.floor(z - halfW);
   const maxZ = Math.floor(z + halfW);
   for (let yy = minY; yy <= maxY; yy++) {
@@ -67,7 +81,7 @@ export function aabbFree(world: World, x: number, y: number, z: number, halfW: n
       for (let xx = minX; xx <= maxX; xx++) {
         const box = blockBox(world.getBlock(xx, yy, zz));
         if (!box) continue;
-        if (y + height <= yy + box[0] + 0.001 || y >= yy + box[1] - 0.001) continue;
+        if (!overlaps({ x, y, z }, halfW, height, xx, yy, zz, box)) continue;
         return false;
       }
     }

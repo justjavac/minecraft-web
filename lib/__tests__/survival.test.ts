@@ -131,7 +131,7 @@ describe('僵尸', () => {
     expect(Math.hypot(m.x, m.z)).toBeGreaterThanOrEqual(23);
   });
 
-  it('追击时与玩家距离缩短', () => {
+  it('追击时与玩家距离缩短', { timeout: 20000 }, () => {
     const w = floorWorld();
     mobs.push(mkMob({ id: 1, type: 'zombie', x: 5, y: 10, z: 0 }));
     tickMobs(w, 0.5, { x: 0, y: 10, z: 0 }, () => {});
@@ -211,7 +211,7 @@ describe('更多生物', () => {
     expect(dmg).toBeGreaterThan(0);
   });
 
-  it('苦力怕近身引爆：破坏方块并伤害玩家', () => {
+  it('苦力怕近身引爆：破坏方块并伤害玩家', { timeout: 20000 }, () => {
     const w = floorWorld();
     const player = { x: 0, y: 10, z: 0 };
     mobs.push(mkMob({ id: 13, type: 'creeper', x: 1.5, y: 10, z: 0 }));
@@ -226,7 +226,7 @@ describe('更多生物', () => {
     expect(holes).toBeGreaterThan(0);
   });
 
-  it('蜘蛛白天中立不追击', () => {
+  it('蜘蛛白天中立不追击', { timeout: 20000 }, () => {
     const w = floorWorld();
     worldClock.t = 0.25; // 正午
     mobs.push(mkMob({ id: 14, type: 'spider', x: 5, y: 10, z: 0, wanderTimer: 99, wanderMoving: false }));

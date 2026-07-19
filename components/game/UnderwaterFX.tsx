@@ -2,13 +2,16 @@
 
 import { useFrame } from '@react-three/fiber';
 import type { Color, Fog } from 'three';
-import { isWaterId } from '@/lib/blocks';
+import { isLavaId, isWaterId } from '@/lib/blocks';
 import { atmosphere, getActiveWorld } from '@/lib/game';
 import { useGameStore } from '@/lib/store';
 
 const WATER_COLOR = '#16486e';
 const WATER_FOG_NEAR = 1;
 const WATER_FOG_FAR = 22;
+const LAVA_COLOR = '#cf4a0a';
+const LAVA_FOG_NEAR = 0.5;
+const LAVA_FOG_FAR = 4;
 
 /** 天空雾随渲染距离联动：覆盖最远 chunk，又不至于太近泛白 */
 export function skyFog(renderDistance: number): { near: number; far: number } {
@@ -36,6 +39,12 @@ export function UnderwaterFX() {
       fog.color.set(WATER_COLOR);
       fog.near = WATER_FOG_NEAR;
       fog.far = WATER_FOG_FAR;
+    } else if (isLavaId(head)) {
+      // 头没入岩浆：橙红短雾
+      bg.set(LAVA_COLOR);
+      fog.color.set(LAVA_COLOR);
+      fog.near = LAVA_FOG_NEAR;
+      fog.far = LAVA_FOG_FAR;
     } else {
       const { near, far } = skyFog(useGameStore.getState().settings.renderDistance);
       if (fog.near !== near || fog.far !== far) {

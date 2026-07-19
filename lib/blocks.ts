@@ -24,8 +24,8 @@ export const ATLAS_COLS = 8;
 export const TILE_PX = 32;
 /** canvas 绘制图标（工作台/熔炉/装备/食物）的 atlas 起始格号；pack 贴图格数须小于它 */
 export const ICON_TILE_START = 400;
-/** canvas 图标格数量 */
-export const ICON_TILE_COUNT = 16;
+/** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧） */
+export const ICON_TILE_COUNT = 17;
 /** atlas 总行数（pack 格 + 图标格） */
 export const ATLAS_ROWS = Math.ceil((ICON_TILE_START + ICON_TILE_COUNT) / ATLAS_COLS);
 
@@ -107,18 +107,28 @@ export interface BlockDef {
   digTime: number;
   /** 流体（水/流水）：可游泳、不可选中、参与水渲染 */
   fluid?: boolean;
-  /** 形状（默认 cube 全方块）：slab 半高 / stairs 双箱 L 形 / fence 柱+臂 / cross 十字面片 */
-  shape?: 'slab' | 'stairs' | 'fence' | 'cross';
-  /** 碰撞盒 y 范围（默认 [0,1]；台阶底 [0,0.5]，台阶顶 [0.5,1]，栅栏 [0,1.5]，花草无碰撞） */
-  box?: [number, number];
+  /** 岩浆：发光液体，接触掉血（v1 不流动） */
+  lava?: boolean;
+  /** 发光强度 1-15（0/缺省不发光；火把 14、海晶灯/蛙明灯/信标 15） */
+  light?: number;
+  /** 形状（默认 cube 全方块）：slab 半高 / stairs 双箱 L 形 / fence 柱+臂 / cross 十字面片 / door 薄面板 */
+  shape?: 'slab' | 'stairs' | 'fence' | 'cross' | 'door';
   /** 台阶是否上半（放置/合并用） */
   slabTop?: boolean;
   /** 台阶对应的完整方块 id（两个半砖合并） */
   fullBlock?: BlockId;
   /** 楼梯朝向（0 北 -z / 1 东 +x / 2 南 +z / 3 西 -x） */
   facing?: 0 | 1 | 2 | 3;
+  /** 完整碰撞盒 [minX,minY,minZ,maxX,maxY,maxZ]（默认全格；门的薄面板按朝向） */
+  box3?: [number, number, number, number, number, number];
+  /** 门半格（上/下） */
+  doorHalf?: 'bottom' | 'top';
+  /** 门是否处于打开状态 */
+  doorOpen?: boolean;
   /** 挖掘掉落的方块 id 覆盖（楼梯各朝向/顶半砖统一掉基础型） */
   dropBlock?: BlockId;
+  /** 树苗对应的木材种类（长成该种树；lib/saplings.ts 驱动） */
+  treeWood?: string;
   cat: BlockCat;
 }
 
@@ -193,14 +203,15 @@ defs[WATER] = {
   top: t('water_still'), bottom: t('water_still'), side: t('water_still'),
   opaque: false, solid: false, digSound: null, placeSound: 'place', stepSound: null, digTime: 0, cat: 'ocean', fluid: true,
 };
-// 流水 1-7 级（level 越小越满，7 为最浅；渲染高度见 mesher 的 WATER_TOP）
+// 流水 1-7 级（id 固定 14-20，须与 WATER_FLOW_1 连续；level 越小越满，7 为最浅；渲染高度见 mesher 的 WATER_TOP）
+// 注意：必须用显式下标写入——CRAFTING_TABLE/FURNACE 占用 12/13，defs.push 会撞号
 export const WATER_FLOW_1 = 14;
 for (let lv = 1; lv <= 7; lv++) {
-  defs.push({
-    id: defs.length, key: `water_flow_${lv}`, name: '流水',
+  defs[WATER_FLOW_1 + lv - 1] = {
+    id: WATER_FLOW_1 + lv - 1, key: `water_flow_${lv}`, name: '流水',
     top: tileOf('water_still'), bottom: tileOf('water_still'), side: tileOf('water_still'),
     opaque: false, solid: false, digSound: null, placeSound: 'place', stepSound: null, digTime: 0, cat: 'ocean', fluid: true,
-  });
+  };
 }
 defs[CRAFTING_TABLE] = {
   id: CRAFTING_TABLE, key: 'crafting_table', name: '工作台',
@@ -212,6 +223,13 @@ defs[FURNACE] = {
   top: tileOf('cobblestone'), bottom: tileOf('cobblestone'), side: ICON_TILE_START + 2,
   opaque: true, solid: true, tool: 'pickaxe', needsPick: true, digTime: 17.5, cat: 'utility', ...STONE_SND,
 };
+// 岩浆：发光液体（v1 不流动，湖/池皆为源头方块）；id 为流水段之后第一个自增 id
+export const LAVA = defs.length;
+defs.push({
+  id: LAVA, key: 'lava', name: '岩浆',
+  top: t('lava_still'), bottom: t('lava_still'), side: t('lava_still'),
+  opaque: true, solid: false, digSound: null, placeSound: 'place', stepSound: null, digTime: 0, cat: 'ocean', lava: true, light: 15,
+});
 
 // ——— 石头/深板岩 ———
 add('granite', '花岗岩', 'granite', { cat: 'stone', tool: 'pickaxe', needsPick: true });
@@ -240,7 +258,7 @@ add('chiseled_deepslate', '雕纹深板岩', 'chiseled_deepslate', { cat: 'stone
 add('reinforced_deepslate', '强化深板岩', { side: 'reinforced_deepslate_side', top: 'reinforced_deepslate_top', bottom: 'reinforced_deepslate_bottom' }, { cat: 'stone', unbreakable: true, digTime: 1 });
 add('bedrock', '基岩', 'bedrock', { cat: 'stone', unbreakable: true, digTime: 1 });
 add('obsidian', '黑曜石', 'obsidian', { cat: 'stone', tool: 'pickaxe', pickTier: 3, digTime: 250 });
-add('crying_obsidian', '哭泣的黑曜石', 'crying_obsidian', { cat: 'stone', tool: 'pickaxe', pickTier: 3, digTime: 250 });
+add('crying_obsidian', '哭泣的黑曜石', 'crying_obsidian', { cat: 'stone', tool: 'pickaxe', pickTier: 3, digTime: 250, light: 10 });
 
 // ——— 土/泥/沙 ———
 add('coarse_dirt', '砂土', 'coarse_dirt', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
@@ -281,13 +299,12 @@ for (const [c, cn] of COLORS16) {
 }
 
 // ——— 矿石/金属块/紫水晶 ———
-// pickTier：0 木镐可挖（煤）、1 需石镐（铁/铜/金/青金石）、2 需铁镐（钻石/绿宝石/红石）、3 需钻镐（黑曜石）
+// pickTier：0 木镐可挖（煤）、1 需石镐（铁/铜/金/青金石）、2 需铁镐（钻石/绿宝石）、3 需钻镐（黑曜石）
 const ORES: [key: string, cn: string, tier: 0 | 1 | 2 | 3, material: string, count: [number, number]][] = [
   ['coal_ore', '煤矿石', 0, 'coal', [1, 1]],
   ['iron_ore', '铁矿石', 1, 'raw_iron', [1, 1]],
   ['copper_ore', '铜矿石', 1, 'raw_copper', [2, 5]],
   ['gold_ore', '金矿石', 1, 'raw_gold', [1, 1]],
-  ['redstone_ore', '红石矿石', 2, 'redstone', [4, 5]],
   ['lapis_ore', '青金石矿石', 1, 'lapis', [4, 8]],
   ['diamond_ore', '钻石矿石', 2, 'diamond', [1, 1]],
   ['emerald_ore', '绿宝石矿石', 1, 'emerald', [1, 1]],
@@ -307,7 +324,6 @@ add('gold_block', '金块', 'gold_block', { cat: 'ore', tool: 'pickaxe', needsPi
 add('diamond_block', '钻石块', 'diamond_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
 add('emerald_block', '绿宝石块', 'emerald_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
 add('lapis_block', '青金石块', 'lapis_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('redstone_block', '红石块', 'redstone_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
 add('coal_block', '煤块', 'coal_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
 add('copper_block', '铜块', 'copper_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
 add('amethyst_block', '紫水晶块', 'amethyst_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 7.5 });
@@ -334,7 +350,7 @@ for (const [w, cn] of WOODS) {
 add('prismarine', '海晶石', 'prismarine', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
 add('prismarine_bricks', '海晶石砖', 'prismarine_bricks', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
 add('dark_prismarine', '暗海晶石', 'dark_prismarine', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
-add('sea_lantern', '海晶灯', 'sea_lantern', { cat: 'ocean', digTime: 0.45, ...GLASS_SND });
+add('sea_lantern', '海晶灯', 'sea_lantern', { cat: 'ocean', digTime: 0.45, light: 15, ...GLASS_SND });
 add('sponge', '海绵', 'sponge', { cat: 'ocean', digTime: 0.9, ...GRASS_SND });
 add('wet_sponge', '湿海绵', 'wet_sponge', { cat: 'ocean', digTime: 0.9, ...GRASS_SND });
 add('tube_coral_block', '管珊瑚块', 'tube_coral_block', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
@@ -364,14 +380,14 @@ add('bone_block', '骨块', { side: 'bone_block_side', top: 'bone_block_top' }, 
 add('barrel', '木桶', { side: 'barrel_side', top: 'barrel_top', bottom: 'barrel_bottom' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
 add('lodestone', '磁石', { side: 'lodestone_side', top: 'lodestone_top' }, { cat: 'utility', tool: 'pickaxe', needsPick: true, digTime: 17.5 });
 add('respawn_anchor', '重生锚', { side: 'respawn_anchor_side0', top: 'respawn_anchor_top_off', bottom: 'respawn_anchor_bottom' }, { cat: 'utility', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('beacon', '信标', 'beacon', { cat: 'utility', opaque: false, digTime: 15, ...GLASS_SND });
+add('beacon', '信标', 'beacon', { cat: 'utility', opaque: false, digTime: 15, light: 15, ...GLASS_SND });
 add('target', '标靶', { side: 'target_side', top: 'target_top' }, { cat: 'utility', tool: 'shovel', digTime: 0.75, ...GRASS_SND });
 add('smithing_table', '锻造台', { side: 'smithing_table_side', top: 'smithing_table_top' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
 add('fletching_table', '制箭台', { side: 'fletching_table_side', top: 'fletching_table_top' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
 add('cartography_table', '制图台', { side: 'cartography_table_side1', top: 'cartography_table_top' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
-add('ochre_froglight', '赭黄蛙明灯', { side: 'ochre_froglight_side', top: 'ochre_froglight_top' }, { cat: 'utility', digTime: 0.45, ...GLASS_SND });
-add('verdant_froglight', '青翠蛙明灯', { side: 'verdant_froglight_side', top: 'verdant_froglight_top' }, { cat: 'utility', digTime: 0.45, ...GLASS_SND });
-add('pearlescent_froglight', '珠光蛙明灯', { side: 'pearlescent_froglight_side', top: 'pearlescent_froglight_top' }, { cat: 'utility', digTime: 0.45, ...GLASS_SND });
+add('ochre_froglight', '赭黄蛙明灯', { side: 'ochre_froglight_side', top: 'ochre_froglight_top' }, { cat: 'utility', digTime: 0.45, light: 15, ...GLASS_SND });
+add('verdant_froglight', '青翠蛙明灯', { side: 'verdant_froglight_side', top: 'verdant_froglight_top' }, { cat: 'utility', digTime: 0.45, light: 15, ...GLASS_SND });
+add('pearlescent_froglight', '珠光蛙明灯', { side: 'pearlescent_froglight_side', top: 'pearlescent_froglight_top' }, { cat: 'utility', digTime: 0.45, light: 15, ...GLASS_SND });
 add('sculk', '幽匿块', 'sculk', { cat: 'earth', tool: 'shovel', digTime: 0.3, ...GRASS_SND });
 add('sculk_catalyst', '幽匿催发体', { side: 'sculk_catalyst_side', top: 'sculk_catalyst_top' }, { cat: 'earth', tool: 'shovel', digTime: 15, ...GRASS_SND });
 add('sculk_sensor', '幽匿感测体', { side: 'sculk_sensor_side', top: 'sculk_sensor_top' }, { cat: 'earth', tool: 'shovel', digTime: 7.5, ...GRASS_SND });
@@ -394,10 +410,10 @@ for (const [base, tex, cn, digTime] of SLAB_BASES) {
   const full = defs.find((d) => d.key === base)!.id;
   const tool = base === 'planks' || base.endsWith('_planks') ? ('axe' as const) : ('pickaxe' as const);
   const bottom = add(`${base}_slab`, `${cn}台阶`, tex, {
-    cat: 'stone', tool, digTime: digTime / 2, shape: 'slab', box: [0, 0.5], fullBlock: full, opaque: false,
+    cat: 'stone', tool, digTime: digTime / 2, shape: 'slab', box3: [0, 0, 0, 1, 0.5, 1], fullBlock: full, opaque: false,
   });
   add(`${base}_slab_top`, `${cn}台阶（上）`, tex, {
-    cat: 'stone', tool, digTime: digTime / 2, shape: 'slab', box: [0.5, 1], slabTop: true, fullBlock: full, dropBlock: bottom.id, opaque: false,
+    cat: 'stone', tool, digTime: digTime / 2, shape: 'slab', box3: [0, 0.5, 0, 1, 1, 1], slabTop: true, fullBlock: full, dropBlock: bottom.id, opaque: false,
   });
 }
 
@@ -422,11 +438,18 @@ for (const [base, tex, cn, digTime] of STAIR_BASES) {
     if (f === 0) baseId = d.id;
     else d.dropBlock = baseId;
   }
+  // 倒置楼梯（顶半满铺 + 背向底半）：统一掉正立 0 朝向款
+  for (let f = 0; f < 4; f++) {
+    const d = add(`${base}_stairs_top${STAIR_DIR[f]}`, `${cn}楼梯（倒置）`, tex, {
+      cat: 'stone', tool, digTime, shape: 'stairs', facing: f as 0 | 1 | 2 | 3, slabTop: true, opaque: false, dropBlock: baseId,
+    });
+    void d;
+  }
 }
 
 // ——— 栅栏（柱 + 邻接臂，高 1.5 不可跳过） ———
 for (const [w, cn] of [['oak', '橡木'], ['spruce', '云杉'], ['birch', '白桦'], ['dark_oak', '深色橡木']] as const) {
-  add(`${w}_fence`, `${cn}栅栏`, `${w}_planks`, { cat: 'wood', tool: 'axe', digTime: 3, shape: 'fence', box: [0, 1.5], opaque: false, ...WOOD_SND });
+  add(`${w}_fence`, `${cn}栅栏`, `${w}_planks`, { cat: 'wood', tool: 'axe', digTime: 3, shape: 'fence', box3: [0, 0, 0, 1, 1.5, 1], opaque: false, ...WOOD_SND });
 }
 
 // ——— 花草（十字面片，无碰撞，需支撑，徒手即碎） ———
@@ -441,13 +464,88 @@ const PLANTS: [key: string, cn: string][] = [
   ['white_tulip', '白色郁金香'],
   ['short_grass', '草丛'],
   ['fern', '蕨'],
-  ['oak_sapling', '橡树树苗'],
-  ['spruce_sapling', '云杉树苗'],
-  ['birch_sapling', '白桦树苗'],
 ];
 for (const [k, cn] of PLANTS) {
   add(k, cn, k, { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
 }
+// 树苗（可生长，wood 见 lib/saplings.ts；红树在原版叫"红树胎生苗"）
+const SAPLINGS: [key: string, tex: string, cn: string, wood: string][] = [
+  ['oak_sapling', 'oak_sapling', '橡树树苗', 'oak'],
+  ['spruce_sapling', 'spruce_sapling', '云杉树苗', 'spruce'],
+  ['birch_sapling', 'birch_sapling', '白桦树苗', 'birch'],
+  ['jungle_sapling', 'jungle_sapling', '丛林树苗', 'jungle'],
+  ['acacia_sapling', 'acacia_sapling', '金合欢树苗', 'acacia'],
+  ['dark_oak_sapling', 'dark_oak_sapling', '深色橡木树苗', 'dark_oak'],
+  ['mangrove_sapling', 'mangrove_propagule', '红树胎生苗', 'mangrove'],
+  ['cherry_sapling', 'cherry_sapling', '樱花树苗', 'cherry'],
+];
+for (const [k, tex, cn, wood] of SAPLINGS) {
+  add(k, cn, tex, { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, treeWood: wood, ...GRASS_SND });
+}
+
+// ——— 耕地与小麦作物（耕种见 lib/crops.ts：锄头整地 → 播种 → 8 阶段生长） ———
+add('farmland', '耕地', { top: 'farmland', side: 'dirt', bottom: 'dirt' }, {
+  cat: 'earth', tool: 'shovel', digTime: 0.75, dropBlock: DIRT, ...DIRT_SND,
+});
+// 小麦 8 阶段（wheat_crop_0..7，十字面片；成熟收割掉小麦+种子，未熟只掉种子）
+export const WHEAT_CROP_0 = defs.length;
+for (let stage = 0; stage <= 7; stage++) {
+  add(`wheat_crop_${stage}`, '小麦', `wheat_stage${stage}`, {
+    cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND,
+  });
+}
+
+// 火把：发光 14（放置需支撑；光照见 lib/lights.ts）
+const torchDef = add('torch', '火把', 'torch', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.05, light: 14, ...GRASS_SND });
+// 墙上火把（4 朝向，贴墙小十字，统一掉落地火把）
+add('torch_wall_n', '火把', 'torch', { cat: 'utility', shape: 'cross', facing: 0, opaque: false, solid: false, digTime: 0.05, light: 14, ...GRASS_SND, dropBlock: torchDef.id });
+add('torch_wall_e', '火把', 'torch', { cat: 'utility', shape: 'cross', facing: 1, opaque: false, solid: false, digTime: 0.05, light: 14, ...GRASS_SND, dropBlock: torchDef.id });
+add('torch_wall_s', '火把', 'torch', { cat: 'utility', shape: 'cross', facing: 2, opaque: false, solid: false, digTime: 0.05, light: 14, ...GRASS_SND, dropBlock: torchDef.id });
+add('torch_wall_w', '火把', 'torch', { cat: 'utility', shape: 'cross', facing: 3, opaque: false, solid: false, digTime: 0.05, light: 14, ...GRASS_SND, dropBlock: torchDef.id });
+
+// 门：闭合时面板贴朝向边，打开时转到垂直边；上下两格同步
+const DOOR_EDGE: [number, number, number, number, number, number][] = [
+  [0, 0, 0, 1, 1, 0.1875], // n：北缘
+  [0.8125, 0, 0, 1, 1, 1], // e：东缘
+  [0, 0, 0.8125, 1, 1, 1], // s：南缘
+  [0, 0, 0, 0.1875, 1, 1], // w：西缘
+];
+const DOOR_OPEN_EDGE = [3, 0, 1, 2] as const; // n→w e→n s→e w→s（顺时针转）
+const DOOR_DIR = ['n', 'e', 's', 'w'] as const;
+const doorBottom = (() => {
+  let first = 0;
+  for (let f = 0; f < 4; f++) {
+    const closed = add(`oak_door_bottom_${DOOR_DIR[f]}`, '橡木门', 'oak_door_bottom', {
+      cat: 'wood', tool: 'axe', digTime: 3, shape: 'door', facing: f as 0 | 1 | 2 | 3, doorHalf: 'bottom', doorOpen: false, box3: DOOR_EDGE[f], opaque: false, ...WOOD_SND,
+    });
+    add(`oak_door_top_${DOOR_DIR[f]}`, '橡木门', 'oak_door_top', {
+      cat: 'wood', tool: 'axe', digTime: 3, shape: 'door', facing: f as 0 | 1 | 2 | 3, doorHalf: 'top', doorOpen: false, box3: DOOR_EDGE[f], opaque: false, dropBlock: closed.id, ...WOOD_SND,
+    });
+    add(`oak_door_open_bottom_${DOOR_DIR[f]}`, '橡木门（开）', 'oak_door_bottom', {
+      cat: 'wood', tool: 'axe', digTime: 3, shape: 'door', facing: f as 0 | 1 | 2 | 3, doorHalf: 'bottom', doorOpen: true, box3: DOOR_EDGE[DOOR_OPEN_EDGE[f]], opaque: false, dropBlock: closed.id, ...WOOD_SND,
+    });
+    add(`oak_door_open_top_${DOOR_DIR[f]}`, '橡木门（开）', 'oak_door_top', {
+      cat: 'wood', tool: 'axe', digTime: 3, shape: 'door', facing: f as 0 | 1 | 2 | 3, doorHalf: 'top', doorOpen: true, box3: DOOR_EDGE[DOOR_OPEN_EDGE[f]], opaque: false, dropBlock: closed.id, ...WOOD_SND,
+    });
+    if (f === 0) first = closed.id;
+  }
+  return first;
+})();
+void doorBottom;
+
+// ——— 家具 ———
+// 床：半高（复用台阶网格/碰撞），夜晚右键睡觉跳到日出并设重生点（无 fullBlock，不参与台阶合并）
+add('red_bed', '红色床', { top: 'red_bed_foot_up', side: 'red_bed_foot_south', bottom: 'oak_planks' }, {
+  cat: 'utility', tool: 'axe', digTime: 0.3, shape: 'slab', box3: [0, 0, 0, 1, 0.5, 1], opaque: false, ...WOOD_SND,
+});
+
+// ——— 容器（右键打开 27 格存储，lib/storage.ts；barrel 已在上方注册） ———
+// 箱子：无现成贴图，侧面用 canvas 图标格（木板底 + 深色包边 + 锁扣），顶/底用木板
+defs.push({
+  id: defs.length, key: 'chest', name: '箱子',
+  top: tileOf('oak_planks'), bottom: tileOf('oak_planks'), side: ICON_TILE_START + 16,
+  opaque: true, solid: true, tool: 'axe', digTime: 3, cat: 'utility', ...WOOD_SND,
+});
 
 /** 以方块 id 为下标 */
 export const BLOCKS: BlockDef[] = defs;
@@ -458,6 +556,11 @@ export const BLOCK_BY_KEY: Record<string, BlockDef> = Object.fromEntries(defs.ma
 /** 是否水系方块（水源或流水，可游泳/参与水渲染） */
 export function isWaterId(id: BlockId): boolean {
   return BLOCKS[id]?.fluid === true;
+}
+
+/** 是否岩浆（发光液体，接触掉血） */
+export function isLavaId(id: BlockId): boolean {
+  return BLOCKS[id]?.lava === true;
 }
 
 /** 热键栏 9 格（创造模式初始值，可在选块界面更换） */

@@ -56,4 +56,43 @@ describe('流体传播', () => {
     }
     expect(waterLevel(w.getBlock(31, 11, 0))).not.toBe(8);
   });
+
+  it('挖掉水源后流水逐级消退', () => {
+    const w = new World('fluid-decay', undefined, VOID_TERRAIN);
+    for (let x = 2; x <= 10; x++) {
+      for (let z = 2; z <= 10; z++) w.setBlock(x, 10, z, STONE);
+    }
+    w.setBlock(6, 11, 6, WATER);
+    for (let i = 0; i < 6; i++) tickFluids(w, 256);
+    expect(waterLevel(w.getBlock(8, 11, 6))).toBe(2);
+    // 移除水源：流水失去上游，应逐级消退
+    w.setBlock(6, 11, 6, AIR);
+    for (let i = 0; i < 12; i++) tickFluids(w, 256);
+    expect(w.getBlock(6, 11, 6)).toBe(AIR);
+    expect(w.getBlock(7, 11, 6)).toBe(AIR);
+    expect(w.getBlock(8, 11, 6)).toBe(AIR);
+  });
+
+  it('悬空水柱在上游移除后自顶向下消退', () => {
+    const w = new World('fluid-decay-col', undefined, VOID_TERRAIN);
+    w.setBlock(8, 30, 8, WATER);
+    for (let i = 0; i < 10; i++) tickFluids(w, 128);
+    expect(w.getBlock(8, 25, 8)).toBe(WATER_FLOW_1);
+    w.setBlock(8, 30, 8, AIR);
+    for (let i = 0; i < 12; i++) tickFluids(w, 128);
+    expect(w.getBlock(8, 25, 8)).toBe(AIR);
+  });
+
+  it('无限水源：两个水源夹一格流水且下方实心 → 成源', () => {
+    const w = new World('fluid-infinite', undefined, VOID_TERRAIN);
+    // 3×3 石平台，东西两个水源，中间留空
+    for (let x = 2; x <= 6; x++) {
+      for (let z = 2; z <= 6; z++) w.setBlock(x, 10, z, STONE);
+    }
+    w.setBlock(3, 11, 4, WATER);
+    w.setBlock(5, 11, 4, WATER);
+    w.setBlock(4, 11, 4, WATER_FLOW_1); // 中间的 1 级流水
+    tickFluids(w, 128);
+    expect(w.getBlock(4, 11, 4)).toBe(WATER); // MC：2×2 无限水成源
+  });
 });

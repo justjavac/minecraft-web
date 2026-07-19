@@ -30,8 +30,8 @@ beforeEach(() => {
 });
 
 describe('矿石定义', () => {
-  it('8 种矿石都有 pickTier 与材料掉落', () => {
-    for (const k of ['coal_ore', 'iron_ore', 'copper_ore', 'gold_ore', 'redstone_ore', 'lapis_ore', 'diamond_ore', 'emerald_ore']) {
+  it('7 种矿石都有 pickTier 与材料掉落', () => {
+    for (const k of ['coal_ore', 'iron_ore', 'copper_ore', 'gold_ore', 'lapis_ore', 'diamond_ore', 'emerald_ore']) {
       const def = BLOCK_BY_KEY[k];
       expect(def.pickTier, k).not.toBeUndefined();
       expect(def.drop, k).toBeDefined();

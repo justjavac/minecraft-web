@@ -14,7 +14,6 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   cooked_chicken: { name: '熟鸡肉', tile: ICON_TILE_START + 15 },
   // 矿物（图标取 Faithful 物品贴图）
   coal: { name: '煤', tile: tileIcon('item/coal') },
-  redstone: { name: '红石', tile: tileIcon('item/redstone') },
   lapis: { name: '青金石', tile: tileIcon('item/lapis_lazuli') },
   diamond: { name: '钻石', tile: tileIcon('item/diamond') },
   emerald: { name: '绿宝石', tile: tileIcon('item/emerald') },
@@ -24,6 +23,15 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   raw_iron: { name: '粗铁', tile: tileIcon('item/raw_iron') },
   raw_gold: { name: '粗金', tile: tileIcon('item/raw_gold') },
   raw_copper: { name: '粗铜', tile: tileIcon('item/raw_copper') },
+  // 怪物掉落
+  string: { name: '线', tile: tileIcon('item/string') },
+  feather: { name: '羽毛', tile: tileIcon('item/feather') },
+  // 弹药
+  arrow: { name: '箭', tile: tileIcon('item/arrow') },
+  // 耕种作物
+  wheat_seeds: { name: '小麦种子', tile: tileIcon('item/wheat_seeds') },
+  wheat: { name: '小麦', tile: tileIcon('item/wheat') },
+  bread: { name: '面包', tile: tileIcon('item/bread') },
 };
 
 export function materialName(material: string): string {

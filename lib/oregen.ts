@@ -37,7 +37,6 @@ const VEINS: Vein[] = [
   { id: KEY('iron_ore'), count: [5, 9], size: [3, 7], minY: 0, maxY: 30 },
   { id: KEY('copper_ore'), count: [3, 6], size: [3, 7], minY: 4, maxY: 40 },
   { id: KEY('gold_ore'), count: [1, 3], size: [2, 5], minY: 0, maxY: 14 },
-  { id: KEY('redstone_ore'), count: [2, 4], size: [3, 6], minY: 0, maxY: 12 },
   { id: KEY('lapis_ore'), count: [1, 2], size: [2, 4], minY: 0, maxY: 16 },
   { id: KEY('diamond_ore'), count: [1, 3], size: [2, 5], minY: 0, maxY: 10 },
   { id: KEY('emerald_ore'), count: [0, 1], size: [1, 2], minY: 0, maxY: 14 },

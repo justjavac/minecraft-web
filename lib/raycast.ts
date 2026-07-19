@@ -47,7 +47,7 @@ export function raycastBlock(
 
   while (t <= maxDist) {
     const id = world.getBlock(x, y, z);
-    if (id !== AIR && BLOCKS[id]?.solid) {
+    if (id !== AIR && (BLOCKS[id]?.solid || BLOCKS[id]?.shape === 'cross')) {
       return { block: [x, y, z], face };
     }
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {

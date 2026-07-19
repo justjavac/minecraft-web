@@ -40,9 +40,14 @@ export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materi
     const key = `${chunk.cx},${chunk.cz}`;
 
     const datas: (Uint16Array | null)[] = [];
+    const lights: (Uint8Array | null)[] = [];
+    const skys: (Uint8Array | null)[] = [];
     for (let gz = -1; gz <= 1; gz++) {
       for (let gx = -1; gx <= 1; gx++) {
-        datas.push(world.chunks.get(`${chunk.cx + gx},${chunk.cz + gz}`)?.data ?? null);
+        const c = world.chunks.get(`${chunk.cx + gx},${chunk.cz + gz}`);
+        datas.push(c?.data ?? null);
+        lights.push(c?.light ?? null);
+        skys.push(c?.sky ?? null);
       }
     }
 
@@ -78,7 +83,7 @@ export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materi
     const pool = getMesherPool();
     if (pool) {
       pool
-        .build(key, version, chunk.cx, chunk.cz, datas)
+        .build(key, version, chunk.cx, chunk.cz, datas, lights, skys)
         .then(({ solid, water, version: v }) => {
           if (cancelled) return;
           if (v !== version) return; // 过期结果

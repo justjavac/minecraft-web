@@ -9,6 +9,10 @@ export interface MeshRequest {
   cx: number;
   cz: number;
   datas: (Uint16Array | null)[];
+  /** 与 datas 同布局的 3×3 光照数组（可为 null） */
+  lights: (Uint8Array | null)[];
+  /** 与 datas 同布局的 3×3 天空光数组（可为 null） */
+  skys: (Uint8Array | null)[];
 }
 
 export interface MeshResponse {
@@ -24,8 +28,8 @@ const ctx = self as unknown as {
 };
 
 ctx.onmessage = (e) => {
-  const { key, version, cx, cz, datas } = e.data;
-  const { solid, water } = buildFromGrid(cx, cz, datas);
+  const { key, version, cx, cz, datas, lights, skys } = e.data;
+  const { solid, water } = buildFromGrid(cx, cz, datas, lights, skys);
   const response: MeshResponse = { key, version, solid, water };
   ctx.postMessage(response, [
     solid.positions.buffer,
