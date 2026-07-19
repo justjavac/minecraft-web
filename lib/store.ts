@@ -77,6 +77,10 @@ interface GameStore {
   touchMode: boolean;
   /** 世界与贴图加载完成（加载中显示覆盖层） */
   worldReady: boolean;
+  /** 世界加载失败信息（覆盖层显示并提供重试），null 表示正常 */
+  loadError: string | null;
+  /** 世界加载重试计数（变化触发 WorldRenderer 重新加载） */
+  worldRetry: number;
   /** 本局是否锁定过指针（区分「准备进入」和「已暂停」文案） */
   hasLocked: boolean;
   /** 用户设置（localStorage 持久化） */
@@ -120,6 +124,9 @@ interface GameStore {
   setPaused: (paused: boolean) => void;
   toggleDebug: () => void;
   setWorldReady: (ready: boolean) => void;
+  setLoadError: (msg: string | null) => void;
+  /** 清错误并触发重新加载（worldRetry +1） */
+  retryWorld: () => void;
   setHasLocked: (locked: boolean) => void;
   setSpawnPoint: (p: { x: number; y: number; z: number } | null) => void;
   updateSettings: (patch: Partial<Settings>) => void;
@@ -179,6 +186,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   paused: false,
   debug: false,
   worldReady: false,
+  loadError: null,
+  worldRetry: 0,
   hasLocked: false,
   settings: loadSettings(),
   spawnPoint: null,
@@ -205,15 +214,15 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   startNew: (seed, worldMode) => {
     survivalStats.exhaustion = 0;
     set({
-      screen: 'playing', mode: 'new', seed, paused: false, flying: false, worldReady: false,
+      screen: 'playing', mode: 'new', seed, paused: false, flying: false, worldReady: false, loadError: null,
       hasLocked: false, spawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION,
       dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null,
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
@@ -230,6 +239,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setPaused: (paused) => set({ paused }),
   toggleDebug: () => set((s) => ({ debug: !s.debug })),
   setWorldReady: (worldReady) => set({ worldReady }),
+  setLoadError: (loadError) => set({ loadError }),
+  retryWorld: () => set((s) => ({ loadError: null, worldReady: false, worldRetry: s.worldRetry + 1 })),
   setHasLocked: (hasLocked) => set({ hasLocked }),
   setSpawnPoint: (spawnPoint) => set({ spawnPoint }),
   updateSettings: (patch) =>

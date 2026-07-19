@@ -278,7 +278,12 @@ export class World {
     }
     missing.sort((a, b) => a[0] - b[0]);
     for (const [, cx, cz] of missing.slice(0, budget)) {
-      this.getChunk(cx, cz);
+      try {
+        this.getChunk(cx, cz);
+      } catch (err) {
+        // 单个 chunk 生成异常不堵死调度：下个周期还会重试，其余 chunk 照常生成
+        console.error(`chunk ${cx},${cz} 生成失败`, err);
+      }
     }
 
     const toRemove: string[] = [];

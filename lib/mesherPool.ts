@@ -83,10 +83,19 @@ const EMPTY: GeometryData = {
 };
 
 let pool: MesherPool | null = null;
+let poolFailed = false;
 
-/** 全局网格化池（浏览器端惰性创建；Worker 不可用时返回 null，调用方回退主线程构建） */
+/** 全局网格化池（浏览器端惰性创建；Worker 创建失败时返回 null，调用方回退主线程构建） */
 export function getMesherPool(): MesherPool | null {
-  if (typeof Worker === 'undefined') return null;
-  pool ??= new MesherPool();
+  if (typeof Worker === 'undefined' || poolFailed) return null;
+  if (!pool) {
+    try {
+      pool = new MesherPool();
+    } catch (err) {
+      console.warn('网格化 Worker 池创建失败，回退主线程建网', err);
+      poolFailed = true;
+      return null;
+    }
+  }
   return pool;
 }
