@@ -1,13 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { BLOCKS } from '@/lib/blocks';
-import { ARMOR_DEFS } from '@/lib/armor';
-import { materialName, materialTile } from '@/lib/materials';
 import { getStorage } from '@/lib/storage';
 import { useGameStore } from '@/lib/store';
-import { TOOLS } from '@/lib/tools';
 import type { Slot } from '@/lib/slots';
+import { slotCount, slotName, slotTile } from './slotDisplay';
 import {
   Dialog,
   DialogContent,
@@ -17,34 +14,18 @@ import {
 } from '@/components/ui/dialog';
 import { TileIcon } from './TileIcon';
 
-function slotName(slot: Slot): string {
-  if (!slot) return '';
-  if (slot.kind === 'block') return BLOCKS[slot.id].name;
-  if (slot.kind === 'material') return materialName(slot.material);
-  if (slot.kind === 'tool') return TOOLS[slot.tool].name;
-  return ARMOR_DEFS[slot.piece].name;
-}
-
-function slotTile(slot: Slot): number {
-  if (!slot) return 0;
-  if (slot.kind === 'block') return BLOCKS[slot.id].side;
-  if (slot.kind === 'material') return materialTile(slot.material);
-  if (slot.kind === 'tool') return TOOLS[slot.tool].iconTile;
-  return ARMOR_DEFS[slot.piece].iconTile;
-}
-
-function Cell({ slot, onClick, title }: { slot: Slot; onClick: () => void; title: string }) {
+function Cell({ slot, onClick }: { slot: Slot; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      title={title}
+      title={slotName(slot)}
       className="relative h-9 w-9 rounded border border-white/20 bg-black/30 hover:border-white/50"
     >
       {slot && (
         <>
           <TileIcon tile={slotTile(slot)} size={28} className="mx-auto" />
-          {slot.kind !== 'tool' && slot.kind !== 'armor' && slot.count > 1 && (
-            <span className="absolute bottom-0 right-0.5 text-[10px] font-bold text-white">{slot.count}</span>
+          {slotCount(slot) > 1 && (
+            <span className="absolute bottom-0 right-0.5 text-[10px] font-bold text-white">{slotCount(slot)}</span>
           )}
         </>
       )}
@@ -52,11 +33,12 @@ function Cell({ slot, onClick, title }: { slot: Slot; onClick: () => void; title
   );
 }
 
-/** 容器界面（箱子/木桶）：27 格容器 + 背包，点击互相转移整叠 */
+/** 容器界面（箱子/木桶）：27 格容器 + 27 背包 + 9 热键栏，点击互相转移整叠 */
 export function StorageDialog() {
   const storageKey = useGameStore((s) => s.storageOpen);
   const setOpen = useGameStore((s) => s.setStorageOpen);
-  const slots = useGameStore((s) => s.hotbarSlots);
+  const hotbarSlots = useGameStore((s) => s.hotbarSlots);
+  const mainSlots = useGameStore((s) => s.mainSlots);
   const storagePut = useGameStore((s) => s.storagePut);
   const storageTake = useGameStore((s) => s.storageTake);
   // 容器内容变化不走 store：本地版本号驱动重渲染
@@ -76,7 +58,7 @@ export function StorageDialog() {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>容器</DialogTitle>
-          <DialogDescription>点击物品在背包与容器之间转移（整叠）</DialogDescription>
+          <DialogDescription>点击物品在物品栏与容器之间转移（整叠）</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-9 gap-1 rounded-md border p-2">
@@ -84,7 +66,6 @@ export function StorageDialog() {
               <Cell
                 key={i}
                 slot={slot}
-                title={slot ? slotName(slot) : ''}
                 onClick={() => {
                   storageTake(i);
                   refresh();
@@ -93,13 +74,24 @@ export function StorageDialog() {
             ))}
           </div>
           <div className="grid grid-cols-9 gap-1 rounded-md border p-2">
-            {slots.map((slot, i) => (
+            {mainSlots.map((slot, i) => (
               <Cell
                 key={i}
                 slot={slot}
-                title={slot ? slotName(slot) : ''}
                 onClick={() => {
-                  storagePut(i);
+                  storagePut('main', i);
+                  refresh();
+                }}
+              />
+            ))}
+          </div>
+          <div className="grid grid-cols-9 gap-1 rounded-md border border-white/40 p-2">
+            {hotbarSlots.map((slot, i) => (
+              <Cell
+                key={i}
+                slot={slot}
+                onClick={() => {
+                  storagePut('hotbar', i);
                   refresh();
                 }}
               />

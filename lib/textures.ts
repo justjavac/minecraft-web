@@ -21,6 +21,24 @@ export let tilePx = DEFAULT_TILE_PX;
 const LEATHER = '#a06830';
 const LEATHER_DARK = '#6b4420';
 
+// ——— 灰度贴图染色（MC 生物群系着色的简化：固定平原绿） ———
+// Faithful/原版中草顶、树叶、草类是灰度图，游戏里靠群系着色；这里在拼 atlas 时统一染绿
+const GRASS_TINT = '#91bd59'; // MC 平原草色
+const FOLIAGE_TINT = '#77ab2f'; // MC 平原树叶色
+const SPRUCE_TINT = '#619961'; // MC 云杉叶色（偏灰绿）
+const TILE_TINTS: Record<string, string> = {
+  grass_block_top: GRASS_TINT,
+  short_grass: GRASS_TINT,
+  fern: GRASS_TINT,
+  oak_leaves: FOLIAGE_TINT,
+  birch_leaves: FOLIAGE_TINT,
+  jungle_leaves: FOLIAGE_TINT,
+  acacia_leaves: FOLIAGE_TINT,
+  dark_oak_leaves: FOLIAGE_TINT,
+  mangrove_leaves: FOLIAGE_TINT,
+  spruce_leaves: SPRUCE_TINT,
+};
+
 /** 填充 16×16 底色 + 确定性噪点 */
 function speckle(ctx: CanvasRenderingContext2D, dx: number, dy: number, base: string, dark: string, seed: number): void {
   ctx.fillStyle = base;
@@ -250,13 +268,31 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   const drawTile = (i: number, dx: number, dy: number) => {
     const stem = TILE_STEMS[i];
     const img = custom[stem];
+    let sx = 0;
+    let sy = 0;
     if (img) {
       ctx.drawImage(img, dx, dy, tilePx, tilePx);
-      return;
+    } else {
+      sx = (i % ATLAS_COLS) * DEFAULT_TILE_PX;
+      sy = Math.floor(i / ATLAS_COLS) * DEFAULT_TILE_PX;
+      ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx, dy, tilePx, tilePx);
     }
-    const sx = (i % ATLAS_COLS) * DEFAULT_TILE_PX;
-    const sy = Math.floor(i / ATLAS_COLS) * DEFAULT_TILE_PX;
-    ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx, dy, tilePx, tilePx);
+    // 灰度贴图染绿：multiply 上色后按原图 alpha 裁回（树叶镂空不被填色）。
+    // 必须 clip 到本格——destination-in 会把源图透明区外的整个画布清掉
+    const tint = TILE_TINTS[stem];
+    if (tint) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(dx, dy, tilePx, tilePx);
+      ctx.clip();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = tint;
+      ctx.fillRect(dx, dy, tilePx, tilePx);
+      ctx.globalCompositeOperation = 'destination-in';
+      if (img) ctx.drawImage(img, dx, dy, tilePx, tilePx);
+      else ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx, dy, tilePx, tilePx);
+      ctx.restore();
+    }
   };
   for (let i = 0; i < TILE_STEMS.length; i++) {
     drawTile(i, (i % ATLAS_COLS) * tilePx, Math.floor(i / ATLAS_COLS) * tilePx);

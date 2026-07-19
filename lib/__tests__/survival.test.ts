@@ -60,8 +60,8 @@ describe('槽位背包', () => {
     expect(useGameStore.getState().hotbarSlots[0]).toEqual({ kind: 'block', id: STONE, count: 5 });
   });
 
-  it('放不下的部分作为剩余返回', () => {
-    const leftover = useGameStore.getState().addStack({ kind: 'block', id: STONE }, 64 * 9 + 10);
+  it('放不下的部分作为剩余返回（热键栏+背包全满）', () => {
+    const leftover = useGameStore.getState().addStack({ kind: 'block', id: STONE }, 64 * 36 + 10);
     expect(leftover).toBe(10);
   });
 

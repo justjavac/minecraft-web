@@ -18,9 +18,15 @@ function isStackSlot(slot: Slot): slot is { kind: 'block'; id: BlockId; count: n
 }
 
 export const HOTBAR_SIZE = 9;
+/** 背包（热键栏之外的主物品栏）格数：MC 3×9 */
+export const BACKPACK_SIZE = 27;
 
 export function emptySlots(): Slot[] {
   return Array.from({ length: HOTBAR_SIZE }, () => null);
+}
+
+export function emptyBackpack(): Slot[] {
+  return Array.from({ length: BACKPACK_SIZE }, () => null);
 }
 
 export const STACK_MAX = 64; // MC 一组 64

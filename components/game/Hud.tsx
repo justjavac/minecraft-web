@@ -126,13 +126,13 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
   );
 }
 
-/** 生存模式护甲 + 血条 + 饥饿条（护甲条在上，与 MC 一致） */
+/** 生存模式护甲 + 血条 + 饥饿条（护甲条在上，与 MC 一致；置于热键栏簇内最上方） */
 function SurvivalBars() {
   const health = useGameStore((s) => s.health);
   const hunger = useGameStore((s) => s.hunger);
   const armor = useGameStore((s) => armorPoints(s.armorSlots));
   return (
-    <div className="absolute bottom-[4.6rem] left-1/2 w-[19.5rem] -translate-x-1/2 space-y-1 sm:w-[28.5rem]">
+    <div className="w-full space-y-1 pb-0.5">
       {armor > 0 && <Meter value={armor * 2} color="#9ca3af" />}
       <div className="flex justify-between">
         <Meter value={health} color="#ef4444" />
@@ -292,9 +292,10 @@ export function Hud() {
 
       <Notice />
 
-      {/* 热键栏（可点选，移动端小屏缩小；创造=固定面板，生存=槽位背包） */}
-      <div className="pointer-events-auto absolute bottom-3 left-1/2 z-20 -translate-x-1/2">
-        <div className="mb-1 text-center text-sm text-white drop-shadow-md">
+      {/* 热键栏（可点选，移动端小屏缩小；创造=固定面板，生存=槽位背包；生存时血量饥饿置顶） */}
+      <div className="pointer-events-auto absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1">
+        {worldMode === 'survival' && <SurvivalBars />}
+        <div className="text-center text-sm text-white drop-shadow-md">
           {selectedName}
           {flying ? ' · 飞行中' : ''}
         </div>
@@ -327,9 +328,6 @@ export function Hud() {
           </div>
         )}
       </div>
-
-      {/* 生存：血条 + 饥饿条 */}
-      {worldMode === 'survival' && <SurvivalBars />}
 
       {/* 受击红屏闪烁 */}
       {lastDamageAt > 0 && (

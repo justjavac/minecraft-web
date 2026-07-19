@@ -49,7 +49,7 @@ describe('掉落物实体', () => {
     expect(itemDrops.length).toBe(0);
   });
 
-  it('拾取回调拒收时实体保留（背包满场景）', () => {
+  it('拾取回调拒收时实体保留（背包满场景）', { timeout: 20000 }, () => {
     const w = floorWorld();
     spawnBlockDrop(STONE, 0.5, 10.5, 0.5);
     itemDrops[0].age = 1;

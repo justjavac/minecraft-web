@@ -36,7 +36,7 @@ function currentExtras(): SaveExtras {
     mode: s.worldMode,
     survival:
       s.worldMode === 'survival'
-        ? { health: s.health, hunger: s.hunger, saturation: s.saturation, slots: s.hotbarSlots, armor: s.armorSlots }
+        ? { health: s.health, hunger: s.hunger, saturation: s.saturation, slots: s.hotbarSlots, backpack: s.mainSlots, armor: s.armorSlots }
         : undefined,
     furnaces: furnaces.size > 0 ? Object.fromEntries(furnaces) : undefined,
   };

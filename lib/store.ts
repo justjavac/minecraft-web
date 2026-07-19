@@ -7,7 +7,7 @@ import { FOODS, getFurnace, putIntoFurnace, takeOutput } from './furnace';
 import { hurtState, playerPosition, survivalStats } from './game';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
 import { applyCraft, canCraft, hasSpaceFor, type Recipe } from './recipes';
-import { addArmorToSlots, addStackToSlots, addToolToSlots, emptySlots, type Slot } from './slots';
+import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
 import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS, type ToolType } from './tools';
 
@@ -95,6 +95,8 @@ interface GameStore {
   lastDamageAt: number;
   /** 生存模式热键栏 9 格（方块堆叠 / 材料 / 工具 / 装备） */
   hotbarSlots: Slot[];
+  /** 生存模式主物品栏 27 格（热键栏放不下时溢出到这里；E 打开物品栏互移） */
+  mainSlots: Slot[];
   /** 装备槽（皮甲 4 件） */
   armorSlots: ArmorSlots;
   /** 合成界面开关与是否带工作台（3×3 配方） */
@@ -129,12 +131,12 @@ interface GameStore {
   /** 受伤（带无敌帧）；返回是否实际扣血 */
   damagePlayer: (amount: number) => boolean;
   /** 读档时恢复生存数值 */
-  loadSurvival: (s: { health: number; hunger: number; saturation?: number; slots?: Slot[]; armor?: ArmorSlots }) => void;
+  loadSurvival: (s: { health: number; hunger: number; saturation?: number; slots?: Slot[]; backpack?: Slot[]; armor?: ArmorSlots }) => void;
   setCraftingOpen: (open: boolean, withTable?: boolean) => void;
   setFurnaceOpen: (key: string | null) => void;
   setStorageOpen: (key: string | null) => void;
-  /** 把热键栏 slotIndex 的整叠物品移入打开的容器 */
-  storagePut: (slotIndex: number) => void;
+  /** 把热键栏/背包某格的整叠物品移入打开的容器 */
+  storagePut: (area: 'hotbar' | 'main', slotIndex: number) => void;
   /** 把打开容器的 index 整叠物品移到热键栏 */
   storageTake: (index: number) => void;
   /** 吃选中槽位的食物（MC：回复饥饿与饱和度），非食物返回 false */
@@ -162,6 +164,10 @@ interface GameStore {
   setNotice: (text: string | null) => void;
   /** 执行一次合成（材料与空间预检），成功返回 true */
   craft: (recipe: Recipe) => boolean;
+  /** 物品栏内移动：点击把 hotbar/main 某格整格移到另一区域（可堆叠自动合并） */
+  moveSlot: (area: 'hotbar' | 'main', index: number) => void;
+  /** 卸下装备槽的一件装备到物品栏（热键栏优先），满则不动 */
+  unequipArmor: (piece: ArmorPiece) => void;
 }
 
 export const useGameStore = create<GameStore>()((set, get) => ({
@@ -183,6 +189,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   dead: false,
   lastDamageAt: 0,
   hotbarSlots: emptySlots(),
+  mainSlots: emptyBackpack(),
   armorSlots: emptyArmorSlots(),
   craftingOpen: false,
   craftingTable: false,
@@ -201,7 +208,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       screen: 'playing', mode: 'new', seed, paused: false, flying: false, worldReady: false,
       hasLocked: false, spawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION,
-      dead: false, hotbarSlots: emptySlots(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null,
+      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null,
     });
   },
   continueGame: () =>
@@ -258,10 +265,11 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       const health = Math.max(0, s.health - finalAmount);
       const died = health <= 0 && !s.dead;
       let hotbarSlots = s.hotbarSlots;
+      let mainSlots = s.mainSlots;
       if (died) {
-        // 死亡掉落：热键栏 + 装备槽全部物品散落在死亡点（与 MC 一致）
+        // 死亡掉落：热键栏 + 背包 + 装备槽全部物品散落在死亡点（与 MC 一致）
         const { x, y, z } = playerPosition;
-        for (const slot of s.hotbarSlots) {
+        for (const slot of [...s.hotbarSlots, ...s.mainSlots]) {
           if (!slot) continue;
           if (slot.kind === 'block') spawnBlockDrop(slot.id, x, y + 0.5, z, slot.count);
           else if (slot.kind === 'material') spawnMaterialDrop(slot.material, x, y + 0.5, z, slot.count);
@@ -273,18 +281,20 @@ export const useGameStore = create<GameStore>()((set, get) => ({
           if (cur) spawnArmorDrop(piece, x, y + 0.5, z, cur.durability);
         }
         hotbarSlots = emptySlots();
+        mainSlots = emptyBackpack();
         armorSlots = emptyArmorSlots();
       }
-      return { health, dead: health <= 0 || s.dead, lastDamageAt: now, hotbarSlots, armorSlots };
+      return { health, dead: health <= 0 || s.dead, lastDamageAt: now, hotbarSlots, mainSlots, armorSlots };
     });
     return true;
   },
-  loadSurvival: ({ health, hunger, saturation, slots, armor }) =>
+  loadSurvival: ({ health, hunger, saturation, slots, backpack, armor }) =>
     set({
       health,
       hunger,
       saturation: saturation ?? MAX_SATURATION,
       hotbarSlots: slots ?? emptySlots(),
+      mainSlots: backpack ?? emptyBackpack(),
       armorSlots: armor ?? emptyArmorSlots(),
       dead: false,
     }),
@@ -300,15 +310,26 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (storageOpen && typeof document !== 'undefined') document.exitPointerLock();
     set({ storageOpen });
   },
-  storagePut: (slotIndex) => {
+  storagePut: (area, slotIndex) => {
     const s = get();
     if (!s.storageOpen) return;
-    set({ hotbarSlots: putIntoStorage(s.hotbarSlots, slotIndex, getStorage(s.storageOpen)) });
+    if (area === 'hotbar') set({ hotbarSlots: putIntoStorage(s.hotbarSlots, slotIndex, getStorage(s.storageOpen)) });
+    else set({ mainSlots: putIntoStorage(s.mainSlots, slotIndex, getStorage(s.storageOpen)) });
   },
   storageTake: (index) => {
     const s = get();
     if (!s.storageOpen) return;
-    set({ hotbarSlots: takeFromStorage(s.hotbarSlots, getStorage(s.storageOpen), index) });
+    const storage = getStorage(s.storageOpen);
+    const before = storage[index];
+    if (!before) return;
+    // 优先移到热键栏，一格没动则进背包
+    const hot = takeFromStorage(s.hotbarSlots, storage, index);
+    if (storage[index] !== before) {
+      set({ hotbarSlots: hot });
+      return;
+    }
+    const main = takeFromStorage(s.mainSlots, storage, index);
+    if (storage[index] !== before) set({ mainSlots: main });
   },
   eatSelectedFood: () => {
     const s = get();
@@ -336,20 +357,35 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set({ hotbarSlots: takeOutput(s.hotbarSlots, getFurnace(s.furnaceOpen)) });
   },
   addStack: (item, count = 1) => {
-    const { slots, leftover } = addStackToSlots(get().hotbarSlots, item, count);
-    if (slots !== get().hotbarSlots) set({ hotbarSlots: slots });
-    return leftover;
+    // 先填热键栏，放不下的溢出到背包（MC：新物品优先热键栏）
+    const first = addStackToSlots(get().hotbarSlots, item, count);
+    if (first.slots !== get().hotbarSlots) set({ hotbarSlots: first.slots });
+    if (first.leftover <= 0) return 0;
+    const second = addStackToSlots(get().mainSlots, item, first.leftover);
+    if (second.slots !== get().mainSlots) set({ mainSlots: second.slots });
+    return second.leftover;
   },
   addTool: (tool, durability) => {
-    const next = addToolToSlots(get().hotbarSlots, tool, durability ?? TOOLS[tool].durability);
-    if (!next) return false;
-    set({ hotbarSlots: next });
+    // 热键栏满了放背包
+    const hot = addToolToSlots(get().hotbarSlots, tool, durability ?? TOOLS[tool].durability);
+    if (hot) {
+      set({ hotbarSlots: hot });
+      return true;
+    }
+    const main = addToolToSlots(get().mainSlots, tool, durability ?? TOOLS[tool].durability);
+    if (!main) return false;
+    set({ mainSlots: main });
     return true;
   },
   addArmor: (piece, durability) => {
-    const next = addArmorToSlots(get().hotbarSlots, piece, durability ?? ARMOR_DEFS[piece].durability);
-    if (!next) return false;
-    set({ hotbarSlots: next });
+    const hot = addArmorToSlots(get().hotbarSlots, piece, durability ?? ARMOR_DEFS[piece].durability);
+    if (hot) {
+      set({ hotbarSlots: hot });
+      return true;
+    }
+    const main = addArmorToSlots(get().mainSlots, piece, durability ?? ARMOR_DEFS[piece].durability);
+    if (!main) return false;
+    set({ mainSlots: main });
     return true;
   },
   equipSelectedArmor: () => {
@@ -406,17 +442,62 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   },
   craft: (recipe) => {
     const s = get();
-    if (!canCraft(s.hotbarSlots, recipe)) return false;
-    if (!hasSpaceFor(s.hotbarSlots, recipe.out)) return false;
+    // 合成考虑整个物品栏（热键栏 + 背包，MC 一致）；产物优先热键栏
+    const merged = [...s.hotbarSlots, ...s.mainSlots];
+    if (!canCraft(merged, recipe)) return false;
+    if (!hasSpaceFor(merged, recipe.out)) return false;
     const durability =
       recipe.out.kind === 'tool'
         ? TOOLS[recipe.out.tool].durability
         : recipe.out.kind === 'armor'
           ? ARMOR_DEFS[recipe.out.piece].durability
           : 0;
-    set({ hotbarSlots: applyCraft(s.hotbarSlots, recipe, durability) });
+    const next = applyCraft(merged, recipe, durability);
+    set({ hotbarSlots: next.slice(0, 9), mainSlots: next.slice(9) });
     return true;
   },
+  moveSlot: (area, index) =>
+    set((s) => {
+      const from = area === 'hotbar' ? s.hotbarSlots : s.mainSlots;
+      const to = area === 'hotbar' ? s.mainSlots : s.hotbarSlots;
+      const slot = from[index];
+      if (!slot) return s;
+      if (slot.kind === 'block' || slot.kind === 'material') {
+        const item = slot.kind === 'block' ? { kind: 'block' as const, id: slot.id } : { kind: 'material' as const, material: slot.material };
+        const out = addStackToSlots(to, item, slot.count);
+        if (out.leftover === slot.count) return s; // 一格都没动
+        const nextFrom = [...from];
+        nextFrom[index] = out.leftover > 0 ? { ...slot, count: out.leftover } : null;
+        return area === 'hotbar' ? { hotbarSlots: nextFrom, mainSlots: out.slots } : { mainSlots: nextFrom, hotbarSlots: out.slots };
+      }
+      // 工具/装备：找空槽
+      const empty = to.indexOf(null);
+      if (empty < 0) return s;
+      const nextTo = [...to];
+      nextTo[empty] = slot;
+      const nextFrom = [...from];
+      nextFrom[index] = null;
+      return area === 'hotbar' ? { hotbarSlots: nextFrom, mainSlots: nextTo } : { mainSlots: nextFrom, hotbarSlots: nextTo };
+    }),
+  unequipArmor: (piece) =>
+    set((s) => {
+      const cur = s.armorSlots[piece];
+      if (!cur) return s;
+      const slot: Slot = { kind: 'armor', piece, durability: cur.durability };
+      let hotbarSlots = s.hotbarSlots;
+      let mainSlots = s.mainSlots;
+      const hi = hotbarSlots.indexOf(null);
+      if (hi >= 0) {
+        hotbarSlots = [...hotbarSlots];
+        hotbarSlots[hi] = slot;
+      } else {
+        const mi = mainSlots.indexOf(null);
+        if (mi < 0) return s;
+        mainSlots = [...mainSlots];
+        mainSlots[mi] = slot;
+      }
+      return { hotbarSlots, mainSlots, armorSlots: { ...s.armorSlots, [piece]: null } };
+    }),
 }));
 
 export function randomSeed(): string {

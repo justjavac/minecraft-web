@@ -24,6 +24,8 @@ export interface SurvivalSnapshot {
   saturation?: number;
   /** 热键栏 9 格（v2 槽位格式） */
   slots: Slot[];
+  /** 主物品栏（背包）27 格（v5 新增，旧存档缺省为空） */
+  backpack?: Slot[];
   /** 装备槽（v4 新增，旧存档缺省为空） */
   armor?: ArmorSlots;
 }
