@@ -318,8 +318,9 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.generateMipmaps = false;
+  // minFilter 走 mipmap（Nearest 双线性）：近处保持像素风，远处消除闪烁/摩尔纹
+  texture.minFilter = THREE.NearestMipmapLinearFilter;
+  texture.generateMipmaps = true;
   texture.colorSpace = THREE.SRGBColorSpace;
   atlasDataUrl = canvas.toDataURL();
 
@@ -336,8 +337,8 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   }
   waterStrip = new THREE.CanvasTexture(stripCanvas);
   waterStrip.magFilter = THREE.NearestFilter;
-  waterStrip.minFilter = THREE.NearestFilter;
-  waterStrip.generateMipmaps = false;
+  waterStrip.minFilter = THREE.NearestMipmapLinearFilter;
+  waterStrip.generateMipmaps = true;
   waterStrip.colorSpace = THREE.SRGBColorSpace;
   waterStrip.wrapS = THREE.RepeatWrapping;
   waterStrip.wrapT = THREE.RepeatWrapping;

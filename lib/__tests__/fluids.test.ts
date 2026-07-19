@@ -1,7 +1,7 @@
 // 流体传播：水位识别 + 下流水柱 + 落地扩散
 
 import { describe, expect, it } from 'vitest';
-import { AIR, STONE, WATER, WATER_FLOW_1 } from '../blocks';
+import { AIR, BLOCK_BY_KEY, STONE, WATER, WATER_FLOW_1 } from '../blocks';
 import { tickFluids, waterLevel } from '../fluids';
 import { VOID_TERRAIN } from '../noise';
 import { World } from '../world';
@@ -42,6 +42,15 @@ describe('流体传播', () => {
     expect(waterLevel(w.getBlock(8, 11, 6))).toBe(2);
     // 源永不降级/消失
     expect(w.getBlock(6, 11, 6)).toBe(WATER);
+  });
+
+  it('水遇岩浆源：岩浆变黑曜石', () => {
+    const w = new World('fluid-lava', undefined, VOID_TERRAIN);
+    for (let x = 2; x <= 8; x++) w.setBlock(x, 19, 6, STONE); // 地板让水横向扩散
+    w.setBlock(6, 20, 6, BLOCK_BY_KEY.lava.id);
+    w.setBlock(4, 20, 6, WATER);
+    for (let i = 0; i < 8; i++) tickFluids(w, 128);
+    expect(w.getBlock(6, 20, 6)).toBe(BLOCK_BY_KEY.obsidian.id);
   });
 
   it('扩散不超过 7 级', () => {

@@ -1,6 +1,6 @@
 // 流体传播（水源 + 流水 1-7 级）：队列驱动、每 tick 限量。v1 只传播不消退
 
-import { AIR, BLOCKS, isWaterId, WATER, WATER_FLOW_1, type BlockId } from './blocks';
+import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId, isWaterId, WATER, WATER_FLOW_1, type BlockId } from './blocks';
 import type { World } from './world';
 
 const FLOW_BASE = WATER_FLOW_1;
@@ -45,6 +45,13 @@ export function tickFluids(world: World, budget = 128): void {
     const id = world.getBlock(x, y, z);
     const level = waterLevel(id);
     if (level < 0) continue;
+    // 水与岩浆源接触：岩浆变黑曜石（MC 规则；本游戏岩浆只有源头）
+    const obsidian = BLOCK_BY_KEY.obsidian.id;
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
+      if (isLavaId(world.getBlock(x + dx, y + dy, z + dz))) {
+        world.setBlock(x + dx, y + dy, z + dz, obsidian);
+      }
+    }
     // 消退（仅流水）：上方供水 或 同级上游（level-1）邻居，缺失则退化为空气（MC 规则）
     if (level > 0 && !isWaterId(world.getBlock(x, y + 1, z))) {
       const parentLevel = level - 1;
