@@ -106,6 +106,8 @@ export const RECIPES: Recipe[] = [
   { id: 'stone_hoe', name: '石锄', out: { kind: 'tool', tool: 'stone_hoe' }, cost: [{ item: COBBLE_ITEM, count: 2 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'iron_hoe', name: '铁锄', out: { kind: 'tool', tool: 'iron_hoe' }, cost: [{ item: 'material:iron_ingot', count: 2 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'bread', name: '面包', out: { kind: 'material', material: 'bread', count: 1 }, cost: [{ item: 'material:wheat', count: 3 }], needsTable: false },
+  // 骨粉：1 骨头 → 3 骨粉（MC）
+  { id: 'bonemeal', name: '骨粉 ×3', out: { kind: 'material', material: 'bonemeal', count: 3 }, cost: [{ item: 'material:bone', count: 1 }], needsTable: false },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_pickaxe', name: '石镐', out: { kind: 'tool', tool: 'stone_pickaxe' }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'wooden_axe', name: '木斧', out: { kind: 'tool', tool: 'wooden_axe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },

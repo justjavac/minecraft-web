@@ -63,8 +63,9 @@ describe('耕种', () => {
     expect(w.getBlock(4, 31, 4)).toBe(WHEAT_CROP_0);
     // 消耗了 1 种子
     expect(useGameStore.getState().hotbarSlots[0]).toEqual({ kind: 'material', material: 'wheat_seeds', count: 4 });
-    // 生长：推进随机刻直到成熟（1/12 概率/2s，800 次足够）
+    // 生长：推进随机刻直到成熟（1/12 概率/2s，800 次足够；虚空世界无天空光，手动补光）
     notifyCropBlockSet(4, 31, 4, WHEAT_CROP_0); // 生成不走 setBlock 钩子，手动登记
+    w.chunks.get('0,0')!.sky.fill(15);
     for (let i = 0; i < 800 && w.getBlock(4, 31, 4) < WHEAT_CROP_0 + 7; i++) tickCrops(w, 2);
     expect(w.getBlock(4, 31, 4)).toBe(WHEAT_CROP_0 + 7);
     // 收割

@@ -26,12 +26,14 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   // 怪物掉落
   string: { name: '线', tile: tileIcon('item/string') },
   feather: { name: '羽毛', tile: tileIcon('item/feather') },
+  bone: { name: '骨头', tile: tileIcon('item/bone') },
   // 弹药
   arrow: { name: '箭', tile: tileIcon('item/arrow') },
   // 耕种作物
   wheat_seeds: { name: '小麦种子', tile: tileIcon('item/wheat_seeds') },
   wheat: { name: '小麦', tile: tileIcon('item/wheat') },
   bread: { name: '面包', tile: tileIcon('item/bread') },
+  bonemeal: { name: '骨粉', tile: tileIcon('item/bone_meal') },
 };
 
 export function materialName(material: string): string {

@@ -3,12 +3,12 @@
 import { Vector3 } from 'three';
 import { AIR, BLOCKS, BLOCK_BY_KEY, CRAFTING_TABLE, DIRT, FURNACE, GRASS, WHEAT_CROP_0, type BlockId } from './blocks';
 import { dropFurnaceContents, FOODS } from './furnace';
-import { isWheatCropId } from './crops';
+import { isFarmlandId, isWheatCropId } from './crops';
 import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, playerPosition, worldClock } from './game';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
-import { breedMob, firePlayerArrow, MOB_DEFS, mobInReach, mobs } from './mobs';
+import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach } from './mobs';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
 import { useGameStore } from './store';
@@ -83,7 +83,7 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
       dropStorageContents(`${x},${y},${z}`, x, y, z);
     }
     // 耕地被破坏：上面的作物弹出为 1 种子
-    if (oldId === BLOCK_BY_KEY.farmland.id && isWheatCropId(world.getBlock(x, y + 1, z))) {
+    if (isFarmlandId(oldId) && isWheatCropId(world.getBlock(x, y + 1, z))) {
       world.setBlock(x, y + 1, z, AIR);
       spawnMaterialDrop('wheat_seeds', x + 0.5, y + 1.4, z + 0.5, 1);
     }
@@ -125,19 +125,20 @@ export function tryPlace(): boolean {
       }
       return false;
     }
-    // 手持小麦右键：喂养视线内的成年动物并繁殖（MC 小麦繁殖）
-    if (held?.kind === 'material' && held.material === 'wheat') {
+    // 手持繁殖食物右键：喂养视线内的成年动物（MC：进入恋爱模式，两只恋爱个体才产仔）
+    if (held?.kind === 'material') {
       camera.getWorldDirection(dir);
       const mob = mobInReach(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
-      if (mob && !MOB_DEFS[mob.type].hostile && !mob.baby) {
-        if (mobs.length >= 40) {
-          s.setNotice('动物太多了');
+      if (mob && !MOB_DEFS[mob.type].hostile && !mob.baby && BREED_FOOD[mob.type] === held.material) {
+        if ((mob.breedCd ?? 0) > 0) {
+          s.setNotice('刚繁殖过，让它缓缓');
+          lastPlace = now;
           return false;
         }
-        if (s.consumeMaterial('wheat', 1)) {
-          breedMob(mob);
+        if (s.consumeMaterial(held.material, 1)) {
+          feedMob(mob);
           playSound('place');
-          s.setNotice('繁殖成功');
+          s.setNotice('它在寻找伴侣…');
           lastPlace = now;
           return false;
         }
@@ -167,11 +168,11 @@ export function tryPlace(): boolean {
     lastPlace = now;
     return false;
   }
-  // 播种：手持小麦种子右键耕地 → 种上小麦（第 0 阶段）
+  // 播种：手持小麦种子右键耕地（干/湿均可）→ 种上小麦（第 0 阶段）
   if (
     heldSlot?.kind === 'material' &&
     heldSlot.material === 'wheat_seeds' &&
-    hitId === BLOCK_BY_KEY.farmland.id &&
+    isFarmlandId(hitId) &&
     world.getBlock(bx, by + 1, bz) === AIR
   ) {
     world.setBlock(bx, by + 1, bz, WHEAT_CROP_0);
@@ -179,6 +180,35 @@ export function tryPlace(): boolean {
     playSound('place');
     lastPlace = now;
     return true;
+  }
+  // 骨粉：催熟小麦（+1~2 阶段）；点草方块催出花草（湿润耕地也可播种）
+  if (heldSlot?.kind === 'material' && heldSlot.material === 'bonemeal') {
+    if (isWheatCropId(hitId) && hitId < WHEAT_CROP_0 + 7) {
+      world.setBlock(bx, by, bz, Math.min(hitId + 1 + Math.floor(Math.random() * 2), WHEAT_CROP_0 + 7));
+      s.consumeMaterial('bonemeal', 1);
+      breakParticles.push({ x: bx, y: by, z: bz, tile: BLOCKS[hitId].side });
+      playSound('place');
+      lastPlace = now;
+      return true;
+    }
+    if (hitId === GRASS) {
+      let grown = 0;
+      for (let t = 0; t < 24 && grown < 4; t++) {
+        const px = bx + Math.floor(Math.random() * 7) - 3;
+        const pz = bz + Math.floor(Math.random() * 7) - 3;
+        if (world.getBlock(px, by + 1, pz) !== AIR) continue;
+        if (world.getBlock(px, by, pz) !== GRASS) continue;
+        const pick = Math.random();
+        world.setBlock(px, by + 1, pz, pick < 0.6 ? BLOCK_BY_KEY.short_grass.id : pick < 0.8 ? BLOCK_BY_KEY.dandelion.id : BLOCK_BY_KEY.poppy.id);
+        grown++;
+      }
+      if (grown > 0) {
+        s.consumeMaterial('bonemeal', 1);
+        playSound('place');
+        lastPlace = now;
+        return true;
+      }
+    }
   }
   if (hitId === CRAFTING_TABLE) {
     s.setCraftingOpen(true, true);

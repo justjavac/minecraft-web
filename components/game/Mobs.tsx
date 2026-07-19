@@ -167,9 +167,11 @@ export function Mobs() {
     if (store.worldMode !== 'survival' || store.paused) return;
     const dt = Math.min(delta, 0.05);
 
+    const held = store.hotbarSlots[store.selectedSlot];
+    const lureFood = held?.kind === 'material' ? held.material : null;
     tickMobs(world, dt, playerPosition, (dmg) => {
       if (!useGameStore.getState().dead) useGameStore.getState().damagePlayer(dmg);
-    });
+    }, lureFood);
 
     // 同步生物网格（材质表就绪后才创建）
     if (mobMats) {

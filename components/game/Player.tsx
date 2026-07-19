@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls } from '@react-three/drei';
 import { Euler, PerspectiveCamera, Vector3 } from 'three';
-import { BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
+import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
 import { breakBlock, tryPlace } from '@/lib/actions';
+import { isFarmlandId, isWheatCropId } from '@/lib/crops';
 import { cameraRef, debugInfo, digState, getActiveWorld, playerPosition, survivalStats, targetBlock, touchInput } from '@/lib/game';
+import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
 import { damageMob, mobInReach } from '@/lib/mobs';
 import { SEA_LEVEL } from '@/lib/noise';
@@ -324,7 +326,23 @@ export function Player() {
     p.y += dy;
     const hitY = collideAxis(world, p, 1, dy, HALF_W, HEIGHT);
     if (hitY) {
-      if (dy < 0) onGround.current = true;
+      if (dy < 0) {
+        onGround.current = true;
+        // 踩踏耕地：跳起/跌落到耕地上会踩回泥土（MC 规则），上面的作物弹出
+        if (velY.current <= -7 && !flying) {
+          const tx = Math.floor(p.x);
+          const ty = Math.floor(p.y - 0.01);
+          const tz = Math.floor(p.z);
+          if (isFarmlandId(world.getBlock(tx, ty, tz))) {
+            world.setBlock(tx, ty, tz, BLOCK_BY_KEY.dirt.id);
+            if (isWheatCropId(world.getBlock(tx, ty + 1, tz))) {
+              world.setBlock(tx, ty + 1, tz, AIR);
+              if (gs.worldMode === 'survival') spawnMaterialDrop('wheat_seeds', tx + 0.5, ty + 1.4, tz + 0.5, 1);
+            }
+            playSound('dig_dirt');
+          }
+        }
+      }
       velY.current = 0;
     } else if (dy !== 0) {
       onGround.current = false;

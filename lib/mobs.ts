@@ -28,7 +28,7 @@ export interface MobDef {
 
 export const MOB_DEFS: Record<MobType, MobDef> = {
   zombie: { name: '僵尸', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [] },
-  skeleton: { name: '骷髅', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 3, attackRange: 16, attackCd: 2, drops: [] },
+  skeleton: { name: '骷髅', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 3, attackRange: 16, attackCd: 2, drops: [{ material: 'bone', count: [0, 2] }, { material: 'arrow', count: [0, 2] }] },
   spider: { name: '蜘蛛', hp: 16, speed: 3.2, hostile: true, burnsAtDay: false, damage: 2, attackRange: 1.4, attackCd: 1, drops: [{ material: 'string', count: [0, 2] }] },
   creeper: { name: '苦力怕', hp: 20, speed: 2.2, hostile: true, burnsAtDay: false, damage: 0, attackRange: 3, attackCd: 1.5, drops: [] },
   pig: { name: '猪', hp: 10, speed: 1.5, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'raw_pork', count: [1, 3] }] },
@@ -63,6 +63,13 @@ export interface Mob {
   baby?: boolean;
   /** 幼体成长剩余秒数 */
   growUp?: number;
+  /** 恋爱剩余秒数（喂食后进入；与同种恋爱个体靠近才产仔） */
+  loveTimer?: number;
+  /** 繁殖冷却剩余秒数 */
+  breedCd?: number;
+  /** 村庄锚点（村民不远离村庄；生成时写入） */
+  homeX?: number;
+  homeZ?: number;
 }
 
 export interface Arrow {
@@ -129,6 +136,19 @@ export function breedMob(parent: Mob): Mob {
   return baby;
 }
 
+/** 各物种的繁殖食物（材料名；MC：牛/猪吃小麦，鸡吃种子） */
+export const BREED_FOOD: Partial<Record<MobType, string>> = {
+  cow: 'wheat',
+  pig: 'wheat',
+  chicken: 'wheat_seeds',
+};
+
+/** 喂食：进入 8s 恋爱模式并回复 4 血（MC 喂食回 2 心） */
+export function feedMob(m: Mob): void {
+  m.loveTimer = 8;
+  m.hp = Math.min(MOB_DEFS[m.type].hp, m.hp + 4);
+}
+
 function makeMob(type: MobType, x: number, y: number, z: number): Mob {
   return {
     id: nextId++, type, x, y, z,
@@ -146,10 +166,9 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
   const passiveCount = mobs.length - hostileCount;
   if (night && hostileCount >= MAX_HOSTILE) return false;
   if (!night && passiveCount >= MAX_PASSIVE) return false;
-  // 白天且靠近村庄中心：70% 生成村民
-  const type = !night && villageCenterNear(world.seedHash, world.terrain, px, pz, 48) && Math.random() < 0.7
-    ? 'villager'
-    : pickSpawnType(night);
+  // 白天且靠近村庄中心：70% 生成村民（锚定村庄，不远离）
+  const village = !night ? villageCenterNear(world.seedHash, world.terrain, px, pz, 48) : null;
+  const type = village && Math.random() < 0.7 ? 'villager' : pickSpawnType(night);
   const def = MOB_DEFS[type];
   for (let attempt = 0; attempt < 8; attempt++) {
     const ang = Math.random() * Math.PI * 2;
@@ -164,7 +183,12 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     if (!def.hostile && world.getBlock(bx, y, bz) !== GRASS) continue; // 被动只在草地上
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
-    mobs.push(makeMob(type, bx + 0.5, sy, bz + 0.5));
+    const mob = makeMob(type, bx + 0.5, sy, bz + 0.5);
+    if (type === 'villager' && village) {
+      mob.homeX = village.x;
+      mob.homeZ = village.z;
+    }
+    mobs.push(mob);
     return true;
   }
   return false;
@@ -260,12 +284,13 @@ function tickArrows(
   }
 }
 
-/** 每帧推进：生成/AI/攻击/箭/燃烧/清理 */
+/** 每帧推进：生成/AI/攻击/箭/燃烧/清理；lureFood = 玩家手持的繁殖食物（引诱用） */
 export function tickMobs(
   world: World,
   dt: number,
   playerPos: { x: number; y: number; z: number },
   onAttackPlayer: (damage: number) => void,
+  lureFood?: string | null,
 ): void {
   const night = isNight();
   spawnTimer -= dt;
@@ -288,6 +313,9 @@ export function tickMobs(
         m.growUp = undefined;
       }
     }
+    // 恋爱/繁殖冷却倒数
+    if (m.loveTimer !== undefined && m.loveTimer > 0) m.loveTimer -= dt;
+    if (m.breedCd !== undefined && m.breedCd > 0) m.breedCd -= dt;
     // 白天自燃
     if (!night && def.burnsAtDay) {
       m.hp -= BURN_DAMAGE * dt;
@@ -356,16 +384,72 @@ export function tickMobs(
         }
       }
     } else {
-      // 被动游走：周期性换向或停下
-      m.wanderTimer -= dt;
-      if (m.wanderTimer <= 0) {
-        m.wanderTimer = 2 + Math.random() * 4;
-        m.wanderMoving = Math.random() < 0.6;
-        m.wanderDir = Math.random() * Math.PI * 2;
+      // 恋爱中：寻找 8 格内同种恋爱个体，走过去；贴近则产仔（双方进 60s 冷却）
+      let partner: Mob | null = null;
+      if ((m.loveTimer ?? 0) > 0) {
+        for (const other of mobs) {
+          if (other === m || other.type !== m.type || other.baby || (other.loveTimer ?? 0) <= 0) continue;
+          const od = Math.hypot(other.x - m.x, other.z - m.z);
+          if (od > 8) continue;
+          if ((other.breedCd ?? 0) > 0 || (m.breedCd ?? 0) > 0) continue;
+          partner = other;
+          break;
+        }
       }
-      if (m.wanderMoving) {
-        mx = Math.cos(m.wanderDir) * def.speed * 0.5;
-        mz = Math.sin(m.wanderDir) * def.speed * 0.5;
+      if (partner) {
+        const px = partner.x - m.x;
+        const pz = partner.z - m.z;
+        const pd = Math.hypot(px, pz);
+        if (pd > 1.2) {
+          mx = (px / pd) * def.speed;
+          mz = (pz / pd) * def.speed;
+        } else {
+          // 配对成功：产仔并清恋爱、进冷却
+          partner.loveTimer = 0;
+          m.loveTimer = 0;
+          partner.breedCd = 60;
+          m.breedCd = 60;
+          if (mobs.length < 40) breedMob(m);
+        }
+      } else if (
+        // 持食引诱：玩家手持该物种食物时跟着走（MC 诱饵）
+        lureFood && BREED_FOOD[m.type] === lureFood && dist < 10 && dist > 1.6
+      ) {
+        mx = (dx / dist) * def.speed;
+        mz = (dz / dist) * def.speed;
+      } else if (m.type === 'villager' && m.homeX !== undefined && m.homeZ !== undefined) {
+        // 村民锚定村庄：走太远就回家，近处正常游走
+        const hx = m.homeX - m.x;
+        const hz = m.homeZ - m.z;
+        const hd = Math.hypot(hx, hz);
+        if (hd > 16) {
+          mx = (hx / hd) * def.speed;
+          mz = (hz / hd) * def.speed;
+        } else {
+          m.wanderTimer -= dt;
+          if (m.wanderTimer <= 0) {
+            m.wanderTimer = 2 + Math.random() * 4;
+            m.wanderMoving = Math.random() < 0.5;
+            // 游走方向偏向村庄中心（不走出 ~12 格）
+            m.wanderDir = hd > 12 ? Math.atan2(hz, hx) : Math.random() * Math.PI * 2;
+          }
+          if (m.wanderMoving) {
+            mx = Math.cos(m.wanderDir) * def.speed * 0.5;
+            mz = Math.sin(m.wanderDir) * def.speed * 0.5;
+          }
+        }
+      } else {
+        // 被动游走：周期性换向或停下
+        m.wanderTimer -= dt;
+        if (m.wanderTimer <= 0) {
+          m.wanderTimer = 2 + Math.random() * 4;
+          m.wanderMoving = Math.random() < 0.6;
+          m.wanderDir = Math.random() * Math.PI * 2;
+        }
+        if (m.wanderMoving) {
+          mx = Math.cos(m.wanderDir) * def.speed * 0.5;
+          mz = Math.sin(m.wanderDir) * def.speed * 0.5;
+        }
       }
     }
 

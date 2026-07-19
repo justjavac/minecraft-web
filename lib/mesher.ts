@@ -313,8 +313,8 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
           continue;
         }
         if (def.shape === 'slab') {
-          // 台阶：半高盒；底面看下方、顶面看上方、侧面看邻居与同型
-          const [y0, y1] = def.slabTop ? [0.5, 1] : [0, 0.5];
+          // 台阶：半高盒（耕地 15/16 高也走这里，box3 决定实际高度）；底面看下方、顶面看上方、侧面看邻居与同型
+          const [y0, y1] = def.box3 ? [def.box3[1], def.box3[4]] : def.slabTop ? [0.5, 1] : [0, 0.5];
           solid.addBox(wx, y, wz, 0, y0, 0, 1, y1, 1, def, FULL_AO, (dir) => {
             if (dir[1] === -1) {
               const n = idAt(x, y - 1, z);

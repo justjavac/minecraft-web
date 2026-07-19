@@ -484,8 +484,12 @@ for (const [k, tex, cn, wood] of SAPLINGS) {
 }
 
 // ——— 耕地与小麦作物（耕种见 lib/crops.ts：锄头整地 → 播种 → 8 阶段生长） ———
+// 耕地 15/16 高（台阶形网格/碰撞，无 fullBlock 不合并）；4 格内有水变湿润耕地，作物长得更快
 add('farmland', '耕地', { top: 'farmland', side: 'dirt', bottom: 'dirt' }, {
-  cat: 'earth', tool: 'shovel', digTime: 0.75, dropBlock: DIRT, ...DIRT_SND,
+  cat: 'earth', tool: 'shovel', digTime: 0.75, shape: 'slab', box3: [0, 0, 0, 1, 0.9375, 1], opaque: false, dropBlock: DIRT, ...DIRT_SND,
+});
+add('farmland_moist', '湿润耕地', { top: 'farmland_moist', side: 'dirt', bottom: 'dirt' }, {
+  cat: 'earth', tool: 'shovel', digTime: 0.75, shape: 'slab', box3: [0, 0, 0, 1, 0.9375, 1], opaque: false, dropBlock: DIRT, ...DIRT_SND,
 });
 // 小麦 8 阶段（wheat_crop_0..7，十字面片；成熟收割掉小麦+种子，未熟只掉种子）
 export const WHEAT_CROP_0 = defs.length;

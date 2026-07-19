@@ -1,7 +1,7 @@
 // 结构生成：区域级确定性（平原/森林/盆地村庄、沙漠村庄、哨塔、冰屋），跨 chunk 一致
 
-import { AIR, BLOCK_BY_KEY, COBBLE, DIRT, GLASS, LOG, PLANKS, WATER, type BlockId } from './blocks';
-import { SEA_LEVEL, type Terrain } from './noise';
+import { AIR, BLOCK_BY_KEY, COBBLE, DIRT, GLASS, LOG, PLANKS, WATER, WHEAT_CROP_0, type BlockId } from './blocks';
+import { hash2, SEA_LEVEL, type Terrain } from './noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
 
 const REGION = 64; // 结构区域边长（格）
@@ -15,7 +15,7 @@ export interface StructureSpot {
 }
 
 export interface Structure {
-  type: 'hut' | 'well';
+  type: 'hut' | 'well' | 'farm';
   x: number;
   z: number;
 }
@@ -88,7 +88,7 @@ export function villageCenterNear(seedHash: number, terrain: Terrain, x: number,
   return null;
 }
 
-/** 村庄布局：中心一口井 + 环形分布 3-6 栋小屋（确定性） */
+/** 村庄布局：中心一口井 + 环形分布 3-6 栋小屋 + 1-2 块农田（确定性） */
 export function villageStructures(seedHash: number, rx: number, rz: number, vx: number, vz: number): Structure[] {
   const structures: Structure[] = [{ type: 'well', x: vx, z: vz }];
   const n = 3 + Math.floor(regionHash(seedHash, rx, rz, 2) * 4);
@@ -97,6 +97,13 @@ export function villageStructures(seedHash: number, rx: number, rz: number, vx: 
     const ang = ang0 + (i * Math.PI * 2) / n;
     const r = 10 + regionHash(seedHash, rx, rz, 10 + i) * 10;
     structures.push({ type: 'hut', x: Math.round(vx + Math.cos(ang) * r), z: Math.round(vz + Math.sin(ang) * r) });
+  }
+  // 农田：1-2 块，插在小屋之间的环上
+  const farms = 1 + Math.floor(regionHash(seedHash, rx, rz, 20) * 2);
+  for (let i = 0; i < farms; i++) {
+    const ang = ang0 + ((i + 0.5) * Math.PI * 2) / n;
+    const r = 12 + regionHash(seedHash, rx, rz, 21 + i) * 8;
+    structures.push({ type: 'farm', x: Math.round(vx + Math.cos(ang) * r), z: Math.round(vz + Math.sin(ang) * r) });
   }
   return structures;
 }
@@ -172,6 +179,29 @@ function writeHut(s: Structure, terrain: Terrain, cx: number, cz: number, data: 
   for (let x = -1; x <= 5; x++) {
     for (let z = -1; z <= 5; z++) {
       put(data, cx, cz, bx + x, by + 4, bz + z, mats.roof);
+    }
+  }
+  // 屋内角落放一张床（玩家可睡；村民的家更有生活气）
+  put(data, cx, cz, bx + 1, by + 1, bz + 1, BLOCK_BY_KEY.red_bed.id);
+}
+
+/** 农田：5×3 地块，中间水渠 + 两侧湿润耕地，随机阶段的小麦（确定性） */
+function writeFarm(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash: number): void {
+  const moist = BLOCK_BY_KEY.farmland_moist.id;
+  for (let x = -2; x <= 2; x++) {
+    for (let z = -1; z <= 1; z++) {
+      const px = s.x + x;
+      const pz = s.z + z;
+      const gy = terrain.heightAt(px, pz);
+      if (gy < 0) continue;
+      if (z === 0) {
+        // 水渠：与耕地同层的水源（生成直写不触发流动）
+        put(data, cx, cz, px, gy, pz, WATER);
+      } else {
+        put(data, cx, cz, px, gy, pz, moist);
+        const stage = Math.floor(hash2(seedHash, px, pz) * 8);
+        put(data, cx, cz, px, gy + 1, pz, WHEAT_CROP_0 + stage);
+      }
     }
   }
 }
@@ -280,6 +310,9 @@ export function applyStructures(seedHash: number, terrain: Terrain, cx: number, 
         for (const s of structures) {
           if (s.type === 'hut') {
             writeHut(s, terrain, cx, cz, data, mats);
+            writePath(s, well, terrain, cx, cz, data);
+          } else if (s.type === 'farm') {
+            writeFarm(s, terrain, cx, cz, data, seedHash);
             writePath(s, well, terrain, cx, cz, data);
           } else {
             writeWell(s, terrain, cx, cz, data, mats);
