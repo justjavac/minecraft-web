@@ -574,6 +574,21 @@ add('redstone_block', '红石块', 'redstone_block', { cat: 'ore', tool: 'pickax
 const lampOff = add('redstone_lamp', '红石灯', 'redstone_lamp', { cat: 'utility', digTime: 0.45, ...GLASS_SND });
 add('redstone_lamp_lit', '红石灯（亮）', 'redstone_lamp_on', { cat: 'utility', digTime: 0.45, light: 15, dropBlock: lampOff.id, ...GLASS_SND });
 
+// ——— 红石中继器（lib/redstone.ts：信号再生 + 0.1-0.4s 延迟；facing = 输出方向，统一掉 n 款） ———
+const repeaterN = add('repeater_n', '红石中继器', 'repeater', {
+  cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, facing: 0, digTime: 0.05, ...GRASS_SND,
+});
+for (const [suf, f] of [['e', 1], ['s', 2], ['w', 3]] as const) {
+  add(`repeater_${suf}`, '红石中继器', 'repeater', {
+    cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, facing: f, digTime: 0.05, dropBlock: repeaterN.id, ...GRASS_SND,
+  });
+}
+for (const [suf, f] of [['n', 0], ['e', 1], ['s', 2], ['w', 3]] as const) {
+  add(`repeater_on_${suf}`, '红石中继器（开）', 'repeater_on', {
+    cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, facing: f, digTime: 0.05, light: 7, dropBlock: repeaterN.id, ...GRASS_SND,
+  });
+}
+
 // ——— 活塞（红石驱动推块，lib/pistons.ts；6 朝向各 1 id，破坏统一掉 n 款） ———
 const pistonN = add('piston_n', '活塞', { side: 'piston_side', top: 'piston_top', bottom: 'piston_bottom' }, { cat: 'utility', facing: 0, digTime: 0.75 });
 for (const [suf, f] of [['e', 1], ['s', 2], ['w', 3], ['u', 4], ['d', 5]] as const) {

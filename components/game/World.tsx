@@ -26,7 +26,7 @@ import { tickFluids, clearFluids } from '@/lib/fluids';
 import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
 import { tickSaplings, clearSaplings } from '@/lib/saplings';
-import { clearRedstone } from '@/lib/redstone';
+import { clearRedstone, tickRedstone } from '@/lib/redstone';
 import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
@@ -284,6 +284,7 @@ export function WorldRenderer() {
         tickSaplings(w, 0.4); // 内部按 2s 累计触发生长/凋零
         tickCrops(w, 0.4); // 同上节奏推进小麦生长
         tickGrowth(w, 0.4); // 柱状作物随机刻（仙人掌/甘蔗/竹子）
+        tickRedstone(w, 0.4); // 中继器延迟翻转结算
       } catch (err) {
         console.error('世界 tick 失败（下帧重试）', err);
       }

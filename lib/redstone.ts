@@ -2,7 +2,7 @@
 // world.setBlock 经 notifyRedstone 触发局部重算；消费端：红石灯亮灭、橡木门开关、TNT 引爆、活塞推收
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, type BlockId } from './blocks';
-import { cleanupOrphanHeads, isExtended, isPistonId, retract, tryExtend } from './pistons';
+import { cleanupOrphanHeads, FACING_VEC, isExtended, isPistonId, retract, tryExtend } from './pistons';
 import { igniteTnt } from './tnt';
 import type { World } from './world';
 
@@ -21,13 +21,17 @@ const LAMP = () => BLOCK_BY_KEY.redstone_lamp.id;
 const LAMP_LIT = () => BLOCK_BY_KEY.redstone_lamp_lit.id;
 const TNT = () => BLOCK_BY_KEY.tnt.id;
 
-const isSourceId = (id: BlockId): boolean => id === TORCH() || id === LEVER_ON() || id === RS_BLOCK();
+const repeaterKey = (id: BlockId): string => BLOCKS[id]?.key ?? '';
+export const isRepeaterId = (id: BlockId): boolean => repeaterKey(id).startsWith('repeater_');
+const isRepeaterOnId = (id: BlockId): boolean => repeaterKey(id).startsWith('repeater_on_');
 
-/** 元件（消费端）：红石灯/门/TNT/活塞 */
+const isSourceId = (id: BlockId): boolean => id === TORCH() || id === LEVER_ON() || id === RS_BLOCK() || isRepeaterOnId(id);
+
+/** 元件（消费端）：红石灯/门/TNT/活塞/中继器 */
 function isConsumerId(id: BlockId): boolean {
   const def = BLOCKS[id];
   if (!def) return false;
-  return id === LAMP() || id === LAMP_LIT() || id === TNT() || def.shape === 'door' || isPistonId(id) || def.key === 'piston_head';
+  return id === LAMP() || id === LAMP_LIT() || id === TNT() || def.shape === 'door' || isPistonId(id) || def.key === 'piston_head' || isRepeaterId(id);
 }
 
 const DIRS = [
@@ -79,7 +83,17 @@ function recompute(world: World, cx: number, cy: number, cz: number): void {
   for (const k of sources) {
     const [x, y, z] = k.split(',').map(Number);
     if (Math.abs(x - cx) > R || Math.abs(y - cy) > R || Math.abs(z - cz) > R) continue;
-    for (const [dx, dy, dz] of DIRS) trySet(x + dx, y + dy, z + dz, 15);
+    const id = world.getBlock(x, y, z);
+    if (isRepeaterOnId(id)) {
+      // 中继器：只向输出方向（front）供能 15 级（信号再生，MC 核心特性）；
+      // 前格与其顶面都播种（MC 粉铺在方块顶面，等价于前方方块被供能）
+      const f = BLOCKS[id].facing ?? 0;
+      const [dx, dy, dz] = FACING_VEC[f];
+      trySet(x + dx, y + dy, z + dz, 15);
+      trySet(x + dx, y + dy + 1, z + dz, 15);
+    } else {
+      for (const [dx, dy, dz] of DIRS) trySet(x + dx, y + dy, z + dz, 15);
+    }
   }
   // 3. BFS 衰减传播（6 向，近似 MC 粉的上下连接）
   while (queue.length > 0) {
@@ -105,6 +119,12 @@ function recompute(world: World, cx: number, cy: number, cz: number): void {
           // 活塞：供能推出、断能收回（粘性拉回）
           if (on && !isExtended(world, x, y, z)) reacts.push(() => tryExtend(world, x, y, z));
           else if (!on && isExtended(world, x, y, z)) reacts.push(() => retract(world, x, y, z));
+        } else if (isRepeaterId(id)) {
+          // 中继器：输入（背向）状态变化 → 按延迟档调度翻转（tickRedstone 结算）
+          const f = BLOCKS[id].facing ?? 0;
+          const [dx, dy, dz] = FACING_VEC[f];
+          const inputOn = sources.has(key(x - dx, y - dy, z - dz)) || (power.get(key(x - dx, y - dy, z - dz)) ?? 0) > 0;
+          if (inputOn !== isRepeaterOnId(id)) scheduleFlip(x, y, z);
         } else if (BLOCKS[id]?.key === 'piston_head') {
           // 孤儿活塞头：背向无活塞自动消失
           reacts.push(() => cleanupOrphanHeads(world, x, y, z));
@@ -162,4 +182,59 @@ export function toggleLever(world: World, x: number, y: number, z: number): bool
 export function clearRedstone(): void {
   power.clear();
   sources.clear();
+  pendingFlips.length = 0;
+  delays.clear();
+}
+
+// ——— 红石中继器：延迟档与延迟翻转队列 ———
+
+/** 各中继器的延迟档（1-4 档 × 0.1s；默认 1 档，MC 一致） */
+const delays = new Map<string, number>();
+
+/** 右键调档：1→2→3→4→1（MC），返回新档位数 */
+export function cycleRepeaterDelay(x: number, y: number, z: number): number {
+  const k = key(x, y, z);
+  const next = ((delays.get(k) ?? 1) % 4) + 1;
+  delays.set(k, next);
+  return next;
+}
+
+interface Flip {
+  key: string;
+  at: number;
+}
+
+const pendingFlips: Flip[] = [];
+let simTime = 0;
+
+function scheduleFlip(x: number, y: number, z: number): void {
+  const k = key(x, y, z);
+  const at = simTime + (delays.get(k) ?? 1) * 0.1;
+  const existing = pendingFlips.find((f) => f.key === k);
+  if (existing) {
+    existing.at = at; // 以最新一次输入变化为准
+    return;
+  }
+  pendingFlips.push({ key: k, at });
+}
+
+/** 世界 tick 调用：结算到期的中继器翻转（延迟期间输入回到原态则去抖不翻——MC 特性） */
+export function tickRedstone(world: World, dt: number): void {
+  simTime += dt;
+  if (pendingFlips.length === 0) return;
+  const due = pendingFlips.filter((f) => f.at <= simTime);
+  for (let i = pendingFlips.length - 1; i >= 0; i--) {
+    if (pendingFlips[i].at <= simTime) pendingFlips.splice(i, 1);
+  }
+  for (const f of due) {
+    const [x, y, z] = f.key.split(',').map(Number);
+    const id = world.getBlock(x, y, z);
+    if (!isRepeaterId(id)) continue;
+    const facing = BLOCKS[id].facing ?? 0;
+    const [dx, dy, dz] = FACING_VEC[facing];
+    const inputOn = sources.has(key(x - dx, y - dy, z - dz)) || (power.get(key(x - dx, y - dy, z - dz)) ?? 0) > 0;
+    if (inputOn === isRepeaterOnId(id)) continue; // 去抖：输入已回一致
+    const suf = ['n', 'e', 's', 'w'][facing];
+    world.setBlock(x, y, z, BLOCK_BY_KEY[`repeater_${inputOn ? 'on_' : ''}${suf}`].id);
+  }
 }

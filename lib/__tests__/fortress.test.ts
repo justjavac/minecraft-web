@@ -90,7 +90,7 @@ describe('堡垒生物', () => {
       trySpawn(w, f.x, f.z);
     }
     for (const m of mobs) types.add(m.type);
-    expect([...types].every((t2) => t2 === 'wither_skeleton' || t2 === 'blaze' || t2 === 'zombified_piglin')).toBe(true);
+    expect([...types].every((t2) => t2 === 'wither_skeleton' || t2 === 'blaze' || t2 === 'zombified_piglin' || t2 === 'ghast')).toBe(true);
     expect(types.has('wither_skeleton') || types.has('blaze')).toBe(true);
   });
 
