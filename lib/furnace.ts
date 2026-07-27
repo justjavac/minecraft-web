@@ -19,6 +19,11 @@ export const FOODS: Record<string, FoodDef> = {
   raw_chicken: { name: '生鸡肉', hunger: 2, saturation: 1 },
   cooked_chicken: { name: '熟鸡肉', hunger: 6, saturation: 2 },
   bread: { name: '面包', hunger: 5, saturation: 1 },
+  raw_cod: { name: '生鳕鱼', hunger: 2, saturation: 1 },
+  raw_salmon: { name: '生鲑鱼', hunger: 2, saturation: 1 },
+  tropical_fish: { name: '热带鱼', hunger: 1, saturation: 0 },
+  cooked_cod: { name: '熟鳕鱼', hunger: 5, saturation: 2 },
+  cooked_salmon: { name: '熟鲑鱼', hunger: 6, saturation: 3 },
 };
 
 // ——— 烧炼配方与燃料 ———
@@ -46,6 +51,8 @@ export const SMELTING: Record<string, SmeltDef> = {
   'material:raw_pork': { out: 'material:cooked_pork', name: '熟猪排' },
   'material:raw_beef': { out: 'material:cooked_beef', name: '熟牛排' },
   'material:raw_chicken': { out: 'material:cooked_chicken', name: '熟鸡肉' },
+  'material:raw_cod': { out: 'material:cooked_cod', name: '熟鳕鱼' },
+  'material:raw_salmon': { out: 'material:cooked_salmon', name: '熟鲑鱼' },
   // 粗矿烧炼成锭（MC 一致）
   'material:raw_iron': { out: 'material:iron_ingot', name: '铁锭' },
   'material:raw_gold': { out: 'material:gold_ingot', name: '金锭' },

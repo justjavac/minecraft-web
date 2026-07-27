@@ -25,6 +25,7 @@ import { clearStorages, storages } from '@/lib/storage';
 import { clearMobs, makeEnderDragon, mobs } from '@/lib/mobs';
 import { clearEndFight, dragonState, initEndFight } from '@/lib/endfight';
 import { tickFluids, clearFluids } from '@/lib/fluids';
+import { clearFishing } from '@/lib/fishing';
 import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
 import { tickSaplings, clearSaplings } from '@/lib/saplings';
@@ -242,6 +243,7 @@ export function WorldRenderer() {
       clearBrews();
       clearStorages();
       clearFluids();
+      clearFishing();
       clearSaplings();
       clearCrops();
       clearRedstone();

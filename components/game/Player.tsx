@@ -15,6 +15,7 @@ import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
 import { checkEndermanStare, damageMob, mobInReach, mobs } from '@/lib/mobs';
 import { crystalInReach, hitCrystal, tickCrystals } from '@/lib/endfight';
+import { tickFishing } from '@/lib/fishing';
 import { SEA_LEVEL, type Biome } from '@/lib/noise';
 import { aabbFree, collideAxis, type Aabb } from '@/lib/physics';
 import { playSound } from '@/lib/sound';
@@ -442,6 +443,8 @@ export function Player() {
     tickBeacons(world, p.x, p.y, p.z);
     // 末影水晶：龙在存活水晶附近时缓慢回血（MC 治疗光束）
     tickCrystals(mobs.find((m) => m.type === 'ender_dragon') ?? null, dt);
+    // 钓鱼浮标：飞行/漂浮/咬钩推进
+    tickFishing(world, dt);
     // 末影人对视激怒：准星盯上末影人即激怒（MC 规则，每秒检查一次）
     stareAcc.current += dt;
     if (stareAcc.current >= 1) {

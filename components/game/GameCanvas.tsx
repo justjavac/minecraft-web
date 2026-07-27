@@ -12,6 +12,7 @@ import { BreakParticles } from './BreakParticles';
 import { Mobs } from './Mobs';
 import { BeaconBeams } from './BeaconBeams';
 import { EndCrystals } from './EndCrystals';
+import { FishingBobber } from './FishingBobber';
 import { ItemDrops } from './ItemDrops';
 import { Tnt } from './Tnt';
 import { DayNight } from './DayNight';
@@ -91,6 +92,7 @@ export function GameCanvas() {
         <Mobs />
         <BeaconBeams />
         <EndCrystals />
+        <FishingBobber />
         <ItemDrops />
         <Tnt />
         <BlockHighlight />

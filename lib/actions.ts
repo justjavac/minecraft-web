@@ -19,6 +19,8 @@ import { cycleRepeaterDelay, isComparatorId, isRepeaterId, toggleComparatorMode,
 import { XP_ORE } from './xp';
 import { BREED_FOOD, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
 import { fillPortalFrame, nearestStronghold } from './stronghold';
+import { bobber, castBobber, reelIn } from './fishing';
+import { MATERIAL_INFO } from './materials';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
 import { useGameStore, MAX_HEALTH } from './store';
@@ -214,6 +216,28 @@ export function tryPlace(): boolean {
         lastPlace = now;
         return false;
       }
+    }
+    // 手持钓竿右键：无浮标抛竿 / 有浮标收竿（咬钩窗口收竿得渔获 + 2 经验，MC）
+    if (held?.kind === 'tool' && held.tool === 'fishing_rod') {
+      if (!bobber.current) {
+        camera.getWorldDirection(dir);
+        castBobber(
+          { x: camera.position.x, y: camera.position.y - 0.2, z: camera.position.z },
+          { x: dir.x, y: dir.y, z: dir.z },
+        );
+        playSound('place');
+      } else {
+        const got = reelIn();
+        if (got) {
+          s.addStack({ kind: 'material', material: got.material }, got.count);
+          s.setNotice(`钓到了${MATERIAL_INFO[got.material]?.name ?? got.material}！`);
+          s.addXp(2); // MC 钓鱼经验 1-6
+          playSound('place');
+        }
+        s.damageHeldTool(1); // MC 钓鱼每次收竿扣 1 耐久
+      }
+      lastPlace = now;
+      return false;
     }
     // 右键村民：打开交易界面（MC；不看手持物，优先于繁殖判定）
     camera.getWorldDirection(dir);

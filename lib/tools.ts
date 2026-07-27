@@ -2,7 +2,7 @@
 
 import { tileIcon, tileOf } from './blocks';
 
-export type ToolKind = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'bow' | 'shears';
+export type ToolKind = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'bow' | 'shears' | 'fishing';
 export type ToolTier = 'wood' | 'stone' | 'iron' | 'diamond' | 'netherite';
 export type ToolType =
   | 'wooden_pickaxe' | 'stone_pickaxe' | 'iron_pickaxe' | 'diamond_pickaxe' | 'netherite_pickaxe'
@@ -11,7 +11,8 @@ export type ToolType =
   | 'wooden_sword' | 'stone_sword' | 'iron_sword' | 'diamond_sword' | 'netherite_sword'
   | 'wooden_hoe' | 'stone_hoe' | 'iron_hoe' | 'diamond_hoe' | 'netherite_hoe'
   | 'bow'
-  | 'shears';
+  | 'shears'
+  | 'fishing_rod';
 
 export interface ToolDef {
   type: ToolType;
@@ -67,4 +68,6 @@ export const TOOLS: Record<ToolType, ToolDef> = {
   netherite_hoe: { type: 'netherite_hoe', kind: 'hoe', tier: 'netherite', name: '下界合金锄', speed: 1, durability: 2031, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/netherite_hoe') },
   // 剪刀：剪羊毛工具（MC 耐久 238，铁锭×2 合成）
   shears: { type: 'shears', kind: 'shears', tier: 'iron', name: '剪刀', speed: 1, durability: 238, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/shears') },
+  // 钓竿：钓鱼工具（MC 耐久 64，3 木棍 + 2 线合成）
+  fishing_rod: { type: 'fishing_rod', kind: 'fishing', tier: 'wood', name: '钓竿', speed: 1, durability: 64, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/fishing_rod') },
 };

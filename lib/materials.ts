@@ -40,6 +40,12 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   eye_of_ender: { name: '末影之眼', tile: tileIcon('item/ender_eye') },
   netherite_scrap: { name: '下界合金碎片', tile: tileIcon('item/netherite_scrap') },
   netherite_ingot: { name: '下界合金锭', tile: tileIcon('item/netherite_ingot') },
+  // 鱼类（钓鱼渔获；生鱼可烧熟）
+  raw_cod: { name: '生鳕鱼', tile: tileIcon('item/cod') },
+  raw_salmon: { name: '生鲑鱼', tile: tileIcon('item/salmon') },
+  tropical_fish: { name: '热带鱼', tile: tileIcon('item/tropical_fish') },
+  cooked_cod: { name: '熟鳕鱼', tile: tileIcon('item/cooked_cod') },
+  cooked_salmon: { name: '熟鲑鱼', tile: tileIcon('item/cooked_salmon') },
   nether_star: { name: '下界之星', tile: tileIcon('item/nether_star') },
   regeneration: { name: '再生药水', tile: tileIcon('item/potion') },
   paper: { name: '纸', tile: tileIcon('item/paper') },
