@@ -591,6 +591,21 @@ add('redstone_block', '红石块', 'redstone_block', { cat: 'ore', tool: 'pickax
 const lampOff = add('redstone_lamp', '红石灯', 'redstone_lamp', { cat: 'utility', digTime: 0.45, ...GLASS_SND });
 add('redstone_lamp_lit', '红石灯（亮）', 'redstone_lamp_on', { cat: 'utility', digTime: 0.45, light: 15, dropBlock: lampOff.id, ...GLASS_SND });
 
+// ——— 红石比较器（lib/redstone.ts：比较/减法双模式分级输出；facing = 输出方向，统一掉 n 款） ———
+const comparatorN = add('comparator_n', '红石比较器', 'comparator', {
+  cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, facing: 0, digTime: 0.05, ...GRASS_SND,
+});
+for (const [suf, f] of [['e', 1], ['s', 2], ['w', 3]] as const) {
+  add(`comparator_${suf}`, '红石比较器', 'comparator', {
+    cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, facing: f, digTime: 0.05, dropBlock: comparatorN.id, ...GRASS_SND,
+  });
+}
+for (const [suf, f] of [['n', 0], ['e', 1], ['s', 2], ['w', 3]] as const) {
+  add(`comparator_on_${suf}`, '红石比较器（开）', 'comparator_on', {
+    cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, facing: f, digTime: 0.05, light: 7, dropBlock: comparatorN.id, ...GRASS_SND,
+  });
+}
+
 // ——— 红石中继器（lib/redstone.ts：信号再生 + 0.1-0.4s 延迟；facing = 输出方向，统一掉 n 款） ———
 const repeaterN = add('repeater_n', '红石中继器', 'repeater', {
   cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, facing: 0, digTime: 0.05, ...GRASS_SND,

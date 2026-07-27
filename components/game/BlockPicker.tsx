@@ -18,12 +18,12 @@ const CATS: { key: BlockCat | 'all'; name: string }[] = [
 ];
 
 /** 可选进热键栏的方块（固体 + 水系 + 花草十字 + 基础款藤蔓；基岩类也可见——创造模式本就可以放；
- * 双格植物顶段/竹顶段等联动变体不单独列出，避免放出悬空半段；活塞朝向变体只列基础 n 款） */
+ * 双格植物顶段/竹顶段等联动变体不单独列出，避免放出悬空半段；活塞/中继器/比较器朝向与开关变体只列基础款） */
 const PICKABLE: BlockId[] = BLOCKS.filter(
   (d) =>
     !d.plantTop &&
     d.key !== 'bamboo_top' &&
-    !(d.dropBlock !== undefined && d.key.startsWith('piston_')) &&
+    !(d.dropBlock !== undefined && (d.key.startsWith('piston_') || d.key.startsWith('repeater_') || d.key.startsWith('comparator_'))) &&
     (d.solid || d.fluid || d.shape === 'cross' || (d.shape === 'panel' && d.facing === 0)),
 ).map((d) => d.id);
 

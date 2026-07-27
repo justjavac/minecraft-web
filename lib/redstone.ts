@@ -25,13 +25,36 @@ const repeaterKey = (id: BlockId): string => BLOCKS[id]?.key ?? '';
 export const isRepeaterId = (id: BlockId): boolean => repeaterKey(id).startsWith('repeater_');
 const isRepeaterOnId = (id: BlockId): boolean => repeaterKey(id).startsWith('repeater_on_');
 
+const compKey = (id: BlockId): string => BLOCKS[id]?.key ?? '';
+export const isComparatorId = (id: BlockId): boolean => compKey(id).startsWith('comparator_');
+const isComparatorOnId = (id: BlockId): boolean => compKey(id).startsWith('comparator_on_');
+
+/** 比较器输出电平 0-15（比较 = 背向输入；减法 = 背向 − max(两侧)，MC） */
+const compOutputs = new Map<string, number>();
+/** 比较器模式：true = 减法（右键切换；默认 false 比较） */
+const compSubtract = new Map<string, boolean>();
+
+/** 右键切换比较器模式（比较 ↔ 减法，MC），返回是否减法 */
+export function toggleComparatorMode(x: number, y: number, z: number): boolean {
+  const k = key(x, y, z);
+  const next = !compSubtract.get(k);
+  compSubtract.set(k, next);
+  return next;
+}
+
+/** 某格信号电平：电源 15，粉的当前功率，否则 0 */
+function signalAt(x: number, y: number, z: number): number {
+  if (sources.has(key(x, y, z))) return 15;
+  return power.get(key(x, y, z)) ?? 0;
+}
+
 const isSourceId = (id: BlockId): boolean => id === TORCH() || id === LEVER_ON() || id === RS_BLOCK() || isRepeaterOnId(id);
 
-/** 元件（消费端）：红石灯/门/TNT/活塞/中继器 */
+/** 元件（消费端）：红石灯/门/TNT/活塞/中继器/比较器 */
 function isConsumerId(id: BlockId): boolean {
   const def = BLOCKS[id];
   if (!def) return false;
-  return id === LAMP() || id === LAMP_LIT() || id === TNT() || def.shape === 'door' || isPistonId(id) || def.key === 'piston_head' || isRepeaterId(id);
+  return id === LAMP() || id === LAMP_LIT() || id === TNT() || def.shape === 'door' || isPistonId(id) || def.key === 'piston_head' || isRepeaterId(id) || isComparatorId(id);
 }
 
 const DIRS = [
@@ -102,6 +125,7 @@ function recompute(world: World, cx: number, cy: number, cz: number): void {
   }
   // 4. 半径内元件反应（先收集再回写，避免边算边改）
   const reacts: (() => void)[] = [];
+  let compChanged = false; // 比较器电平变化需补播种传播 + 结算重播
   for (let x = cx - R; x <= cx + R; x++) {
     for (let y = Math.max(0, cy - R); y <= cy + R; y++) {
       for (let z = cz - R; z <= cz + R; z++) {
@@ -125,6 +149,30 @@ function recompute(world: World, cx: number, cy: number, cz: number): void {
           const [dx, dy, dz] = FACING_VEC[f];
           const inputOn = sources.has(key(x - dx, y - dy, z - dz)) || (power.get(key(x - dx, y - dy, z - dz)) ?? 0) > 0;
           if (inputOn !== isRepeaterOnId(id)) scheduleFlip(x, y, z);
+        } else if (isComparatorId(id)) {
+          // 比较器：比较（背向 ≥ 两侧 → 背向电平）/ 减法（背向 − max(两侧)，MC）
+          const f = BLOCKS[id].facing ?? 0;
+          const [dx, dy, dz] = FACING_VEC[f];
+          const back = signalAt(x - dx, y - dy, z - dz);
+          const [sx, sz] = f === 0 || f === 2 ? [1, 0] : [0, 1]; // 两侧方向（垂直于朝向）
+          const side = Math.max(signalAt(x + sx, y, z + sz), signalAt(x - sx, y, z - sz));
+          const out = compSubtract.get(key(x, y, z)) ? Math.max(back - side, 0) : back >= side ? back : 0;
+          const prev = compOutputs.get(key(x, y, z)) ?? 0;
+          compOutputs.set(key(x, y, z), out);
+          // 输出端无条件补播种（front + 顶面）：本轮清空过的输出粉按当前电平恢复
+          if (out > 0) {
+            trySet(x + dx, y + dy, z + dz, out);
+            trySet(x + dx, y + dy + 1, z + dz, out);
+          }
+          if (out !== prev) {
+            // 电平变化：开关态同步 + 安排结算重播让下游元件跟上
+            compChanged = true;
+            const on = isComparatorOnId(id);
+            if ((out > 0) !== on) {
+              const suf = ['n', 'e', 's', 'w'][f];
+              reacts.push(() => world.setBlock(x, y, z, BLOCK_BY_KEY[`comparator_${out > 0 ? 'on_' : ''}${suf}`].id));
+            }
+          }
         } else if (BLOCKS[id]?.key === 'piston_head') {
           // 孤儿活塞头：背向无活塞自动消失
           reacts.push(() => cleanupOrphanHeads(world, x, y, z));
@@ -155,6 +203,15 @@ function recompute(world: World, cx: number, cy: number, cz: number): void {
       applying = false;
     }
   }
+  if (compChanged) {
+    // 比较器电平变化：安排结算重播让下游元件按新电平刷新（等价 MC 的 1 tick 评估）
+    pendingRecompute = [cx, cy, cz];
+  }
+  // 无条件下补传播：消费端（比较器）补播种的功率继续沿粉扩散
+  while (queue.length > 0) {
+    const [x, y, z, level] = queue.shift()!;
+    for (const [dx, dy, dz] of DIRS) trySet(x + dx, y + dy, z + dz, level - 1);
+  }
 }
 
 /** world.setBlock 钩子：电源登记 + 粉/电源/元件变动触发局部重算 */
@@ -184,7 +241,13 @@ export function clearRedstone(): void {
   sources.clear();
   pendingFlips.length = 0;
   delays.clear();
+  compOutputs.clear();
+  compSubtract.clear();
+  pendingRecompute = null;
 }
+
+/** 比较器电平变化后的结算重播位置（tickRedstone 消费） */
+let pendingRecompute: [number, number, number] | null = null;
 
 // ——— 红石中继器：延迟档与延迟翻转队列 ———
 
@@ -218,9 +281,14 @@ function scheduleFlip(x: number, y: number, z: number): void {
   pendingFlips.push({ key: k, at });
 }
 
-/** 世界 tick 调用：结算到期的中继器翻转（延迟期间输入回到原态则去抖不翻——MC 特性） */
+/** 世界 tick 调用：结算到期的中继器翻转（延迟期间输入回到原态则去抖不翻——MC 特性）+ 比较器结算重播 */
 export function tickRedstone(world: World, dt: number): void {
   simTime += dt;
+  if (pendingRecompute) {
+    const [cx, cy, cz] = pendingRecompute;
+    pendingRecompute = null;
+    recompute(world, cx, cy, cz);
+  }
   if (pendingFlips.length === 0) return;
   const due = pendingFlips.filter((f) => f.at <= simTime);
   for (let i = pendingFlips.length - 1; i >= 0; i--) {

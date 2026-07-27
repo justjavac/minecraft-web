@@ -134,6 +134,8 @@ export const RECIPES: Recipe[] = [
   { id: 'piston_sticky', name: '粘性活塞', out: { kind: 'block', id: KID('piston_sticky_n'), count: 1 }, cost: [{ item: K('piston_n'), count: 1 }, { item: K('slime_block'), count: 1 }], needsTable: false },
   // 红石中继器：红石火把×2 + 红石×1 + 石头×3（MC 配方）
   { id: 'repeater', name: '红石中继器', out: { kind: 'block', id: KID('repeater_n'), count: 1 }, cost: [{ item: K('redstone_torch'), count: 2 }, { item: 'material:redstone', count: 1 }, { item: K('stone'), count: 3 }], needsTable: true },
+  // 红石比较器：红石火把×3 + 下界石英×1 + 石头×3（MC 配方）
+  { id: 'comparator', name: '红石比较器', out: { kind: 'block', id: KID('comparator_n'), count: 1 }, cost: [{ item: K('redstone_torch'), count: 3 }, { item: 'material:quartz', count: 1 }, { item: K('stone'), count: 3 }], needsTable: true },
   // —— 附魔（配方与 MC 一致） ——
   { id: 'paper', name: '纸 ×3', out: { kind: 'material', material: 'paper', count: 3 }, cost: [{ item: K('sugar_cane'), count: 3 }], needsTable: false },
   // 剪刀：铁锭 ×2（MC）

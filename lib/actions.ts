@@ -13,7 +13,7 @@ import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
 import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { pistonIdFor } from './pistons';
-import { cycleRepeaterDelay, isRepeaterId, toggleLever } from './redstone';
+import { cycleRepeaterDelay, isComparatorId, isRepeaterId, toggleComparatorMode, toggleLever } from './redstone';
 import { XP_ORE } from './xp';
 import { BREED_FOOD, feedMob, fireEnderPearl, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
 import { playSound } from './sound';
@@ -387,6 +387,14 @@ export function tryPlace(): boolean {
     lastPlace = now;
     return true;
   }
+  // 比较器：右键切换模式（比较 ↔ 减法，MC）
+  if (isComparatorId(hitId)) {
+    const sub = toggleComparatorMode(bx, by, bz);
+    s.setNotice(sub ? '比较器：减法模式' : '比较器：比较模式');
+    playSound('place');
+    lastPlace = now;
+    return true;
+  }
   // 门：右键切换开/关（上下两格同步；注册序每朝向 [bottom, top, open_bottom, open_top]）
   const hitDef = BLOCKS[hitId];
   if (hitDef?.shape === 'door') {
@@ -485,6 +493,9 @@ export function tryPlace(): boolean {
   } else if (id === BLOCK_BY_KEY.repeater_n.id) {
     // 中继器：输出方向 = 玩家视线水平朝向（MC：面向放置方向）
     id = BLOCK_BY_KEY[`repeater_${Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 'e' : 'w') : dir.z > 0 ? 's' : 'n'}`].id;
+  } else if (id === BLOCK_BY_KEY.comparator_n.id) {
+    // 比较器：输出方向 = 玩家视线水平朝向（同中继器）
+    id = BLOCK_BY_KEY[`comparator_${Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 'e' : 'w') : dir.z > 0 ? 's' : 'n'}`].id;
   } else if (id === BLOCK_BY_KEY.torch.id && (fx !== 0 || fz !== 0) && hitDef?.opaque) {
     // 火把点在方块侧面：转墙上火把（朝向 = 墙面外法线）
     const wallKey = fx === 1 ? 'torch_wall_e' : fx === -1 ? 'torch_wall_w' : fz === 1 ? 'torch_wall_s' : 'torch_wall_n';
