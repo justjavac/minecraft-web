@@ -1,6 +1,6 @@
 // 合成配方（与 MC 原版一致）：随身 2×2 + 工作台 3×3
 
-import { BLOCK_BY_KEY, COBBLE, CRAFTING_TABLE, FURNACE, LOG, PLANKS, type BlockId } from './blocks';
+import { BLOCK_BY_KEY, COBBLE, CRAFTING_TABLE, FURNACE, GLASS, LOG, PLANKS, type BlockId } from './blocks';
 import { countsOf, type Slot } from './slots';
 import type { ArmorPiece } from './armor';
 import type { ToolType } from './tools';
@@ -121,6 +121,12 @@ export const RECIPES: Recipe[] = [
   { id: 'blaze_powder', name: '烈焰粉 ×2', out: { kind: 'material', material: 'blaze_powder', count: 2 }, cost: [{ item: 'material:blaze_rod', count: 1 }], needsTable: false },
   // 下界砖块：4 下界岩（MC：2×2 下界岩合下界砖块的前身——此处按 4 合 1 简化）
   { id: 'nether_bricks', name: '下界砖块', out: { kind: 'block', id: KID('nether_bricks'), count: 1 }, cost: [{ item: K('netherrack'), count: 4 }], needsTable: false },
+  // —— 酿造（配方与 MC 一致） ——
+  { id: 'brewing_stand', name: '酿造台', out: { kind: 'block', id: KID('brewing_stand'), count: 1 }, cost: [{ item: 'material:blaze_rod', count: 1 }, { item: COBBLE_ITEM, count: 3 }], needsTable: true },
+  { id: 'glass_bottle', name: '玻璃瓶 ×3', out: { kind: 'material', material: 'glass_bottle', count: 3 }, cost: [{ item: `block:${GLASS}`, count: 3 }], needsTable: false },
+  { id: 'sugar', name: '糖', out: { kind: 'material', material: 'sugar', count: 1 }, cost: [{ item: K('sugar_cane'), count: 1 }], needsTable: false },
+  { id: 'magma_cream', name: '岩浆膏', out: { kind: 'material', material: 'magma_cream', count: 1 }, cost: [{ item: K('magma_block'), count: 1 }], needsTable: false },
+  { id: 'glistering_melon', name: '闪烁的西瓜片', out: { kind: 'material', material: 'glistering_melon', count: 1 }, cost: [{ item: K('melon'), count: 1 }, { item: 'material:gold_ingot', count: 1 }], needsTable: false },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_pickaxe', name: '石镐', out: { kind: 'tool', tool: 'stone_pickaxe' }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'wooden_axe', name: '木斧', out: { kind: 'tool', tool: 'wooden_axe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },

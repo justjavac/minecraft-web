@@ -3,6 +3,8 @@
 import { Vector3 } from 'three';
 import { AIR, BLOCKS, BLOCK_BY_KEY, CRAFTING_TABLE, DIRT, FURNACE, GRASS, isColumnPlantId, WHEAT_CROP_0, type BlockId } from './blocks';
 import { dropFurnaceContents, FOODS } from './furnace';
+import { dropBrewingContents, POTIONS } from './brewing';
+import { effects } from './effects';
 import { isFarmlandId, isWheatCropId } from './crops';
 import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, playerPosition, worldClock } from './game';
 import { setGrowthDropHandler } from './growth';
@@ -14,7 +16,7 @@ import { toggleLever } from './redstone';
 import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach } from './mobs';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
-import { useGameStore } from './store';
+import { useGameStore, MAX_HEALTH } from './store';
 import { igniteTnt } from './tnt';
 import { TOOLS } from './tools';
 import { WORLD_HEIGHT, type World } from './world';
@@ -116,6 +118,8 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
     }
     // 熔炉被破坏：炉内容物一并掉落
     if (oldId === FURNACE) dropFurnaceContents(`${x},${y},${z}`, x, y, z);
+    // 酿造台被破坏：台内容物一并掉落
+    if (oldId === BLOCK_BY_KEY.brewing_stand.id) dropBrewingContents(`${x},${y},${z}`, x, y, z);
     // 容器被破坏：内容物一并掉落
     if (oldId === BLOCK_BY_KEY.chest.id || oldId === BLOCK_BY_KEY.barrel.id) {
       dropStorageContents(`${x},${y},${z}`, x, y, z);
@@ -139,6 +143,20 @@ export function tryPlace(): boolean {
       return false;
     }
     if (held?.kind === 'material' && FOODS[held.material] && s.eatSelectedFood()) {
+      lastPlace = now;
+      return false;
+    }
+    // 手持药水右键：饮用（水瓶/粗制药水无效果）
+    if (held?.kind === 'material' && POTIONS[held.material]) {
+      const pot = POTIONS[held.material];
+      if (!pot.effect) {
+        s.setNotice('没什么味道…');
+      } else {
+        if (pot.effect === 'healing') s.setHealth(Math.min(MAX_HEALTH, s.health + 4));
+        else effects[pot.effect] = pot.duration;
+        s.consumeMaterial(held.material, 1);
+        playSound('place');
+      }
       lastPlace = now;
       return false;
     }
@@ -185,6 +203,20 @@ export function tryPlace(): boolean {
     dir.x, dir.y, dir.z,
     REACH,
   );
+  // 玻璃瓶对准水源/身处水中右键：装成水瓶（MC 取水）
+  const heldMat = s.worldMode === 'survival' ? s.hotbarSlots[s.selectedSlot] : null;
+  if (heldMat?.kind === 'material' && heldMat.material === 'glass_bottle') {
+    const camBlock = world.getBlock(Math.floor(camera.position.x), Math.floor(camera.position.y), Math.floor(camera.position.z));
+    const eyeInWater = camBlock === BLOCK_BY_KEY.water.id;
+    const hitWater = hit !== null && world.getBlock(hit.block[0], hit.block[1], hit.block[2]) === BLOCK_BY_KEY.water.id;
+    if (eyeInWater || hitWater) {
+      s.consumeMaterial('glass_bottle', 1);
+      s.addStack({ kind: 'material', material: 'water_bottle' }, 1);
+      playSound('place');
+      lastPlace = now;
+      return true;
+    }
+  }
   if (!hit) return false;
   const [fx, fy, fz] = hit.face;
   if (fx === 0 && fy === 0 && fz === 0) return false; // 原点在方块内，无法确定放置面
@@ -249,6 +281,11 @@ export function tryPlace(): boolean {
   }
   if (hitId === FURNACE) {
     s.setFurnaceOpen(`${bx},${by},${bz}`);
+    return false;
+  }
+  // 酿造台：右键打开酿造界面
+  if (hitId === BLOCK_BY_KEY.brewing_stand.id) {
+    s.setBrewingOpen(`${bx},${by},${bz}`);
     return false;
   }
   // 箱子/木桶：右键打开容器界面

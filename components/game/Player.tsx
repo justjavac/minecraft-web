@@ -18,6 +18,7 @@ import { aabbFree, collideAxis, type Aabb } from '@/lib/physics';
 import { playSound } from '@/lib/sound';
 import { useGameStore } from '@/lib/store';
 import { resetSurvivalMem, tickSurvival, type SurvivalMem } from '@/lib/survival';
+import { effects, tickEffects } from '@/lib/effects';
 import { TOOLS } from '@/lib/tools';
 import { WORLD_HEIGHT, type World } from '@/lib/world';
 
@@ -318,7 +319,7 @@ export function Player() {
     let mx = fx * f - fz * r;
     let mz = fz * f + fx * r;
     const mLen = Math.hypot(mx, mz);
-    const speed = flying ? FLY_SPEED : inFluid ? WALK_SPEED * (inLava ? 0.4 : 0.6) : WALK_SPEED;
+    const speed = (flying ? FLY_SPEED : inFluid ? WALK_SPEED * (inLava ? 0.4 : 0.6) : WALK_SPEED) * (effects.speed > 0 ? 1.2 : 1); // 迅捷药水 +20%
     // 摇杆为模拟量：mLen ≤ 1 时保留力度，超过 1（键盘对角线）才归一化
     const scale = mLen > 1 ? speed / mLen : speed;
     mx *= scale;
@@ -408,9 +409,8 @@ export function Player() {
       },
     );
 
-    // 岩浆灼烧：接触即掉血（2 心/秒），离开后清零计时
-    if (inLava && gs.worldMode === 'survival') {
-      lavaAcc.current += dt * 4;
+    // 岩浆灼烧：接触即掉血（2 心/秒，抗火药水免疫），离开后清零计时
+    if (inLava && gs.worldMode === 'survival' && effects.fireRes <= 0) {      lavaAcc.current += dt * 4;
       const dmg = Math.floor(lavaAcc.current);
       if (dmg > 0) {
         lavaAcc.current -= dmg;
@@ -419,6 +419,8 @@ export function Player() {
     } else {
       lavaAcc.current = 0;
     }
+    // 药水效果计时（创造模式也递减，MC 一致）
+    tickEffects(dt);
 
     // 脚步声：着地行走时按实际位移触发（顶墙走不响）
     const hDist = Math.hypot(p.x - prevStep.current.x, p.z - prevStep.current.z);
@@ -497,7 +499,7 @@ export function Player() {
           const held = gs.hotbarSlots[gs.selectedSlot];
           const tool = held?.kind === 'tool' ? TOOLS[held.tool] : null;
           attackCd.current = tool?.attackCd ?? 0.25; // MC 拳头 4 攻速，剑 1.6
-          damageMob(mob, tool?.attackDamage ?? 1, playerPosition); // 拳头 1 点（半心）
+          damageMob(mob, (tool?.attackDamage ?? 1) + (effects.strength > 0 ? 2 : 0), playerPosition); // 拳头 1 点（半心），力量药水 +2
           if (tool) gs.damageHeldTool(tool.kind === 'sword' ? 1 : 2); // MC：剑耗 1，工具作武器耗 2
           playSound('dig_choppy', 0.8);
           survivalStats.exhaustion += 0.1; // MC：攻击消耗

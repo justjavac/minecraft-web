@@ -5,6 +5,7 @@ import { BLOCKS } from '@/lib/blocks';
 import { debugInfo, survivalStats } from '@/lib/game';
 import { clearMobs } from '@/lib/mobs';
 import { MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
+import { effects } from '@/lib/effects';
 import { loadWorldMeta, type WorldMeta } from '@/lib/persistence';
 import { armorPoints, ARMOR_DEFS } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
@@ -16,6 +17,7 @@ import { TouchControls } from './TouchControls';
 import { SettingsDialog } from './SettingsDialog';
 import { CraftingDialog } from './CraftingDialog';
 import { FurnaceDialog } from './FurnaceDialog';
+import { BrewingDialog } from './BrewingDialog';
 import { StorageDialog } from './StorageDialog';
 import { TileIcon } from './TileIcon';
 import { BlockPicker } from './BlockPicker';
@@ -131,8 +133,27 @@ function SurvivalBars() {
   const health = useGameStore((s) => s.health);
   const hunger = useGameStore((s) => s.hunger);
   const armor = useGameStore((s) => armorPoints(s.armorSlots));
+  const [, setTick] = useState(0);
+  // 药水效果倒计时徽章（1s 刷新）
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const active: [string, number][] = [];
+  if (effects.speed > 0) active.push(['迅捷', effects.speed]);
+  if (effects.strength > 0) active.push(['力量', effects.strength]);
+  if (effects.fireRes > 0) active.push(['抗火', effects.fireRes]);
   return (
     <div className="w-full space-y-1 pb-0.5">
+      {active.length > 0 && (
+        <div className="flex justify-center gap-1.5">
+          {active.map(([name, sec]) => (
+            <span key={name} className="rounded bg-purple-700/80 px-1.5 py-0.5 text-[10px] text-white">
+              {name} {Math.floor(sec / 60)}:{String(Math.floor(sec % 60)).padStart(2, '0')}
+            </span>
+          ))}
+        </div>
+      )}
       {armor > 0 && <Meter value={armor * 2} color="#9ca3af" />}
       <div className="flex justify-between">
         <Meter value={health} color="#ef4444" />
@@ -356,6 +377,9 @@ export function Hud() {
 
       {/* 熔炉界面 */}
       <FurnaceDialog />
+
+      {/* 酿造台界面 */}
+      <BrewingDialog />
 
       {/* 容器界面（箱子/木桶） */}
       <StorageDialog />

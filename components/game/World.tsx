@@ -19,6 +19,7 @@ import { playerPosition, setActiveWorld, debugInfo, teleportState, worldClock } 
 import { findLanding, ensurePortal, type Dimension } from '@/lib/dimension';
 import { createNetherTerrain } from '@/lib/nether';
 import { clearFurnaces, furnaces, tickFurnaces, type FurnaceState } from '@/lib/furnace';
+import { brews, clearBrews, tickBrewing, type BrewState } from '@/lib/brewing';
 import { clearStorages, storages } from '@/lib/storage';
 import { clearMobs } from '@/lib/mobs';
 import { tickFluids, clearFluids } from '@/lib/fluids';
@@ -84,6 +85,7 @@ function currentExtras(d: Dimension): SaveExtras {
         ? { health: s.health, hunger: s.hunger, saturation: s.saturation, slots: s.hotbarSlots, backpack: s.mainSlots, armor: s.armorSlots }
         : undefined,
     furnaces: furnaces.size > 0 ? Object.fromEntries(furnaces) : undefined,
+    brews: brews.size > 0 ? Object.fromEntries(brews) : undefined,
     storages:
       storages.size > 0
         ? Object.fromEntries([...storages].filter(([, slots]) => slots.some((s) => s !== null)))
@@ -95,6 +97,7 @@ interface DimState {
   player: { x: number; y: number; z: number };
   storages: [string, Slot[]][];
   furnaces: [string, FurnaceState][];
+  brews: [string, BrewState][];
 }
 
 export function WorldRenderer() {
@@ -140,6 +143,10 @@ export function WorldRenderer() {
           if (meta?.furnaces) {
             for (const [k, v] of Object.entries(meta.furnaces)) furnaces.set(k, v);
           }
+          clearBrews();
+          if (meta?.brews) {
+            for (const [k, v] of Object.entries(meta.brews)) brews.set(k, v);
+          }
           clearStorages();
           if (meta?.storages) {
             for (const [k, v] of Object.entries(meta.storages)) storages.set(k, v);
@@ -170,9 +177,11 @@ export function WorldRenderer() {
         const ds = dimStates[dimension];
         clearStorages();
         clearFurnaces();
+        clearBrews();
         if (ds) {
           for (const [k, v] of ds.storages) storages.set(k, v);
           for (const [k, v] of ds.furnaces) furnaces.set(k, v);
+          for (const [k, v] of ds.brews) brews.set(k, v);
           useGameStore.getState().setSpawnPoint(ds.player);
         }
         // 跨维度传送：落点扫描 + 无门造门 + 传送坐标落定
@@ -209,9 +218,11 @@ export function WorldRenderer() {
         player: { ...playerPosition },
         storages: [...storages],
         furnaces: [...furnaces],
+        brews: [...brews],
       };
       clearMobs();
       clearFurnaces();
+      clearBrews();
       clearStorages();
       clearFluids();
       clearSaplings();
@@ -279,6 +290,7 @@ export function WorldRenderer() {
     }
     // 熔炉烧炼不做暂停门控（与流体/作物一致）：打开熔炉界面会解锁指针，门控会让烧炼整个冻结
     tickFurnaces(Math.min(delta, 0.05));
+    tickBrewing(Math.min(delta, 0.05)); // 酿造同理（MC 20s 一轮）
     debugInfo.chunks = w.chunks.size;
     debugInfo.dirty = w.dirtyChunks.size;
     if (drained > 0 || w.generation !== lastGeneration.current) {

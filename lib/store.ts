@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { ARMOR_DEFS, armorPoints, emptyArmorSlots, type ArmorPiece, type ArmorSlots } from './armor';
 import { HOTBAR_BLOCKS, type BlockId } from './blocks';
+import { getBrew, putIntoBrewing, takePotion } from './brewing';
 import { FOODS, getFurnace, putIntoFurnace, takeOutput } from './furnace';
 import { hurtState, playerPosition, survivalStats } from './game';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
@@ -110,6 +111,8 @@ interface GameStore {
   craftingTable: boolean;
   /** 打开的熔炉位置 key（"x,y,z"），null 未打开 */
   furnaceOpen: string | null;
+  /** 打开的酿造台位置 key，null 未打开 */
+  brewingOpen: string | null;
   /** 打开的容器（箱子/木桶）位置 key，null 未打开 */
   storageOpen: string | null;
   /** 创造模式热键栏 9 格内容（选块界面可更换） */
@@ -144,6 +147,7 @@ interface GameStore {
   loadSurvival: (s: { health: number; hunger: number; saturation?: number; slots?: Slot[]; backpack?: Slot[]; armor?: ArmorSlots }) => void;
   setCraftingOpen: (open: boolean, withTable?: boolean) => void;
   setFurnaceOpen: (key: string | null) => void;
+  setBrewingOpen: (key: string | null) => void;
   setStorageOpen: (key: string | null) => void;
   /** 把热键栏/背包某格的整叠物品移入打开的容器 */
   storagePut: (area: 'hotbar' | 'main', slotIndex: number) => void;
@@ -155,6 +159,10 @@ interface GameStore {
   furnacePut: (slotIndex: number, force?: 'input' | 'fuel') => void;
   /** 取出打开熔炉的全部产出 */
   furnaceTakeOutput: () => void;
+  /** 把热键栏 slotIndex 的物品移 1 个进打开的酿造台 */
+  brewingPut: (slotIndex: number) => void;
+  /** 取出打开酿造台药水槽 i 的药水 */
+  brewingTakePotion: (i: number) => void;
   /** 向热键栏添加可堆叠物品，返回放不下的数量 */
   addStack: (item: { kind: 'block'; id: BlockId } | { kind: 'material'; material: string }, count?: number) => number;
   /** 给工具找空槽，满则返回 false */
@@ -206,7 +214,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   armorSlots: emptyArmorSlots(),
   craftingOpen: false,
   craftingTable: false,
-  furnaceOpen: null,
+  furnaceOpen: null, brewingOpen: null,
   storageOpen: null,
   hotbarBlocks: [...HOTBAR_BLOCKS],
   pickerOpen: false,
@@ -222,12 +230,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       hasLocked: false, spawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION,
       dimension: 'overworld',
-      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, storageOpen: null,
+      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null,
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null, storageOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, storageOpen: null, loadError: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
@@ -239,7 +247,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setPickerOpen: (pickerOpen) => {
     if (pickerOpen && typeof document !== 'undefined') document.exitPointerLock();
     // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(pickerOpen ? { pickerOpen, craftingOpen: false, furnaceOpen: null, storageOpen: null } : { pickerOpen });
+    set(pickerOpen ? { pickerOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null } : { pickerOpen });
   },
   toggleFly: () => set((s) => ({ flying: s.worldMode === 'creative' ? !s.flying : false })),
   setPaused: (paused) => set({ paused }),
@@ -310,7 +318,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         mainSlots,
         armorSlots,
         // 死亡时关掉所有打开的界面（仅受伤未死不动）
-        ...(died ? { craftingOpen: false, furnaceOpen: null, storageOpen: null, pickerOpen: false } : {}),
+        ...(died ? { craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false } : {}),
       };
     });
     return true;
@@ -331,18 +339,23 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set((s) => ({
       craftingOpen,
       craftingTable: craftingOpen ? (withTable ?? s.craftingTable) : s.craftingTable,
-      ...(craftingOpen ? { furnaceOpen: null, storageOpen: null, pickerOpen: false } : {}),
+      ...(craftingOpen ? { furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false } : {}),
     }));
   },
   setFurnaceOpen: (furnaceOpen) => {
     if (furnaceOpen && typeof document !== 'undefined') document.exitPointerLock();
     // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(furnaceOpen ? { furnaceOpen, craftingOpen: false, storageOpen: null, pickerOpen: false } : { furnaceOpen });
+    set(furnaceOpen ? { furnaceOpen, craftingOpen: false, brewingOpen: null, storageOpen: null, pickerOpen: false } : { furnaceOpen });
+  },
+  setBrewingOpen: (brewingOpen) => {
+    if (brewingOpen && typeof document !== 'undefined') document.exitPointerLock();
+    // 界面互斥：打开时关掉其余界面（关闭时不动其他的）
+    set(brewingOpen ? { brewingOpen, craftingOpen: false, furnaceOpen: null, storageOpen: null, pickerOpen: false } : { brewingOpen });
   },
   setStorageOpen: (storageOpen) => {
     if (storageOpen && typeof document !== 'undefined') document.exitPointerLock();
     // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(storageOpen ? { storageOpen, craftingOpen: false, furnaceOpen: null, pickerOpen: false } : { storageOpen });
+    set(storageOpen ? { storageOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, pickerOpen: false } : { storageOpen });
   },
   storagePut: (area, slotIndex) => {
     const s = get();
@@ -390,6 +403,17 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     const s = get();
     if (!s.furnaceOpen) return;
     set({ hotbarSlots: takeOutput(s.hotbarSlots, getFurnace(s.furnaceOpen)) });
+  },
+  brewingPut: (slotIndex) => {
+    const s = get();
+    if (!s.brewingOpen) return;
+    const { slots, to } = putIntoBrewing(s.hotbarSlots, slotIndex, getBrew(s.brewingOpen));
+    if (to) set({ hotbarSlots: slots });
+  },
+  brewingTakePotion: (i) => {
+    const s = get();
+    if (!s.brewingOpen) return;
+    set({ hotbarSlots: takePotion(s.hotbarSlots, getBrew(s.brewingOpen), i) });
   },
   addStack: (item, count = 1) => {
     // 先填热键栏，放不下的溢出到背包（MC：新物品优先热键栏）

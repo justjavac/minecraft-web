@@ -59,6 +59,7 @@ pnpm dev         # 打开 http://localhost:3000
 - **种植**：仙人掌/甘蔗/竹子按 MC 随机刻拔节（甘蔗只能种在水边；仙人掌四邻不能有实心，否则断开掉落）；破坏柱作物任一节，上方各节全部掉落
 - **红石基础**：红石矿掉红石粉，合成红石火把（常亮电源）/拉杆（右击开关）/红石块/红石灯；红石粉贴地传能（邻接电源 15 级、逐格衰减）；元件反应：**红石灯亮灭、橡木门供能自动开关、TNT 供能引爆**
 - **下界维度**：黑曜石 4×5 门框（角可选）+ 打火石（砂砾 10% 掉燧石）点燃传送门，门内站 3 秒传送（坐标 1:8 映射，MC 规则）；下界为下界岩丘陵 + y31 岩浆海 + 参差基岩顶 + 石英矿/萤石簇/灵魂沙；**僵尸猪灵**成群出没——中立怪，打一只则群体仇恨；**下界堡垒**（下界砖十字桥廊 + 塔楼地狱疣园 + 宝箱），堡垒附近**凋灵骷髅**（命中凋零 DOT）与**烈焰人**（悬浮射火球，掉烈焰棒→烈焰粉）出没；两个维度独立存档、随时往返
+- **酿造**：酿造台（烈焰棒 + 圆石合成）；玻璃瓶对水装水瓶 → 地狱疣酿**粗制药水** → 糖/**烈焰粉**/闪烁的西瓜片/岩浆膏分别酿**迅捷/力量/治疗/抗火**药水（MC 20 秒一轮，1 粉酿 20 轮）；饮用得效果：迅捷 +20% 移速、力量 +2 攻击、治疗瞬回 2 心、抗火免疫岩浆（HUD 倒计时徽章）
 
 ## 自定义
 
@@ -68,7 +69,7 @@ pnpm dev         # 打开 http://localhost:3000
 ## 开发者
 
 - 技术栈：Next.js (App Router) + shadcn/ui + Three.js (@react-three/fiber)，pnpm 管理
-- 脚本：`pnpm dev` / `pnpm test`（vitest 237 用例）/ `pnpm lint` / `pnpm build`（静态导出 `out/`，离线可构建，可部署到任意静态托管）
+- 脚本：`pnpm dev` / `pnpm test`（vitest 245 用例）/ `pnpm lint` / `pnpm build`（静态导出 `out/`，离线可构建，可部署到任意静态托管）
 - CI：GitHub Actions（push/PR 跑 lint + test + build）
 - 世界生成：多噪声场群系与山脊地形（lib/noise.ts）+ 确定性矿脉（lib/oregen.ts）+ 流体传播（lib/fluids.ts）+ 共享树形库（lib/trees.ts）；chunk 网格化在 Web Worker 池中执行
 - 贴图工具：`scripts/build-pack.ts` 从 Faithful 源包（GitHub `Faithful-Resource-Pack/Faithful-Java-32x`）重提取 atlas（需 python+PIL）

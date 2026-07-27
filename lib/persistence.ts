@@ -2,6 +2,7 @@
 
 import { openDB, type IDBPDatabase } from 'idb';
 import type { ArmorSlots } from './armor';
+import type { BrewState } from './brewing';
 import type { FurnaceState } from './furnace';
 import type { Slot } from './slots';
 import type { WorldMode } from './store';
@@ -44,6 +45,8 @@ export interface SaveExtras {
   survival?: SurvivalSnapshot;
   /** 世界内熔炉状态（"x,y,z" → 状态） */
   furnaces?: Record<string, FurnaceState>;
+  /** 世界内酿造台状态（"x,y,z" → 状态） */
+  brews?: Record<string, BrewState>;
   /** 世界内容器（箱子/木桶）内容（"x,y,z" → 27 格） */
   storages?: Record<string, Slot[]>;
 }
