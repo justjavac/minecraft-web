@@ -53,6 +53,8 @@ export interface Terrain {
   snowlineAt(x: number, z: number): number;
   /** 地下洞穴群系区（2D 场 + 深度在调用处把关）：dripstone 滴水石洞 / lush 繁茂洞穴 / null 普通 */
   undergroundAt(x: number, z: number): 'dripstone' | 'lush' | null;
+  /** 该列地下是否有含水层（海平面以下的深洞灌水成水帘洞） */
+  aquiferAt(x: number, z: number): boolean;
 }
 
 export function hashString(s: string): number {
@@ -106,6 +108,8 @@ export function createTerrain(seed: string): Terrain {
   const nMush = createNoise2D(mulberry32(sh ^ 0x3d6e8f));
   // 洞穴群系场（滴水石/繁茂洞穴分区）
   const nCaveBio = createNoise2D(mulberry32(sh ^ 0x6a1c4e));
+  // 含水层场（地下水位分区）
+  const nAqua = createNoise2D(mulberry32(sh ^ 0x4b2d8f));
   // 洞穴 3D 噪声：意面隧道双场 + 奶酪洞腔
   const nCaveA = createNoise3D(mulberry32(sh ^ 0x1f2e3d));
   const nCaveB = createNoise3D(mulberry32(sh ^ 0x4c5a6b));
@@ -188,6 +192,11 @@ export function createTerrain(seed: string): Terrain {
     if (v > 0.38) return 'dripstone';
     if (v < -0.38) return 'lush';
     return null;
+  }
+
+  /** 含水层分区（约四成陆地下方有地下水） */
+  function aquiferAt(x: number, z: number): boolean {
+    return nAqua(x * 0.004, z * 0.004) > 0.25;
   }
 
   function caveAt(x: number, y: number, z: number, h?: number): boolean {
@@ -308,7 +317,7 @@ export function createTerrain(seed: string): Terrain {
     return kinds[Math.floor(hash2(sh ^ 0x31c8d2, x, z) * kinds.length)];
   }
 
-  return { heightAt, biomeAt, treeAt, caveAt, snowlineAt, undergroundAt };
+  return { heightAt, biomeAt, treeAt, caveAt, snowlineAt, undergroundAt, aquiferAt };
 }
 
 /** 全空地形，供测试使用 */
@@ -319,4 +328,5 @@ export const VOID_TERRAIN: Terrain = {
   caveAt: () => false,
   snowlineAt: () => Infinity,
   undergroundAt: () => null,
+  aquiferAt: () => false,
 };

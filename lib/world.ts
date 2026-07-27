@@ -7,6 +7,7 @@ import { notifyCropBlockSet } from './crops';
 import { notifyBlockSet } from './saplings';
 import { createTerrain, hash2, hashString, mulberry32, SEA_LEVEL, type Biome, type Terrain } from './noise';
 import { applyOres } from './oregen';
+import { applyGeodes } from './geodes';
 import { cascadeLight } from './lights';
 import { applyStructures } from './structures';
 import { HUGE_MUSHROOM_MAX_H, TREE_MAX_H, writeHugeMushroom, writeTree } from './trees';
@@ -125,6 +126,8 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
   }
   // 基岩层 + 深板岩渐变 + 团簇矿脉（地形填充后、树木/村庄前）
   applyOres(seedHash, terrain, cx, cz, data);
+  // 紫水晶洞：三层球壳（须在洞穴雕刻前，洞穴可自然破开晶洞）
+  applyGeodes(seedHash, terrain, cx, cz, data);
   // 洞穴雕刻（3D 噪声：意面隧道 + 奶酪洞腔；矿石填完后刻空，洞壁即现矿脉）
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -147,6 +150,20 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
       for (let y = SEA_LEVEL; y >= 4; y--) {
         const i = localIndex(x, y, z);
         if (data[i] === AIR && data[localIndex(x, y + 1, z)] === WATER) data[i] = WATER;
+      }
+    }
+  }
+  // 地下含水层：含水层区海平面以下的深洞灌水（MC 1.18 水帘洞；不破地表的洞才灌）
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      if (!terrain.aquiferAt(wx, wz)) continue;
+      const h = cachedHeightAt(wx, wz);
+      if (h < 0) continue;
+      for (let y = Math.min(h - 4, SEA_LEVEL - 2); y >= 5; y--) {
+        const i = localIndex(x, y, z);
+        if (data[i] === AIR) data[i] = WATER;
       }
     }
   }

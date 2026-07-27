@@ -43,6 +43,7 @@ describe('深层岩浆湖生成', () => {
       caveAt: (_x: number, y: number) => y >= 4 && y <= 20,
       snowlineAt: () => Infinity,
       undergroundAt: () => null,
+      aquiferAt: () => false,
     };
     const w = new World('lava-lake', undefined, cavern);
     expect(w.getBlock(8, 4, 8)).toBe(LAVA);

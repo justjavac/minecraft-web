@@ -67,7 +67,7 @@ describe('双格高植物', () => {
   it('真实世界：热带草原出高草丛（底+顶成对）', () => {
     const w = new World('flora-savanna', undefined, {
       heightAt: () => 45, biomeAt: () => 'savanna' as const, treeAt: () => null,
-      caveAt: () => false, snowlineAt: () => Infinity, undergroundAt: () => null,
+      caveAt: () => false, snowlineAt: () => Infinity, undergroundAt: () => null, aquiferAt: () => false,
     });
     let pairs = 0;
     for (let cx = 0; cx < 4; cx++) {
@@ -88,7 +88,7 @@ describe('双格高植物', () => {
   it('真实世界：丛林出竹子（茎段顶着带叶顶段）', () => {
     const w = new World('flora-jungle', undefined, {
       heightAt: () => 45, biomeAt: () => 'jungle' as const, treeAt: () => null,
-      caveAt: () => false, snowlineAt: () => Infinity, undergroundAt: () => null,
+      caveAt: () => false, snowlineAt: () => Infinity, undergroundAt: () => null, aquiferAt: () => false,
     });
     let stalk = 0;
     let tip = 0;
@@ -183,7 +183,7 @@ describe('洞穴群系装饰', () => {
     treeAt: () => null,
     caveAt: (_x, y) => y >= 20 && y <= 30, // 大洞腔
     snowlineAt: () => Infinity,
-    undergroundAt: () => zone,
+    undergroundAt: () => zone, aquiferAt: () => false,
   });
 
   it('滴水石洞：洞地板出滴水石块与石笋、洞顶倒挂钟乳', () => {
@@ -210,7 +210,7 @@ describe('神庙战利品', () => {
     const { structureAt, applyStructures } = await import('../structures');
     const t: Terrain = {
       heightAt: () => 45, biomeAt: () => 'desert' as const, treeAt: () => null,
-      caveAt: () => false, snowlineAt: () => Infinity, undergroundAt: () => null,
+      caveAt: () => false, snowlineAt: () => Infinity, undergroundAt: () => null, aquiferAt: () => false,
     };
     // 找一个出沙漠神殿的区域
     let spot: { x: number; z: number } | null = null;
