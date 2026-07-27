@@ -17,7 +17,7 @@ import { trySummonWither } from './wither';
 import { pistonIdFor } from './pistons';
 import { cycleRepeaterDelay, isComparatorId, isRepeaterId, toggleComparatorMode, toggleLever } from './redstone';
 import { XP_ORE } from './xp';
-import { BREED_FOOD, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
+import { BREED_FOOD, barterWith, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
 import { fillPortalFrame, nearestStronghold } from './stronghold';
 import { bobber, castBobber, reelIn } from './fishing';
 import { MATERIAL_INFO } from './materials';
@@ -254,6 +254,15 @@ export function tryPlace(): boolean {
         mobForTrade.sheared = true;
         spawnBlockDrop(woolBlockId(mobForTrade.woolColor ?? 'white'), mobForTrade.x, mobForTrade.y + 0.3, mobForTrade.z, 1 + Math.floor(Math.random() * 3));
         s.damageHeldTool(1);
+        playSound('place');
+        lastPlace = now;
+        return false;
+      }
+    }
+    // 以物易物：手持金锭右击猪灵 → 端详 3s 后丢出随机易物（MC；蛮兵不谈判）
+    if (held?.kind === 'material' && held.material === 'gold_ingot' && mobForTrade?.type === 'piglin') {
+      if (s.consumeMaterial('gold_ingot', 1) && barterWith(mobForTrade)) {
+        s.setNotice('猪灵端详着金锭…');
         playSound('place');
         lastPlace = now;
         return false;

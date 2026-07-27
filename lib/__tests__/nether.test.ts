@@ -136,7 +136,7 @@ describe('僵尸猪灵', () => {
     for (let i = 0; i < 40 && spawned < 2; i++) if (trySpawn(w, 8, 8)) spawned++;
     expect(spawned).toBeGreaterThanOrEqual(2);
     for (const m of mobs) {
-      expect(['zombified_piglin', 'blaze', 'ghast']).toContain(m.type);
+      expect(['zombified_piglin', 'piglin', 'piglin_brute', 'blaze', 'ghast']).toContain(m.type); // 荒地现在也会出猪灵（MC）
       expect(m.y).toBeGreaterThan(LAVA_SEA);
     }
     clearMobs();

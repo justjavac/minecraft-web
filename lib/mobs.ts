@@ -8,13 +8,13 @@ import { XP_MOB } from './xp';
 import { explodeAt } from './explosion';
 import { endCrystals, hitCrystal } from './endfight';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
-import { fortressNear } from './netherstructures';
+import { bastionNear, fortressNear } from './netherstructures';
 import { aabbFree, collideAxis } from './physics';
 import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon';
 
 export interface MobDef {
   name: string;
@@ -43,6 +43,10 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   mooshroom: { name: '蘑菇牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
   // 僵尸猪灵：中立敌对——不被激怒时不攻击；受伤则群体仇恨（MC 下界特色）
   zombified_piglin: { name: '僵尸猪灵', hp: 20, speed: 2.4, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'gold_ingot', count: [0, 1] }, { material: 'bone', count: [0, 1] }] },
+  // 猪灵：中立敌对——玩家穿任一金装备则不主动攻击（MC 金甲豁免）；受伤群体仇恨；可以物易物
+  piglin: { name: '猪灵', hp: 16, speed: 2.6, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.6, attackCd: 1, drops: [{ material: 'gold_ingot', count: [0, 1] }] },
+  // 猪灵蛮兵：堡垒守卫——始终敌对、不受金甲豁免、不接受易物（MC）
+  piglin_brute: { name: '猪灵蛮兵', hp: 50, speed: 2.8, hostile: true, burnsAtDay: false, damage: 7, attackRange: 1.6, attackCd: 1, drops: [] },
   // 烈焰人：悬浮飞行，远程火球（MC 下界堡垒标志怪）
   blaze: { name: '烈焰人', hp: 20, speed: 2.0, hostile: true, burnsAtDay: false, damage: 4, attackRange: 14, attackCd: 2.5, drops: [{ material: 'blaze_rod', count: [0, 1] }] },
   // 凋灵骷髅：堡垒近战，命中附加凋零 DOT（MC）
@@ -108,6 +112,8 @@ export interface Mob {
   teleportTimer?: number;
   /** 凋灵：破坏方块计时与弹幕计时 */
   smashTimer?: number;
+  /** 猪灵：端详金锭剩余秒（以物易物中，静止不攻击） */
+  barterTimer?: number;
   /** 末影龙：三态飞行状态机（盘旋/俯冲/栖息）与目标点 */
   dragonPhase?: 'circle' | 'strafe' | 'perch';
   dragonAngle?: number;
@@ -262,6 +268,41 @@ export function makeEnderDragon(x: number, y: number, z: number): Mob {
   return m;
 }
 
+/** 玩家是否穿任一金装备（MC：猪灵不主动攻击穿金甲的玩家；蛮兵不吃这套） */
+export function wearsGoldArmor(): boolean {
+  const a = useGameStore.getState().armorSlots;
+  return [a.helmet, a.chestplate, a.leggings, a.boots].some((p) => p?.material === 'gold');
+}
+
+/** 以物易物表（MC 1.16 权重展开的简化：8 样，权重和 100） */
+export const BARTER_TABLE: { kind: 'material' | 'block'; key: string; count: [number, number]; weight: number }[] = [
+  { kind: 'material', key: 'ender_pearl', count: [2, 4], weight: 10 },
+  { kind: 'material', key: 'glowstone_dust', count: [2, 4], weight: 10 },
+  { kind: 'material', key: 'quartz', count: [5, 12], weight: 20 },
+  { kind: 'material', key: 'string', count: [4, 8], weight: 15 },
+  { kind: 'material', key: 'leather', count: [2, 4], weight: 15 },
+  { kind: 'block', key: 'soul_sand', count: [4, 12], weight: 10 },
+  { kind: 'block', key: 'obsidian', count: [1, 1], weight: 10 },
+  { kind: 'block', key: 'crying_obsidian', count: [1, 1], weight: 10 },
+];
+
+function rollBarter(): { kind: 'material' | 'block'; key: string; count: number } {
+  let roll = Math.random() * 100;
+  for (const c of BARTER_TABLE) {
+    roll -= c.weight;
+    if (roll < 0) return { kind: c.kind, key: c.key, count: c.count[0] + Math.floor(Math.random() * (c.count[1] - c.count[0] + 1)) };
+  }
+  return { kind: 'material', key: 'quartz', count: 5 };
+}
+
+/** 以物易物：玩家给金锭（调用方已消耗），猪灵端详 3s 后丢出随机易物；蛮兵不谈判（MC） */
+export function barterWith(mob: Mob): boolean {
+  if (mob.type !== 'piglin') return false;
+  if ((mob.barterTimer ?? 0) > 0) return false;
+  mob.barterTimer = 3;
+  return true;
+}
+
 /** 在玩家周围环形区域找地表生成（夜晚敌对、白天被动且只在草地上；村庄附近生成村民；蘑菇岛只出蘑菇牛且夜晚不刷怪） */
 export function trySpawn(world: World, px: number, pz: number): boolean {
   const night = isNight();
@@ -342,22 +383,32 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
           : roll < 0.9
             ? 'zombified_piglin'
             : 'ghast'
-      : biome === 'soul_sand_valley'
+      : bastionNear(world.seedHash, world.terrain, bx, bz, 48)
         ? roll < 0.5
-          ? 'ghast'
-          : roll < 0.75
-            ? 'zombified_piglin'
-            : 'blaze'
-        : biome === 'warped_forest'
-          ? roll < 0.7
-            ? 'enderman'
-            : 'zombified_piglin'
-          : roll < 0.7
-            ? 'zombified_piglin'
-            : roll < 0.88
-              ? 'blaze'
-              : 'ghast';
-    if (type === 'zombified_piglin') {
+          ? 'piglin_brute'
+          : 'piglin'
+        : biome === 'soul_sand_valley'
+          ? roll < 0.5
+            ? 'ghast'
+            : roll < 0.75
+              ? 'zombified_piglin'
+              : 'blaze'
+          : biome === 'warped_forest'
+            ? roll < 0.7
+              ? 'enderman'
+              : 'zombified_piglin'
+            : biome === 'crimson_forest'
+              ? roll < 0.6
+                ? 'piglin'
+                : 'zombified_piglin'
+              : roll < 0.55
+                ? 'zombified_piglin'
+                : roll < 0.7
+                  ? 'piglin'
+                  : roll < 0.88
+                    ? 'blaze'
+                    : 'ghast';
+    if (type === 'zombified_piglin' || type === 'piglin') {
       const pack = 2 + Math.floor(Math.random() * 2); // 2-3 只
       for (let i = 0; i < pack; i++) {
         mobs.push(makeMob(type, bx + 0.5 + (Math.random() - 0.5) * 2, sy, bz + 0.5 + (Math.random() - 0.5) * 2));
@@ -777,7 +828,15 @@ export function tickMobs(
       }
     }
 
-    if (m.fleeTimer > 0) {
+    // 猪灵端详金锭（以物易物）：静止 3s 不移动不攻击，到点丢出随机易物（MC）
+    if (m.type === 'piglin' && (m.barterTimer ?? 0) > 0) {
+      m.barterTimer = (m.barterTimer ?? 0) - dt;
+      if (m.barterTimer <= 0) {
+        const c = rollBarter();
+        if (c.kind === 'block') spawnBlockDrop(BLOCK_BY_KEY[c.key].id, m.x, m.y + 0.5, m.z, c.count);
+        else spawnMaterialDrop(c.key, m.x, m.y + 0.5, m.z, c.count);
+      }
+    } else if (m.fleeTimer > 0) {
       // 受击逃跑
       m.fleeTimer -= dt;
       const fx = m.x - m.fleeFromX;
@@ -787,7 +846,7 @@ export function tickMobs(
         mx = (fx / fd) * def.speed * 1.5;
         mz = (fz / fd) * def.speed * 1.5;
       }
-    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0)) && (m.type !== 'enderman' || (m.aggroTimer ?? 0) > 0)) {
+    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0)) && (m.type !== 'enderman' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'piglin' || ((m.aggroTimer ?? 0) > 0 || !wearsGoldArmor()))) {
       // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼/末影人未被激怒时中立）
       if (m.type === 'wither') {
         // 凋灵 Boss：悬浮追踪 + 每 2s 凋灵骷髅弹幕 + 每 4s 粉碎周围方块（MC）
@@ -1100,6 +1159,12 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   if (mob.type === 'zombified_piglin') {
     for (const m of mobs) {
       if (m.type === 'zombified_piglin' && Math.hypot(m.x - mob.x, m.z - mob.z) <= 32) m.aggroTimer = 40;
+    }
+  }
+  // 猪灵：受伤激怒自身与 32 格内同伴（MC 群体仇恨；蛮兵不传染）
+  if (mob.type === 'piglin') {
+    for (const m of mobs) {
+      if (m.type === 'piglin' && Math.hypot(m.x - mob.x, m.z - mob.z) <= 32) m.aggroTimer = 40;
     }
   }
   // 野狼：受伤激怒自身与 16 格内同伴（MC 狼群复仇）

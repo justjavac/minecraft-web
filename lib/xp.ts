@@ -9,6 +9,8 @@ export const XP_MOB: Record<MobType, number> = {
   spider: 5,
   creeper: 5,
   zombified_piglin: 5,
+  piglin: 5,
+  piglin_brute: 10, // MC 蛮兵经验高
   blaze: 10,
   wither_skeleton: 5,
   ghast: 5,

@@ -82,6 +82,10 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     mooshroom: l('#a03028'), // 蘑菇牛红身（MC 红蘑菇牛）
     mooshroomSpot: l('#e8e0d8'),
     piglinSkin: l('#c98a8a'), // 僵尸猪灵：腐粉
+    piglinFlesh: l('#e0a69a'), // 猪灵：粉棕
+    piglinDark: l('#9a6a5a'),
+    brute: l('#6a5a50'), // 蛮兵：深褐
+    bruteDark: l('#4a3e38'),
     piglinRot: l('#7f9e5f'), // 僵尸猪灵：尸斑绿
     goldSword: l('#e8c840'),
     blaze: l('#e8b830'), // 烈焰人明黄
@@ -213,6 +217,28 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, headGeo, mats.piglinSkin, 0, 1.66, 0);
       addPart(g, snoutGeo, mats.piglinRot, 0, 1.6, 0.22);
       addPart(g, swordGeo, mats.goldSword, 0.42, 1.0, 0.1);
+      break;
+    case 'piglin':
+      // 猪灵：粉棕皮猪人 + 金剑（MC；金甲玩家的朋友）
+      addPart(g, legGeo, mats.piglinDark, -0.13, 0.375, 0);
+      addPart(g, legGeo, mats.piglinDark, 0.13, 0.375, 0);
+      addPart(g, bodyGeo, mats.piglinFlesh, 0, 1.1, 0);
+      addPart(g, armGeo, mats.piglinFlesh, -0.34, 1.15, 0);
+      addPart(g, armGeo, mats.piglinFlesh, 0.34, 1.15, 0);
+      addPart(g, headGeo, mats.piglinFlesh, 0, 1.66, 0);
+      addPart(g, snoutGeo, mats.piglinDark, 0, 1.6, 0.22);
+      addPart(g, swordGeo, mats.goldSword, 0.42, 1.0, 0.1);
+      break;
+    case 'piglin_brute':
+      // 猪灵蛮兵：深褐魁梧猪人 + 金斧（更高大，MC 堡垒守卫）
+      addPart(g, legGeo, mats.bruteDark, -0.15, 0.375, 0);
+      addPart(g, legGeo, mats.bruteDark, 0.15, 0.375, 0);
+      addPart(g, bodyGeo, mats.brute, 0, 1.15, 0);
+      addPart(g, armGeo, mats.brute, -0.36, 1.2, 0);
+      addPart(g, armGeo, mats.brute, 0.36, 1.2, 0);
+      addPart(g, headGeo, mats.brute, 0, 1.72, 0);
+      addPart(g, snoutGeo, mats.bruteDark, 0, 1.66, 0.22);
+      addPart(g, swordGeo, mats.goldSword, 0.44, 1.05, 0.1);
       break;
     case 'blaze':
       // 烈焰人：明黄头 + 环身烈焰棒（MC 标志造型）
