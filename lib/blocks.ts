@@ -111,8 +111,8 @@ export interface BlockDef {
   lava?: boolean;
   /** 发光强度 1-15（0/缺省不发光；火把 14、海晶灯/蛙明灯/信标 15） */
   light?: number;
-  /** 形状（默认 cube 全方块）：slab 半高 / stairs 双箱 L 形 / fence 柱+臂 / cross 十字面片 / door 薄面板 */
-  shape?: 'slab' | 'stairs' | 'fence' | 'cross' | 'door';
+  /** 形状（默认 cube 全方块）：slab 半高 / stairs 双箱 L 形 / fence 柱+臂 / cross 十字面片 / door 薄面板 / panel 贴墙薄片（藤蔓） */
+  shape?: 'slab' | 'stairs' | 'fence' | 'cross' | 'door' | 'panel';
   /** 台阶是否上半（放置/合并用） */
   slabTop?: boolean;
   /** 台阶对应的完整方块 id（两个半砖合并） */
@@ -129,6 +129,12 @@ export interface BlockDef {
   dropBlock?: BlockId;
   /** 树苗对应的木材种类（长成该种树；lib/saplings.ts 驱动） */
   treeWood?: string;
+  /** 双格高植物的底段（破坏/放置上下联动；顶段用 plantTop 标记） */
+  twoHigh?: boolean;
+  /** 双格高植物的顶段 */
+  plantTop?: boolean;
+  /** 悬挂植物：需顶面为不透明方块（洞穴藤蔓等；默认需底面支撑） */
+  hang?: boolean;
   cat: BlockCat;
 }
 
@@ -489,6 +495,45 @@ for (const [k, cn] of [['dead_bush', '枯灌木'], ['red_mushroom', '红色蘑�
 add('mushroom_stem', '蘑菇柄', 'mushroom_stem', { cat: 'earth', tool: 'axe', digTime: 0.3, ...GRASS_SND });
 add('red_mushroom_block', '红色蘑菇方块', 'red_mushroom_block', { cat: 'earth', tool: 'axe', digTime: 0.3, ...GRASS_SND });
 add('brown_mushroom_block', '棕色蘑菇方块', 'brown_mushroom_block', { cat: 'earth', tool: 'axe', digTime: 0.3, ...GRASS_SND });
+
+// ——— 双格高植物（底段 twoHigh + 顶段 plantTop，联动破坏；MC 高草丛/大型蕨） ———
+const tallGrass = add('tall_grass', '高草丛', 'tall_grass_bottom', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, twoHigh: true, ...GRASS_SND });
+add('tall_grass_top', '高草丛（上）', 'tall_grass_top', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, plantTop: true, dropBlock: tallGrass.id, ...GRASS_SND });
+const largeFern = add('large_fern', '大型蕨', 'large_fern_bottom', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, twoHigh: true, ...GRASS_SND });
+add('large_fern_top', '大型蕨（上）', 'large_fern_top', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, plantTop: true, dropBlock: largeFern.id, ...GRASS_SND });
+
+// 竹子：茎段 + 带叶顶段（丛林成丛生长；顶段掉茎段）
+const bamboo = add('bamboo', '竹子', 'bamboo_stalk', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.15, ...GRASS_SND });
+add('bamboo_top', '竹子（顶）', 'bamboo_large_leaves', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.15, dropBlock: bamboo.id, ...GRASS_SND });
+
+// ——— 藤蔓（panel 薄面片贴附方块侧面，4 朝向，无碰撞；统一掉 n 款） ———
+const PANEL_EDGE: [number, number, number, number, number, number][] = [
+  [0, 0, 0, 1, 1, 0.0625], // n：北缘
+  [0.9375, 0, 0, 1, 1, 1], // e：东缘
+  [0, 0, 0.9375, 1, 1, 1], // s：南缘
+  [0, 0, 0, 0.0625, 1, 1], // w：西缘
+];
+let vineBase = 0;
+for (let f = 0; f < 4; f++) {
+  const d = add(`vine_${(['n', 'e', 's', 'w'] as const)[f]}`, '藤蔓', 'vine', {
+    cat: 'earth', shape: 'panel', facing: f as 0 | 1 | 2 | 3, box3: PANEL_EDGE[f], opaque: false, solid: false, digTime: 0.05, ...GRASS_SND,
+  });
+  if (f === 0) vineBase = d.id;
+  else d.dropBlock = vineBase;
+}
+
+// ——— 滴水石笋（细柱盒：立地为笋、倒挂为钟乳） ———
+const spikeUp = add('pointed_dripstone', '滴水石笋', 'pointed_dripstone_up_tip', {
+  cat: 'stone', shape: 'slab', box3: [0.375, 0, 0.375, 0.625, 1, 0.625], opaque: false, solid: false, digTime: 0.3, ...GRASS_SND,
+});
+add('pointed_dripstone_down', '滴水石笋（倒挂）', 'pointed_dripstone_down_tip', {
+  cat: 'stone', shape: 'slab', box3: [0.375, 0, 0.375, 0.625, 1, 0.625], opaque: false, solid: false, digTime: 0.3, dropBlock: spikeUp.id, ...GRASS_SND,
+});
+
+// ——— 繁茂洞穴植被：杜鹃花丛（十字）与洞穴藤蔓（悬挂，需顶面支撑） ———
+add('azalea', '杜鹃花丛', 'azalea_side', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
+add('flowering_azalea', '盛开的杜鹃花丛', 'flowering_azalea_side', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
+add('cave_vines', '洞穴藤蔓', 'cave_vines', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, hang: true, ...GRASS_SND });
 // 树苗（可生长，wood 见 lib/saplings.ts；红树在原版叫"红树胎生苗"）
 const SAPLINGS: [key: string, tex: string, cn: string, wood: string][] = [
   ['oak_sapling', 'oak_sapling', '橡树树苗', 'oak'],
