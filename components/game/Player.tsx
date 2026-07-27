@@ -19,6 +19,7 @@ import { playSound } from '@/lib/sound';
 import { useGameStore } from '@/lib/store';
 import { resetSurvivalMem, tickSurvival, type SurvivalMem } from '@/lib/survival';
 import { effects, tickEffects } from '@/lib/effects';
+import { tickBeacons } from '@/lib/beacon';
 import { TOOLS } from '@/lib/tools';
 import { WORLD_HEIGHT, type World } from '@/lib/world';
 
@@ -364,7 +365,7 @@ export function Player() {
     } else {
       velY.current = Math.max(velY.current - GRAVITY * dt, -50);
       if (space && onGround.current) {
-        velY.current = JUMP_VEL;
+        velY.current = JUMP_VEL * (effects.jumpBoost > 0 ? 1.2 : 1); // 跳跃提升（信标）：约 1.8 格高（MC 跳跃 I）
         onGround.current = false;
         if (gs.worldMode === 'survival') survivalStats.exhaustion += 0.05; // MC：跳跃消耗
       }
@@ -423,6 +424,8 @@ export function Player() {
     }
     // 药水效果计时（创造模式也递减，MC 一致）
     tickEffects(dt);
+    // 信标：校验金字塔并给范围内玩家刷新所选效果（MC）
+    tickBeacons(world, p.x, p.y, p.z);
     // 末影人对视激怒：准星盯上末影人即激怒（MC 规则，每秒检查一次）
     stareAcc.current += dt;
     if (stareAcc.current >= 1) {
@@ -565,6 +568,7 @@ export function Player() {
               }
               speedMul *= 1 + 0.3 * (held.ench?.efficiency ?? 0);
             }
+            if (effects.haste > 0) speedMul *= 1.3; // 急迫（信标）：挖掘 +30%（MC 急迫 I +20%，与效率附魔同风格取 30%）
             digState.progress += (dt * speedMul) / digTime;
             if (digState.progress >= 1) {
               breakBlock(world, bx, by, bz);

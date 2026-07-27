@@ -6,6 +6,7 @@ import { HOTBAR_BLOCKS, type BlockId } from './blocks';
 import { getBrew, putIntoBrewing, takePotion } from './brewing';
 import { FOODS, getFurnace, putIntoFurnace, takeOutput } from './furnace';
 import { hurtState, playerPosition, survivalStats } from './game';
+import { effects } from './effects';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
 import { applyCraft, canCraft, hasSpaceFor, type Recipe } from './recipes';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
@@ -313,10 +314,10 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     hurtState.lastAt = now;
     survivalStats.exhaustion += 0.1; // MC：受击也消耗能量
     set((s) => {
-      // 皮甲减伤（每护甲点 4%，与 MC 一致）+ 保护附魔减伤（每级 4%，上限 80%，MC）并扣每件装备 1 点耐久
+      // 皮甲减伤（每护甲点 4%，与 MC 一致）+ 保护附魔减伤（每级 4%，上限 80%，MC）并扣每件装备 1 点耐久；抗性效果（信标）再减 20%
       const points = armorPoints(s.armorSlots);
       const protLvl = Object.values(s.armorSlots).reduce((n, p) => n + (p?.ench?.protection ?? 0), 0);
-      const reduction = points * 0.04 + Math.min(0.8 - points * 0.04, protLvl * 0.04);
+      const reduction = points * 0.04 + Math.min(0.8 - points * 0.04, protLvl * 0.04) + (effects.resistance > 0 ? 0.2 : 0);
       const finalAmount = reduction > 0 ? Math.max(1, Math.ceil(amount * (1 - Math.min(0.8, reduction)))) : amount;
       let armorSlots = s.armorSlots;
       if (points > 0) {

@@ -142,6 +142,8 @@ export const RECIPES: Recipe[] = [
   { id: 'shears', name: '剪刀', out: { kind: 'tool', tool: 'shears' }, cost: [{ item: 'material:iron_ingot', count: 2 }], needsTable: false },
   { id: 'book', name: '书', out: { kind: 'material', material: 'book', count: 1 }, cost: [{ item: 'material:paper', count: 3 }, { item: 'material:leather', count: 1 }], needsTable: false },
   { id: 'enchanting_table', name: '附魔台', out: { kind: 'block', id: KID('enchanting_table'), count: 1 }, cost: [{ item: 'material:book', count: 1 }, { item: 'material:diamond', count: 2 }, { item: K('obsidian'), count: 4 }], needsTable: true },
+  // 信标：玻璃×5 + 黑曜石×3 + 下界之星×1（MC 配方）
+  { id: 'beacon', name: '信标', out: { kind: 'block', id: KID('beacon'), count: 1 }, cost: [{ item: K('glass'), count: 5 }, { item: K('obsidian'), count: 3 }, { item: 'material:nether_star', count: 1 }], needsTable: true },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_pickaxe', name: '石镐', out: { kind: 'tool', tool: 'stone_pickaxe' }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'wooden_axe', name: '木斧', out: { kind: 'tool', tool: 'wooden_axe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },

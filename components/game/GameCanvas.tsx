@@ -10,6 +10,7 @@ import { PlacePreview } from './PlacePreview';
 import { CrackOverlay } from './CrackOverlay';
 import { BreakParticles } from './BreakParticles';
 import { Mobs } from './Mobs';
+import { BeaconBeams } from './BeaconBeams';
 import { ItemDrops } from './ItemDrops';
 import { Tnt } from './Tnt';
 import { DayNight } from './DayNight';
@@ -87,6 +88,7 @@ export function GameCanvas() {
         <WorldRenderer />
         <Player />
         <Mobs />
+        <BeaconBeams />
         <ItemDrops />
         <Tnt />
         <BlockHighlight />

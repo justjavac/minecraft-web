@@ -12,6 +12,7 @@ import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
 import { clearBrokenPortals, tryIgnitePortal } from './portal';
+import { interactBeacon } from './beacon';
 import { trySummonWither } from './wither';
 import { pistonIdFor } from './pistons';
 import { cycleRepeaterDelay, isComparatorId, isRepeaterId, toggleComparatorMode, toggleLever } from './redstone';
@@ -346,6 +347,18 @@ export function tryPlace(): boolean {
   // 附魔台：右键打开附魔界面
   if (hitId === BLOCK_BY_KEY.enchanting_table.id) {
     s.setEnchantOpen(`${bx},${by},${bz}`);
+    return false;
+  }
+  // 信标：矿物块金字塔 + 手持矿物锭（铁/金/钻石/绿宝石）激活；已激活则右击循环切换效果
+  if (hitId === BLOCK_BY_KEY.beacon.id) {
+    const heldM = s.hotbarSlots[s.selectedSlot];
+    // 创造模式免支付（MC 创造直接激活）
+    const mat = s.worldMode === 'survival' ? (heldM?.kind === 'material' ? heldM.material : null) : 'iron_ingot';
+    const res = interactBeacon(world, bx, by, bz, mat);
+    if (res.consume && s.worldMode === 'survival') s.consumeMaterial(res.consume, 1);
+    if (res.ok) playSound('place');
+    s.setNotice(res.notice);
+    lastPlace = now;
     return false;
   }
   // 箱子/木桶：右键打开容器界面
