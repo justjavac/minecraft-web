@@ -1,0 +1,182 @@
+// 下界维度：地形（下界岩丘陵 + 密集洞穴 + 岩浆海）与 chunk 生成器
+// 顶层基岩天花板（y≈122-127 参差）+ 萤石簇 + 下界石英矿 + 灵魂沙/沙砾斑块
+
+import { AIR, BLOCK_BY_KEY, LAVA } from './blocks';
+import { createNoise2D, createNoise3D } from 'simplex-noise';
+import { hash2, hashString, mulberry32, type Terrain } from './noise';
+import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
+
+export const LAVA_SEA = 31; // 岩浆海平面（MC 一致）
+const BEDROCK_TOP = 122; // 天花板基岩起始（向上参差到 127）
+
+const K = (key: string) => BLOCK_BY_KEY[key].id;
+
+/** 下界地形：洞穴密度远高于主世界；heightAt 为洞穴顶板高度（生成器按列填充） */
+export function createNetherTerrain(seed: string): Terrain {
+  const sh = hashString(seed);
+  const nHill = createNoise2D(mulberry32(sh ^ 0x7e57ab1e));
+  const nPatch = createNoise2D(mulberry32(sh ^ 0x2b61a8));
+  const nCaveA = createNoise3D(mulberry32(sh ^ 0x5c1e7a));
+  const nCaveB = createNoise3D(mulberry32(sh ^ 0x9d3f2b));
+  const nCheese = createNoise3D(mulberry32(sh ^ 0x1a8c4d));
+
+  function heightAt(x: number, z: number): number {
+    const hills = nHill(x * 0.012, z * 0.012);
+    const detail = nHill(x * 0.05 + 400, z * 0.05 + 400);
+    // 洞穴世界的"地表"即顶板：约 23-73 起伏，谷地浸入 y31 岩浆海（约两成覆盖面）
+    return Math.max(8, Math.min(110, Math.floor(45 + hills * 22 + detail * 6)));
+  }
+
+  function caveAt(x: number, y: number, z: number): boolean {
+    if (y < 5) return false; // 基岩地板保护区
+    // 意面隧道（比主世界更密）
+    const t = Math.abs(nCaveA(x * 0.028, y * 0.028, z * 0.028) + nCaveB(x * 0.028 + 700, y * 0.028, z * 0.028 + 700));
+    if (t < 0.13) return true;
+    // 奶酪洞腔：下界大而多（巨型空腔是 MC 下界标志）
+    if (nCheese(x * 0.013, y * 0.022, z * 0.013) > 0.6) return true;
+    return false;
+  }
+
+  return {
+    kind: 'nether',
+    heightAt,
+    biomeAt: () => 'nether',
+    treeAt: () => null,
+    caveAt,
+    snowlineAt: () => Infinity,
+    undergroundAt: () => null,
+    aquiferAt: () => false,
+  };
+}
+
+/** 下界 chunk 生成（与主世界 generateChunk 并列，world.ts 按 terrain.kind 分发） */
+export function generateNetherChunk(terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash = 0): void {
+  const netherrack = K('netherrack');
+  const soulSand = K('soul_sand');
+  const gravel = K('gravel');
+  const quartz = K('nether_quartz_ore');
+  const glow = K('glowstone');
+  const bedrock = K('bedrock');
+
+  // 地形填充：下界岩 + 灵魂沙/沙砾斑块表层
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      const h = terrain.heightAt(wx, wz);
+      const top = Math.min(h, WORLD_HEIGHT - 1);
+      const patch = hash2(seedHash ^ 0x61ab3f, wx, wz);
+      for (let y = 0; y <= top; y++) {
+        let id = netherrack;
+        if (y >= top - 2) {
+          // 表层斑块：灵魂沙 / 沙砾（MC 下界地表特征）
+          if (patch < 0.12) id = soulSand;
+          else if (patch < 0.2) id = gravel;
+        }
+        data[localIndex(x, y, z)] = id;
+      }
+      // 岩浆海：地表低于海平面的部分灌岩浆（下界没有水）
+      for (let y = top + 1; y <= LAVA_SEA; y++) data[localIndex(x, y, z)] = LAVA;
+    }
+  }
+
+  // 洞穴雕刻（密集；矿石先填，洞壁即矿脉）
+  applyNetherOres(seedHash, cx, cz, data);
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      const h = Math.min(terrain.heightAt(wx, wz), WORLD_HEIGHT - 1);
+      for (let y = 5; y <= h; y++) {
+        if (terrain.caveAt(wx, y, wz, h)) data[localIndex(x, y, z)] = AIR;
+      }
+    }
+  }
+  // 洞穴破入岩浆海：灌岩浆（MC 下界岩浆瀑布/地下岩浆湖）
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      for (let y = LAVA_SEA; y >= 5; y--) {
+        const i = localIndex(x, y, z);
+        if (data[i] === AIR && data[localIndex(x, y + 1, z)] === LAVA) data[i] = LAVA;
+      }
+    }
+  }
+
+  // 基岩地板（y0 全铺，y1 半，y2 四分之一）与参差基岩天花板（y122-127 越上越密）
+  const rand = mulberry32((seedHash ^ Math.imul(cx + 0x9e37, 0x85ebca6b) ^ Math.imul(cz + 0x27d4, 0x165667b1)) | 0);
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      data[localIndex(x, 0, z)] = bedrock;
+      if (rand() < 0.5) data[localIndex(x, 1, z)] = bedrock;
+      if (rand() < 0.25) data[localIndex(x, 2, z)] = bedrock;
+      for (let y = BEDROCK_TOP; y < WORLD_HEIGHT; y++) {
+        const p = (y - BEDROCK_TOP + 1) / (WORLD_HEIGHT - BEDROCK_TOP);
+        if (rand() < p) data[localIndex(x, y, z)] = bedrock;
+      }
+    }
+  }
+
+  // 萤石簇：洞穴顶板下挂团（空气格、上方是下界岩；稀疏成簇）
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      for (let y = LAVA_SEA + 4; y < WORLD_HEIGHT - 8; y++) {
+        const i = localIndex(x, y, z);
+        if (data[i] !== AIR) continue;
+        if (data[localIndex(x, y + 1, z)] !== netherrack) continue;
+        const r = hash2(seedHash ^ 0x910ca5, wx * 31 + y, wz * 17 - y);
+        if (r >= 0.006) continue;
+        // 成簇：中心 + 邻格扩散
+        data[i] = glow;
+        for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0]] as const) {
+          const nx = x + dx;
+          const ny = y + dy;
+          const nz = z + dz;
+          if (nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE) continue;
+          const ni = localIndex(nx, ny, nz);
+          if (data[ni] === AIR && hash2(seedHash ^ 0x910cb6, nx * 13 + ny, nz * 7 + y) < 0.5) data[ni] = glow;
+        }
+        y += 3; // 同列跳开，避免连珠
+      }
+    }
+  }
+}
+
+/** 下界石英矿脉（石头团簇式随机游走；下界岩宿主） */
+function applyNetherOres(seedHash: number, cx: number, cz: number, data: Uint16Array): void {
+  const rand = mulberry32((seedHash ^ Math.imul(cx + 0x51f1, 0x85ebca6b) ^ Math.imul(cz + 0x27d4, 0x165667b1)) | 0);
+  const netherrack = K('netherrack');
+  const quartz = K('nether_quartz_ore');
+  const magma = K('magma_block');
+  // 石英：每 chunk 8-14 条，y 10-110 均匀（MC 下界石英全高度分布）
+  for (let n = 0; n < 8 + Math.floor(rand() * 7); n++) {
+    let x = Math.floor(rand() * CHUNK_SIZE);
+    let y = 10 + Math.floor(rand() * 100);
+    let z = Math.floor(rand() * CHUNK_SIZE);
+    const size = 3 + Math.floor(rand() * 8);
+    for (let s = 0; s < size; s++) {
+      if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE && data[localIndex(x, y, z)] === netherrack) {
+        data[localIndex(x, y, z)] = quartz;
+      }
+      x += Math.floor(rand() * 3) - 1;
+      y = Math.max(6, Math.min(118, y + Math.floor(rand() * 3) - 1));
+      z += Math.floor(rand() * 3) - 1;
+    }
+  }
+  // 岩浆块团：y 24-38 岩浆海附近（MC 岩浆块带）
+  for (let n = 0; n < 2 + Math.floor(rand() * 3); n++) {
+    let x = Math.floor(rand() * CHUNK_SIZE);
+    let y = 24 + Math.floor(rand() * 14);
+    let z = Math.floor(rand() * CHUNK_SIZE);
+    const size = 4 + Math.floor(rand() * 8);
+    for (let s = 0; s < size; s++) {
+      if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE && data[localIndex(x, y, z)] === netherrack) {
+        data[localIndex(x, y, z)] = magma;
+      }
+      x += Math.floor(rand() * 3) - 1;
+      y = Math.max(6, Math.min(118, y + Math.floor(rand() * 3) - 1));
+      z += Math.floor(rand() * 3) - 1;
+    }
+  }
+}

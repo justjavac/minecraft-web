@@ -17,6 +17,9 @@ export function getActiveWorld(): World | null {
 /** 玩家脚底位置，Player 每帧写入，WorldRenderer 读取用于 chunk 调度 */
 export const playerPosition = { x: 8.5, y: 40, z: 8.5 };
 
+/** 跨维度传送：Player 站在门内写入待传送坐标，WorldRenderer 切换维度后消费 */
+export const teleportState: { pending: { x: number; y: number; z: number } | null } = { pending: null };
+
 /** 当前相机，Player 挂载时写入，供触屏按钮执行挖/放 */
 export const cameraRef: { current: Camera | null } = { current: null };
 

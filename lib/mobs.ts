@@ -174,6 +174,7 @@ function makeMob(type: MobType, x: number, y: number, z: number): Mob {
 /** 在玩家周围环形区域找地表生成（夜晚敌对、白天被动且只在草地上；村庄附近生成村民；蘑菇岛只出蘑菇牛且夜晚不刷怪） */
 export function trySpawn(world: World, px: number, pz: number): boolean {
   const night = isNight();
+  if (world.terrain.kind === 'nether') return false; // 下界生物生成走专门规则（僵尸猪灵）
   const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
   const passiveCount = mobs.length - hostileCount;
   if (night && hostileCount >= MAX_HOSTILE) return false;

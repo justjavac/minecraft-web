@@ -79,6 +79,8 @@ export const BIOME_SURFACE: Record<Biome, BiomeSurface> = {
     underwater: [K('gravel'), K('sand'), K('dirt'), K('clay')],
     beach: K('sand'),
   },
+  // 下界（生成器在 lib/nether.ts，此表仅供外部查询兜底）
+  nether: { top: K('netherrack'), filler: K('netherrack'), underwater: [K('soul_sand'), K('gravel')] },
 };
 
 /** 恶地陶瓦分层色带（world.ts 按 y + 列偏移取色，复刻 MC 侵蚀恶地的彩色地层） */
@@ -119,6 +121,7 @@ export const BIOME_TINT_HEX: Record<Biome, number> = {
   ocean: 0x8eb971,
   river: 0x8eb971,
   basin: 0x91bd59,
+  nether: 0xbfb755,
 };
 
 const BASE_GRASS: readonly [number, number, number] = [0x91 / 255, 0xbd / 255, 0x59 / 255];

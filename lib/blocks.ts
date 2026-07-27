@@ -542,6 +542,14 @@ add('amethyst_cluster', '紫水晶簇', 'amethyst_cluster', {
 });
 add('netherrack', '下界岩', 'netherrack', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 2 });
 add('magma_block', '岩浆块', 'magma', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 2.5, light: 3 });
+// ——— 下界 ———
+// 灵魂沙：7/8 高（走上去略下沉，MC 一致）
+add('soul_sand', '灵魂沙', 'soul_sand', {
+  cat: 'earth', tool: 'shovel', shape: 'slab', box3: [0, 0, 0, 1, 0.875, 1], opaque: false, digTime: 0.75, ...DIRT_SND,
+});
+// 荧石：发光 15，挖掉掉荧石粉 2-4（MC）
+add('glowstone', '荧石', 'glowstone', { cat: 'utility', digTime: 1.5, light: 15, drop: { material: 'glowstone_dust', count: [2, 4] }, ...GLASS_SND });
+add('nether_quartz_ore', '下界石英矿石', 'nether_quartz_ore', { cat: 'ore', tool: 'pickaxe', pickTier: 0, drop: { material: 'quartz', count: [1, 1] }, digTime: 15 });
 // 雪层：薄板（1/8 高，无碰撞），寒带地表覆盖
 add('snow_layer', '雪层', 'snow', {
   cat: 'earth', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, solid: false, tool: 'shovel', digTime: 0.2, ...GRASS_SND,

@@ -7,6 +7,7 @@ import { notifyCropBlockSet } from './crops';
 import { notifyBlockSet } from './saplings';
 import { notifyRedstone } from './redstone';
 import { createTerrain, hash2, hashString, mulberry32, SEA_LEVEL, type Biome, type Terrain } from './noise';
+import { generateNetherChunk } from './nether';
 import { applyOres } from './oregen';
 import { applyGeodes } from './geodes';
 import { cascadeLight } from './lights';
@@ -469,7 +470,8 @@ export class World {
       // 存档恢复的 chunk 光照数组为全 0：标脏交给 flushLight 限流重算（否则世界渲染全黑）
       chunk.lightDirty = true;
     } else {
-      generateChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
+      if (this.terrain.kind === 'nether') generateNetherChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
+      else generateChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
       cascadeLight(this, chunk);
     }
     this.chunks.set(key, chunk);

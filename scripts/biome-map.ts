@@ -25,6 +25,7 @@ const COLORS: Record<Biome, [number, number, number]> = {
   ocean: [43, 79, 158],
   river: [63, 127, 212],
   basin: [138, 158, 80],
+  nether: [140, 60, 50],
 };
 
 const S = 512;

@@ -38,6 +38,8 @@ export interface SaveExtras {
   dayTime?: number;
   /** 世界模式：创造 / 生存 */
   mode?: WorldMode;
+  /** 当前维度（主世界 / 下界） */
+  dimension?: 'overworld' | 'nether';
   /** 生存数值快照（仅生存模式） */
   survival?: SurvivalSnapshot;
   /** 世界内熔炉状态（"x,y,z" → 状态） */
@@ -117,15 +119,16 @@ export async function saveChunk(key: string, data: Uint16Array): Promise<void> {
   await d.put('chunks', data, key);
 }
 
-/** 把世界里所有被修改过的 chunk 写入 IndexedDB 并清除标记；同时更新 meta（位置/时刻/模式/生存数值） */
-export async function saveModifiedChunks(world: World, extras: SaveExtras = {}): Promise<void> {
+/** 把世界里所有被修改过的 chunk 写入 IndexedDB 并清除标记；同时更新 meta（位置/时刻/模式/生存数值）。
+ * keyPrefix 用于下界存档隔离（下界 chunk 键加 'n:' 前缀） */
+export async function saveModifiedChunks(world: World, extras: SaveExtras = {}, keyPrefix = ''): Promise<void> {
   try {
     const d = await db();
     if (world.modifiedChunks.size > 0) {
       const tx = d.transaction('chunks', 'readwrite');
       for (const key of world.modifiedChunks) {
         const chunk = world.chunks.get(key);
-        if (chunk) void tx.store.put(chunk.data, key);
+        if (chunk) void tx.store.put(chunk.data, keyPrefix + key);
       }
       await tx.done;
       // 事务提交成功后再清标记，失败则保留待下轮重试

@@ -15,9 +15,12 @@ import {
   worldMeta,
   type SaveExtras,
 } from '@/lib/persistence';
-import { playerPosition, setActiveWorld, debugInfo, worldClock } from '@/lib/game';
-import { clearFurnaces, furnaces, tickFurnaces } from '@/lib/furnace';
+import { playerPosition, setActiveWorld, debugInfo, teleportState, worldClock } from '@/lib/game';
+import { findLanding, ensurePortal, type Dimension } from '@/lib/dimension';
+import { createNetherTerrain } from '@/lib/nether';
+import { clearFurnaces, furnaces, tickFurnaces, type FurnaceState } from '@/lib/furnace';
 import { clearStorages, storages } from '@/lib/storage';
+import { clearMobs } from '@/lib/mobs';
 import { tickFluids, clearFluids } from '@/lib/fluids';
 import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
@@ -26,17 +29,56 @@ import { clearRedstone } from '@/lib/redstone';
 import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
-import { emptySlots } from '@/lib/slots';
+import { emptySlots, type Slot } from '@/lib/slots';
 import { MAX_HEALTH, MAX_HUNGER, useGameStore } from '@/lib/store';
 import { ChunkMesh } from './ChunkMesh';
 
-/** 当前要随 meta 保存的附加状态（位置/时刻/模式/生存数值/熔炉） */
-function currentExtras(): SaveExtras {
+/** 下界 chunk 在 IndexedDB 中的键前缀（与主世界存档隔离） */
+const dimPrefix = (d: Dimension): string => (d === 'nether' ? 'n:' : '');
+
+/** 创建某维度的世界实例（下界用下界地形与独立种子） */
+function makeDimWorld(d: Dimension, seedStr: string, saved?: Map<string, Uint16Array>): World {
+  if (d === 'nether') {
+    const nseed = `${seedStr}:nether`;
+    return new World(nseed, saved, createNetherTerrain(nseed));
+  }
+  return new World(seedStr, saved);
+}
+
+/** 读取某维度存档：附近立即加载，其余后台惰性补齐 */
+async function loadDimWorld(d: Dimension, seedStr: string, center: { x: number; z: number }): Promise<World> {
+  const prefix = dimPrefix(d);
+  const all = (await listChunkKeys()).filter((k) => (prefix ? k.startsWith(prefix) : !k.startsWith('n:')));
+  const radius = useGameStore.getState().settings.renderDistance + 2;
+  const ccx = Math.floor(center.x / 16);
+  const ccz = Math.floor(center.z / 16);
+  const near: string[] = [];
+  const rest: string[] = [];
+  for (const k of all) {
+    const plain = prefix ? k.slice(prefix.length) : k;
+    const [cx, cz] = plain.split(',').map(Number);
+    (Math.max(Math.abs(cx - ccx), Math.abs(cz - ccz)) <= radius ? near : rest).push(k);
+  }
+  const saved = new Map<string, Uint16Array>();
+  for (const [k, v] of await loadChunks(near)) saved.set(prefix ? k.slice(prefix.length) : k, v);
+  const w = makeDimWorld(d, seedStr, saved);
+  // 后台加载剩余存档 chunk：本局未修改的直接替换为存档版本
+  void loadChunks(rest)
+    .then((restData) => {
+      for (const [k, v] of restData) w.applySavedChunk(prefix ? k.slice(prefix.length) : k, v);
+    })
+    .catch((err) => console.warn('后台补齐存档 chunk 失败（不影响游玩）', err));
+  return w;
+}
+
+/** 当前要随 meta 保存的附加状态（位置/时刻/模式/生存数值/熔炉/容器/维度） */
+function currentExtras(d: Dimension): SaveExtras {
   const s = useGameStore.getState();
   return {
     player: { ...playerPosition },
     dayTime: worldClock.t,
     mode: s.worldMode,
+    dimension: d,
     survival:
       s.worldMode === 'survival'
         ? { health: s.health, hunger: s.hunger, saturation: s.saturation, slots: s.hotbarSlots, backpack: s.mainSlots, armor: s.armorSlots }
@@ -49,49 +91,52 @@ function currentExtras(): SaveExtras {
   };
 }
 
+interface DimState {
+  player: { x: number; y: number; z: number };
+  storages: [string, Slot[]][];
+  furnaces: [string, FurnaceState][];
+}
+
 export function WorldRenderer() {
   const mode = useGameStore((s) => s.mode);
   const seed = useGameStore((s) => s.seed);
   const worldRetry = useGameStore((s) => s.worldRetry);
+  const dimension = useGameStore((s) => s.dimension);
   const kind = useRendererKind();
   const [world, setWorld] = useState<World | null>(null);
   const [materials, setMaterials] = useState<AtlasMaterials | null>(null);
   const [chunkList, setChunkList] = useState<Chunk[]>([]);
   const worldRef = useRef<World | null>(null);
+  /** 两个维度的世界实例缓存（切换不丢 chunk 与生成状态） */
+  const worldsRef = useRef<Partial<Record<Dimension, World>>>({});
+  /** 各维度的模块状态（位置/容器/熔炉），切换时暂存/恢复 */
+  const dimStateRef = useRef<Partial<Record<Dimension, DimState>>>({});
+  const firstLoadRef = useRef(true);
   const lastUpdate = useRef(0);
   const lastFluid = useRef(0);
   const lastGeneration = useRef(-1);
 
-  // 创建/加载世界 + 贴图
+  // 创建/加载世界 + 贴图（维度切换时重跑：暂存旧维度状态，加载/恢复新维度）
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const mats = await getAtlasMaterials(kind);
-        let w: World;
-        if (mode === 'continue') {
+        // 首次进入（继续游戏）：读 meta 决定维度与全局状态
+        if (mode === 'continue' && firstLoadRef.current) {
+          firstLoadRef.current = false;
           const meta = await loadWorldMeta();
-          const center = meta?.player ?? { x: 8.5, y: 40, z: 8.5 };
-          // 只预载出生点附近的存档 chunk，其余后台惰性补齐（不拖慢启动）
-          const radius = useGameStore.getState().settings.renderDistance + 2;
-          const ccx = Math.floor(center.x / 16);
-          const ccz = Math.floor(center.z / 16);
-          const allKeys = await listChunkKeys();
-          const near: string[] = [];
-          const rest: string[] = [];
-          for (const k of allKeys) {
-            const [cx, cz] = k.split(',').map(Number);
-            (Math.max(Math.abs(cx - ccx), Math.abs(cz - ccz)) <= radius ? near : rest).push(k);
+          const metaDim = meta?.dimension ?? 'overworld';
+          if (metaDim !== dimension) {
+            // 以 meta 的维度为准回写 store，effect 用新维度重跑
+            useGameStore.getState().setDimension(metaDim);
+            return;
           }
-          const saved = await loadChunks(near);
-          w = new World(meta?.seed ?? seed, saved);
           worldClock.t = meta?.dayTime ?? 0.3; // 恢复昼夜时刻，无记录则从上午开始
-          // 恢复熔炉状态
           clearFurnaces();
           if (meta?.furnaces) {
             for (const [k, v] of Object.entries(meta.furnaces)) furnaces.set(k, v);
           }
-          // 恢复容器内容（箱子/木桶）
           clearStorages();
           if (meta?.storages) {
             for (const [k, v] of Object.entries(meta.storages)) storages.set(k, v);
@@ -100,22 +145,43 @@ export function WorldRenderer() {
           if (meta?.player) store.setSpawnPoint(meta.player);
           store.setWorldMode(meta?.mode ?? 'creative');
           store.loadSurvival(meta?.survival ?? { health: MAX_HEALTH, hunger: MAX_HUNGER, slots: emptySlots() });
-          // 后台加载剩余存档 chunk：本局未修改的直接替换为存档版本
-          void loadChunks(rest).then((restData) => {
-            if (cancelled) return;
-            for (const [k, v] of restData) w.applySavedChunk(k, v);
-          }).catch((err) => console.warn('后台补齐存档 chunk 失败（不影响游玩）', err));
-        } else {
+          const center = meta?.player ?? { x: 8.5, y: 40, z: 8.5 };
+          worldsRef.current[dimension] = await loadDimWorld(dimension, meta?.seed ?? seed, center);
+        } else if (mode !== 'continue' && firstLoadRef.current) {
+          firstLoadRef.current = false;
           await clearWorldStore();
           worldClock.t = 0.3; // 新世界从上午开始
-          w = new World(seed);
+          worldsRef.current[dimension] = makeDimWorld(dimension, seed);
           clearStorages(); // 清空上一个世界的容器残留
           clearRedstone(); // 清空上一个世界的红石残留
-          await saveWorldMeta(worldMeta(seed, { mode: useGameStore.getState().worldMode }));
+          await saveWorldMeta(worldMeta(seed, { mode: useGameStore.getState().worldMode, dimension: 'overworld' }));
+        }
+        // 切换维度/首次造访：取缓存或读档新建
+        let w = worldsRef.current[dimension];
+        if (!w) {
+          w = await loadDimWorld(dimension, seed, teleportState.pending ?? { x: 8.5, z: 8.5 });
+          worldsRef.current[dimension] = w;
         }
         if (cancelled) return;
+        // 恢复该维度的模块状态
+        const ds = dimStateRef.current[dimension];
+        clearStorages();
+        clearFurnaces();
+        if (ds) {
+          for (const [k, v] of ds.storages) storages.set(k, v);
+          for (const [k, v] of ds.furnaces) furnaces.set(k, v);
+          useGameStore.getState().setSpawnPoint(ds.player);
+        }
+        // 跨维度传送：落点扫描 + 无门造门 + 传送坐标落定
+        if (teleportState.pending) {
+          const tp = teleportState.pending;
+          const landing = findLanding(w, Math.floor(tp.x), Math.floor(tp.z), dimension);
+          ensurePortal(w, Math.floor(landing.x), Math.floor(landing.y), Math.floor(landing.z));
+          useGameStore.getState().setSpawnPoint(landing);
+          teleportState.pending = null;
+        }
         w.onChunkRemoved = (c) => {
-          void saveChunk(`${c.cx},${c.cz}`, c.data);
+          void saveChunk(dimPrefix(dimension) + `${c.cx},${c.cz}`, c.data);
         };
         worldRef.current = w;
         setActiveWorld(w);
@@ -133,8 +199,15 @@ export function WorldRenderer() {
     return () => {
       cancelled = true;
       useGameStore.getState().setWorldReady(false);
-      const w = worldRef.current;
-      if (w) void saveModifiedChunks(w, currentExtras());
+      const w = worldsRef.current[dimension];
+      if (w) void saveModifiedChunks(w, currentExtras(dimension), dimPrefix(dimension));
+      // 暂存本维度模块状态（位置/容器/熔炉），其余运行时状态清掉
+      dimStateRef.current[dimension] = {
+        player: { ...playerPosition },
+        storages: [...storages],
+        furnaces: [...furnaces],
+      };
+      clearMobs();
       clearFurnaces();
       clearStorages();
       clearFluids();
@@ -144,13 +217,13 @@ export function WorldRenderer() {
       worldRef.current = null;
       setActiveWorld(null);
     };
-  }, [mode, seed, kind, worldRetry]);
+  }, [mode, seed, kind, worldRetry, dimension]);
 
-    // 定期存档 + 关闭页面前兜底
+  // 定期存档 + 关闭页面前兜底
   useEffect(() => {
     if (!world) return;
     const flush = () => {
-      void saveModifiedChunks(world, currentExtras());
+      void saveModifiedChunks(world, currentExtras(dimension), dimPrefix(dimension));
     };
     const timer = setInterval(flush, 5000);
     // beforeunload 在移动端 Safari 不可靠，pagehide 是兜底
@@ -161,7 +234,7 @@ export function WorldRenderer() {
       window.removeEventListener('beforeunload', flush);
       window.removeEventListener('pagehide', flush);
     };
-  }, [world]);
+  }, [world, dimension]);
 
   // 每帧：重建脏 chunk 网格（限流）+ 按玩家位置调度 chunk + 推进熔炉烧炼 + 流体传播
   useFrame((_, delta) => {

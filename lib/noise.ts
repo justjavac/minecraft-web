@@ -26,13 +26,14 @@ export type Biome =
   | 'mushroom_fields'
   | 'ocean'
   | 'river'
-  | 'basin';
+  | 'basin'
+  | 'nether';
 
 /** 群系稳定枚举（网格化/存档按索引传递；只能追加不能重排） */
 export const BIOME_LIST: Biome[] = [
   'plains', 'forest', 'birch_forest', 'dark_forest', 'taiga', 'snowy',
   'desert', 'savanna', 'jungle', 'swamp', 'badlands', 'mountains',
-  'mushroom_fields', 'ocean', 'river', 'basin', 'ice_spikes',
+  'mushroom_fields', 'ocean', 'river', 'basin', 'ice_spikes', 'nether',
 ];
 
 /** 群系 → 稳定索引（BIOME_LIST 下标） */
@@ -42,6 +43,8 @@ export const biomeIndex = (b: Biome): number => BIOME_LIST.indexOf(b);
 export type TreeKind = 'oak' | 'birch' | 'spruce' | 'jungle' | 'acacia' | 'dark_oak' | 'cherry';
 
 export interface Terrain {
+  /** 维度（缺省主世界；nether 走 lib/nether.ts 的生成器） */
+  kind?: 'overworld' | 'nether';
   /** 世界列高度（地表方块的 y 坐标），-1 表示虚空 */
   heightAt(x: number, z: number): number;
   /** 该列的群系（确定性） */

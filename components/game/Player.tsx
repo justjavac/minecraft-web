@@ -7,7 +7,9 @@ import { Euler, PerspectiveCamera, Vector3 } from 'three';
 import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
 import { breakBlock, tryPlace } from '@/lib/actions';
 import { isFarmlandId, isWheatCropId } from '@/lib/crops';
-import { cameraRef, debugInfo, digState, getActiveWorld, playerPosition, survivalStats, targetBlock, touchInput } from '@/lib/game';
+import { cameraRef, debugInfo, digState, getActiveWorld, playerPosition, survivalStats, targetBlock, teleportState, touchInput } from '@/lib/game';
+import { otherDimension } from '@/lib/dimension';
+import { isPortalId } from '@/lib/portal';
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
 import { damageMob, mobInReach } from '@/lib/mobs';
@@ -104,6 +106,16 @@ export function Player() {
   /** 创造模式即时破坏的上次时间戳（200ms 冷却，防止按住左键每帧破一块） */
   const lastCreativeBreak = useRef(0);
   const wasDead = useRef(false);
+  /** 下界传送门：门内停留计时（3 秒触发传送，MC 一致） */
+  const portalAcc = useRef(0);
+
+  // 维度切换：重置位置状态（落点由 WorldRenderer 经 spawnPoint 下发）
+  const dimension = useGameStore((s) => s.dimension);
+  useEffect(() => {
+    pos.current = null;
+    velY.current = 0;
+    portalAcc.current = 0;
+  }, [dimension]);
 
   // 相机共享给触屏挖/放动作（lib/actions.ts）
   useEffect(() => {
@@ -438,6 +450,23 @@ export function Player() {
       survivalMem.current.fallDist = 0; // 重置坠落累计，避免传送后按累计落差结算摔伤
       survivalMem.current.air = 15;
       prevStep.current = { x: p.x, z: p.z }; // 重置脚步位移，避免传送后误响
+    }
+
+    // 下界传送门：站在门内 3 秒触发跨维度传送（MC 一致；创造/生存均生效）
+    {
+      const feet = world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
+      const eye = world.getBlock(Math.floor(p.x), Math.floor(p.y) + 1, Math.floor(p.z));
+      if (isPortalId(feet) || isPortalId(eye)) {
+        portalAcc.current += dt;
+        if (portalAcc.current >= 3) {
+          portalAcc.current = 0;
+          teleportState.pending = { x: p.x, y: p.y, z: p.z };
+          gs.setDimension(otherDimension(gs.dimension));
+          return;
+        }
+      } else {
+        portalAcc.current = 0;
+      }
     }
 
     state.camera.position.set(p.x, p.y + EYE, p.z);

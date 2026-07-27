@@ -89,6 +89,8 @@ interface GameStore {
   spawnPoint: { x: number; y: number; z: number } | null;
   /** 世界模式：创造 / 生存（开局定，随存档） */
   worldMode: WorldMode;
+  /** 当前维度（主世界 / 下界，随存档） */
+  dimension: import('./dimension').Dimension;
   /** 生存数值（创造模式不使用） */
   health: number;
   hunger: number;
@@ -131,6 +133,7 @@ interface GameStore {
   setSpawnPoint: (p: { x: number; y: number; z: number } | null) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   setWorldMode: (m: WorldMode) => void;
+  setDimension: (d: import('./dimension').Dimension) => void;
   setHealth: (v: number) => void;
   setHunger: (v: number) => void;
   setSaturation: (v: number) => void;
@@ -192,6 +195,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   settings: loadSettings(),
   spawnPoint: null,
   worldMode: 'creative',
+  dimension: 'overworld' as import('./dimension').Dimension,
   health: MAX_HEALTH,
   hunger: MAX_HUNGER,
   saturation: MAX_SATURATION,
@@ -217,6 +221,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       screen: 'playing', mode: 'new', seed, paused: false, flying: false, worldReady: false, loadError: null,
       hasLocked: false, spawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION,
+      dimension: 'overworld',
       dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, storageOpen: null,
     });
   },
@@ -251,6 +256,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       return { settings };
     }),
   setWorldMode: (worldMode) => set({ worldMode }),
+  setDimension: (dimension) => set({ dimension }),
   setHealth: (health) => set({ health }),
   setHunger: (hunger) => set({ hunger }),
   setSaturation: (saturation) => set({ saturation }),

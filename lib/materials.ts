@@ -18,6 +18,8 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   redstone: { name: '红石', tile: tileIcon('item/redstone') },
   flint: { name: '燧石', tile: tileIcon('item/flint') },
   flint_and_steel: { name: '打火石', tile: tileIcon('item/flint_and_steel') },
+  quartz: { name: '石英', tile: tileIcon('item/quartz') },
+  glowstone_dust: { name: '荧石粉', tile: tileIcon('item/glowstone_dust') },
   diamond: { name: '钻石', tile: tileIcon('item/diamond') },
   emerald: { name: '绿宝石', tile: tileIcon('item/emerald') },
   iron_ingot: { name: '铁锭', tile: tileIcon('item/iron_ingot') },
