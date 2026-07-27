@@ -104,7 +104,6 @@ export const RECIPES: Recipe[] = [
   // 锄头：2 材料 + 2 木棍（MC 配方）；面包：3 小麦（MC）
   { id: 'wooden_hoe', name: '木锄', out: { kind: 'tool', tool: 'wooden_hoe' }, cost: [{ item: PLANKS_ITEM, count: 2 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_hoe', name: '石锄', out: { kind: 'tool', tool: 'stone_hoe' }, cost: [{ item: COBBLE_ITEM, count: 2 }, { item: STICK, count: 2 }], needsTable: true },
-  { id: 'iron_hoe', name: '铁锄', out: { kind: 'tool', tool: 'iron_hoe' }, cost: [{ item: 'material:iron_ingot', count: 2 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'bread', name: '面包', out: { kind: 'material', material: 'bread', count: 1 }, cost: [{ item: 'material:wheat', count: 3 }], needsTable: false },
   // 骨粉：1 骨头 → 3 骨粉（MC）
   { id: 'bonemeal', name: '骨粉 ×3', out: { kind: 'material', material: 'bonemeal', count: 3 }, cost: [{ item: 'material:bone', count: 1 }], needsTable: false },
@@ -121,6 +120,8 @@ export const RECIPES: Recipe[] = [
   { id: 'blaze_powder', name: '烈焰粉 ×2', out: { kind: 'material', material: 'blaze_powder', count: 2 }, cost: [{ item: 'material:blaze_rod', count: 1 }], needsTable: false },
   // 末影之眼：末影珍珠 + 烈焰粉（MC 无序合成）——投掷定位要塞、嵌末地门框架
   { id: 'eye_of_ender', name: '末影之眼', out: { kind: 'material', material: 'eye_of_ender', count: 1 }, cost: [{ item: 'material:ender_pearl', count: 1 }, { item: 'material:blaze_powder', count: 1 }], needsTable: false },
+  // 下界合金锭：4 碎片 + 4 金锭（MC 无序合成）
+  { id: 'netherite_ingot', name: '下界合金锭', out: { kind: 'material', material: 'netherite_ingot', count: 1 }, cost: [{ item: 'material:netherite_scrap', count: 4 }, { item: 'material:gold_ingot', count: 4 }], needsTable: false },
   // 下界砖块：4 下界岩（MC：2×2 下界岩合下界砖块的前身——此处按 4 合 1 简化）
   { id: 'nether_bricks', name: '下界砖块', out: { kind: 'block', id: KID('nether_bricks'), count: 1 }, cost: [{ item: K('netherrack'), count: 4 }], needsTable: false },
   // —— 酿造（配方与 MC 一致） ——
@@ -168,6 +169,7 @@ export const RECIPES: Recipe[] = [
       { id: `${tier}_axe`, name: `${cn}斧`, out: { kind: 'tool', tool: `${tier}_axe` }, cost: [{ item: mat, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
       { id: `${tier}_shovel`, name: `${cn}锹`, out: { kind: 'tool', tool: `${tier}_shovel` }, cost: [{ item: mat, count: 1 }, { item: STICK, count: 2 }], needsTable: true },
       { id: `${tier}_sword`, name: `${cn}剑`, out: { kind: 'tool', tool: `${tier}_sword` }, cost: [{ item: mat, count: 2 }, { item: STICK, count: 1 }], needsTable: true },
+      { id: `${tier}_hoe`, name: `${cn}锄`, out: { kind: 'tool', tool: `${tier}_hoe` }, cost: [{ item: mat, count: 2 }, { item: STICK, count: 2 }], needsTable: true },
     ];
   }),
   // —— 矿物储物块（9 合 1 / 1 拆 9，与 MC 一致） ——

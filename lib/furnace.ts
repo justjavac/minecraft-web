@@ -59,6 +59,8 @@ export const SMELTING: Record<string, SmeltDef> = {
   [K('deepslate_bricks')]: { out: K('cracked_deepslate_bricks'), name: '裂纹深板岩砖' },
   [K('deepslate_tiles')]: { out: K('cracked_deepslate_tiles'), name: '裂纹深板岩瓦' },
   [K('clay')]: { out: K('terracotta'), name: '陶瓦' },
+  // 远古残骸 → 下界合金碎片（MC；经验丰厚）
+  [K('ancient_debris')]: { out: 'material:netherite_scrap', name: '下界合金碎片' },
 };
 
 /** 燃料燃烧秒数（MC：木板/原木 15s，木棍 5s，木炭 80s，干海带块 200s，煤块 800s） */

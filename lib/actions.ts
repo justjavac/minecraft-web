@@ -91,7 +91,7 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
   if (def && useGameStore.getState().worldMode === 'survival') {
     const s = useGameStore.getState();
     // MC：石头系/矿石/金属块挖掘需要镐（needsPick 任意镐；pickTier 限定最低层级）
-    const TIER_ORDER = ['wood', 'stone', 'iron', 'diamond'] as const;
+    const TIER_ORDER = ['wood', 'stone', 'iron', 'diamond', 'netherite'] as const;
     const held = s.hotbarSlots[s.selectedSlot];
     const heldPick = held?.kind === 'tool' && TOOLS[held.tool].kind === 'pickaxe' ? TOOLS[held.tool].tier : null;
     const needTier = def.pickTier ?? (def.needsPick ? 0 : null);
@@ -376,6 +376,17 @@ export function tryPlace(): boolean {
     if (res.consume && s.worldMode === 'survival') s.consumeMaterial(res.consume, 1);
     if (res.ok) playSound('place');
     s.setNotice(res.notice);
+    lastPlace = now;
+    return false;
+  }
+  // 锻造台：手持下界合金锭右击 → 物品栏首个钻石工具升级为下界合金（保留附魔/耐久，MC）
+  if (hitId === BLOCK_BY_KEY.smithing_table.id) {
+    if (s.smithingUpgrade()) {
+      s.setNotice('已升级为下界合金工具（附魔与耐久保留）');
+      playSound('place');
+    } else {
+      s.setNotice('手持下界合金锭，且物品栏有钻石工具');
+    }
     lastPlace = now;
     return false;
   }

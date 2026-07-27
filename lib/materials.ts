@@ -38,6 +38,8 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   gunpowder: { name: '火药', tile: tileIcon('item/gunpowder') },
   ender_pearl: { name: '末影珍珠', tile: tileIcon('item/ender_pearl') },
   eye_of_ender: { name: '末影之眼', tile: tileIcon('item/ender_eye') },
+  netherite_scrap: { name: '下界合金碎片', tile: tileIcon('item/netherite_scrap') },
+  netherite_ingot: { name: '下界合金锭', tile: tileIcon('item/netherite_ingot') },
   nether_star: { name: '下界之星', tile: tileIcon('item/nether_star') },
   regeneration: { name: '再生药水', tile: tileIcon('item/potion') },
   paper: { name: '纸', tile: tileIcon('item/paper') },

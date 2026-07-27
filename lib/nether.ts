@@ -210,6 +210,22 @@ function applyNetherOres(seedHash: number, cx: number, cz: number, data: Uint16A
       z += Math.floor(rand() * 3) - 1;
     }
   }
+  // 远古残骸：y8-22 极稀有 1-2 簇 × 1-3 块（MC 峰值 y15；埋于下界岩内、防爆）
+  const debris = K('ancient_debris');
+  for (let n = 0; n < 1 + Math.floor(rand() * 2); n++) {
+    let x = Math.floor(rand() * CHUNK_SIZE);
+    let y = 8 + Math.floor(rand() * 15);
+    let z = Math.floor(rand() * CHUNK_SIZE);
+    const size = 1 + Math.floor(rand() * 3);
+    for (let s = 0; s < size; s++) {
+      if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE && data[localIndex(x, y, z)] === netherrack) {
+        data[localIndex(x, y, z)] = debris;
+      }
+      x += Math.floor(rand() * 3) - 1;
+      y = Math.max(8, Math.min(22, y + Math.floor(rand() * 3) - 1));
+      z += Math.floor(rand() * 3) - 1;
+    }
+  }
 }
 
 /** 群系标志物：巨型菌类树/小菌与菌索（森林）、化石（灵魂沙谷）、玄武岩柱（三角洲） */

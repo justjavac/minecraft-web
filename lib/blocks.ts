@@ -23,8 +23,8 @@ export const ATLAS_COLS = 8;
 /** 默认贴图单格分辨率（内置 Faithful 32x） */
 export const TILE_PX = 32;
 /** canvas 绘制图标（工作台/熔炉/装备/食物）的 atlas 起始格号；pack 贴图格数须小于它 */
-export const ICON_TILE_START = 448;
-/** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧、17 凋灵骷髅头） */
+export const ICON_TILE_START = 512;
+/** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧、17 凋灵骷髅头、18 末地星空） */
 export const ICON_TILE_COUNT = 19;
 /** atlas 总行数（pack 格 + 图标格） */
 export const ATLAS_ROWS = Math.ceil((ICON_TILE_START + ICON_TILE_COUNT) / ATLAS_COLS);
@@ -752,6 +752,8 @@ defs.push({
 });
 // 末地石：末地主岛主体（MC：镐挖、高抗爆）
 add('end_stone', '末地石', 'end_stone', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 9, ...STONE_SND });
+// 远古残骸：下界深层稀有矿（y8-22），烧下界合金碎片；MC 需钻镐、防爆（pickTier 3 同黑曜石）
+add('ancient_debris', '远古残骸', { side: 'ancient_debris_side', top: 'ancient_debris_top' }, { cat: 'ore', tool: 'pickaxe', pickTier: 3, digTime: 30 });
 // 龙蛋：击杀末影龙后置于祭坛中心柱顶（MC 纪念战利品，可采集带走）
 add('dragon_egg', '龙蛋', 'dragon_egg', { cat: 'utility', opaque: false, digTime: 3, shape: 'slab', box3: [0.0625, 0, 0.0625, 0.9375, 1, 0.9375], ...STONE_SND });
 

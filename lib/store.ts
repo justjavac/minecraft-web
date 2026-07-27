@@ -9,6 +9,7 @@ import { hurtState, playerPosition, survivalStats } from './game';
 import { effects } from './effects';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
 import { applyCraft, canCraft, hasSpaceFor, type Recipe } from './recipes';
+import { netheriteUpgradeOf } from './smithing';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
 import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS, type ToolType } from './tools';
@@ -194,6 +195,8 @@ interface GameStore {
   damageHeldTool: (amount: number) => void;
   /** 从热键栏任意槽位消耗材料，不足则一个不扣并返回 false */
   consumeMaterial: (material: string, count?: number) => boolean;
+  /** 锻造台升级：手持下界合金锭 + 物品栏首个钻石工具 → 下界合金工具（保留附魔/耐久，MC），成功返回 true */
+  smithingUpgrade: () => boolean;
   /** 短暂提示条（睡觉/合成等反馈），HUD 定时清除 */
   notice: string | null;
   setNotice: (text: string | null) => void;
@@ -565,6 +568,35 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       if (remaining > 0) return s; // 不够，一个都不扣
       ok = true;
       return { hotbarSlots: slots };
+    });
+    return ok;
+  },
+  smithingUpgrade: () => {
+    let ok = false;
+    set((s) => {
+      const held = s.hotbarSlots[s.selectedSlot];
+      if (held?.kind !== 'material' || held.material !== 'netherite_ingot') return s;
+      // 热键栏优先、背包其次：找第一个可升级的钻石工具
+      const hi = s.hotbarSlots.findIndex((sl) => sl?.kind === 'tool' && netheriteUpgradeOf(sl.tool));
+      const mi = hi < 0 ? s.mainSlots.findIndex((sl) => sl?.kind === 'tool' && netheriteUpgradeOf(sl.tool)) : -1;
+      if (hi < 0 && mi < 0) return s;
+      const hotbarSlots = [...s.hotbarSlots];
+      const mainSlots = [...s.mainSlots];
+      if (hi >= 0) {
+        const sl = hotbarSlots[hi];
+        if (sl?.kind !== 'tool') return s;
+        hotbarSlots[hi] = { ...sl, tool: netheriteUpgradeOf(sl.tool)! }; // 耐久/附魔原样保留（MC）
+      } else {
+        const sl = mainSlots[mi];
+        if (sl?.kind !== 'tool') return s;
+        mainSlots[mi] = { ...sl, tool: netheriteUpgradeOf(sl.tool)! };
+      }
+      // 消耗手持 1 锭（选中格即材料格）
+      const cur = hotbarSlots[s.selectedSlot];
+      if (cur?.kind !== 'material') return s;
+      hotbarSlots[s.selectedSlot] = cur.count > 1 ? { ...cur, count: cur.count - 1 } : null;
+      ok = true;
+      return { hotbarSlots, mainSlots };
     });
     return ok;
   },
