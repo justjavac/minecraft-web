@@ -1,12 +1,13 @@
-// 结构生成：区域级确定性（平原/热带草原/针叶林/沙漠村庄、哨塔、冰屋），跨 chunk 一致
+// 结构生成：区域级确定性（平原/热带草原/针叶林/沙漠村庄、哨塔、冰屋、沙漠神殿、丛林神庙），跨 chunk 一致
 
 import { AIR, BLOCK_BY_KEY, COBBLE, DIRT, GLASS, LOG, PLANKS, WATER, WHEAT_CROP_0, type BlockId } from './blocks';
-import { hash2, SEA_LEVEL, type Terrain } from './noise';
+import { hash2, mulberry32, SEA_LEVEL, type Terrain } from './noise';
+import { getStorage } from './storage';
 import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
 
 const REGION = 64; // 结构区域边长（格）
 
-export type StructureKind = 'village' | 'desert_village' | 'savanna_village' | 'taiga_village' | 'watchtower' | 'igloo';
+export type StructureKind = 'village' | 'desert_village' | 'savanna_village' | 'taiga_village' | 'watchtower' | 'igloo' | 'desert_temple' | 'jungle_temple';
 
 export interface StructureSpot {
   kind: StructureKind;
@@ -67,6 +68,10 @@ export function structureAt(seedHash: number, terrain: Terrain, rx: number, rz: 
     case 'desert':
       if (r < 0.09) return { kind: 'desert_village', x, z };
       if (r < 0.12) return { kind: 'watchtower', x, z };
+      if (r < 0.14) return { kind: 'desert_temple', x, z };
+      return null;
+    case 'jungle':
+      if (r < 0.06) return { kind: 'jungle_temple', x, z };
       return null;
     case 'forest':
     case 'birch_forest':
@@ -168,6 +173,8 @@ const VILLAGE_MATS: Record<StructureKind, VillageMats> = {
   taiga_village: TAIGA_MATS,
   watchtower: PLAINS_MATS,
   igloo: PLAINS_MATS,
+  desert_temple: PLAINS_MATS,
+  jungle_temple: PLAINS_MATS,
 };
 
 function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
@@ -331,6 +338,121 @@ function writeIgloo(spot: StructureSpot, terrain: Terrain, cx: number, cz: numbe
   }
 }
 
+// ——— 神庙战利品（确定性预填宝箱；storages 随存档持久化） ———
+type LootEntry = [material: string, min: number, max: number, chance: number];
+
+const DESERT_LOOT: LootEntry[] = [
+  ['gold_ingot', 1, 4, 0.5],
+  ['iron_ingot', 1, 3, 0.5],
+  ['diamond', 1, 2, 0.25],
+  ['emerald', 1, 2, 0.25],
+  ['bone', 1, 5, 0.6],
+  ['string', 1, 4, 0.6],
+  ['wheat', 1, 4, 0.5],
+];
+const JUNGLE_LOOT: LootEntry[] = [
+  ['gold_ingot', 1, 3, 0.5],
+  ['iron_ingot', 1, 3, 0.5],
+  ['bone', 1, 4, 0.6],
+  ['arrow', 2, 6, 0.6],
+  ['cooked_pork', 1, 2, 0.4],
+];
+
+/** 宝箱战利品预填（只填全空的新箱子；已初始化/被开过的跳过——跨 chunk 生成与重载均幂等） */
+function fillChest(seedHash: number, x: number, y: number, z: number, table: LootEntry[], blockExtra?: [id: BlockId, min: number, max: number, chance: number]): void {
+  const key = `${x},${y},${z}`;
+  const storage = getStorage(key);
+  if (storage.some((s) => s !== null)) return;
+  const rand = mulberry32((seedHash ^ Math.imul(x, 374761393) ^ Math.imul(y, 2246822519) ^ Math.imul(z, 668265263)) | 0);
+  let slot = 0;
+  for (const [material, min, max, chance] of table) {
+    if (rand() >= chance) continue;
+    storage[slot++] = { kind: 'material', material, count: min + Math.floor(rand() * (max - min + 1)) };
+    if (slot >= storage.length) return;
+  }
+  if (blockExtra && rand() < blockExtra[3]) {
+    storage[slot] = { kind: 'block', id: blockExtra[0], count: blockExtra[1] + Math.floor(rand() * (blockExtra[2] - blockExtra[1] + 1)) };
+  }
+}
+
+/** 沙漠神殿：阶梯金字塔 + 南向入口 + 中央密藏室（4 宝箱 + TNT 陷阱层） */
+function writeDesertTemple(spot: StructureSpot, terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash: number): void {
+  const sand = K('sandstone');
+  const cut = K('cut_sandstone');
+  const orange = K('orange_terracotta');
+  const blue = K('blue_terracotta');
+  const bx = spot.x;
+  const bz = spot.z;
+  const by = terrain.heightAt(bx, bz) + 1;
+  // 地基 21×21（含向下回填）
+  for (let x = -10; x <= 10; x++) for (let z = -10; z <= 10; z++) putBase(data, cx, cz, bx + x, by, bz + z, sand);
+  // 阶梯塔身：5 层逐层内缩 2、各高 2，外缘切制砂岩描边
+  for (let lvl = 0; lvl < 5; lvl++) {
+    const r = 10 - lvl * 2;
+    for (let x = -r; x <= r; x++) {
+      for (let z = -r; z <= r; z++) {
+        const edge = Math.abs(x) === r || Math.abs(z) === r;
+        for (let dy = 1; dy <= 2; dy++) put(data, cx, cz, bx + x, by + lvl * 2 + dy, bz + z, edge ? cut : sand);
+      }
+    }
+  }
+  // 立面橙色陶瓦柱（MC 神殿标志纹样，南北两面 ±4 列）
+  for (const sz of [-10, 10]) for (const sx of [-4, 4]) for (let dy = 1; dy <= 6; dy++) put(data, cx, cz, bx + sx, by + dy, bz + sz, orange);
+  // 中央密藏室 5×5×4（蓝色中心地板）
+  for (let x = -2; x <= 2; x++) {
+    for (let z = -2; z <= 2; z++) {
+      put(data, cx, cz, bx + x, by, bz + z, x === 0 && z === 0 ? blue : cut);
+      for (let dy = 1; dy <= 4; dy++) put(data, cx, cz, bx + x, by + dy, bz + z, AIR);
+    }
+  }
+  // 南向入口通道 3 宽
+  for (let x = -1; x <= 1; x++) for (let z = 3; z <= 10; z++) for (let dy = 1; dy <= 3; dy++) put(data, cx, cz, bx + x, by + dy, bz + z, AIR);
+  // 密藏坑：室底下 3 格，四角宝箱 + 室底下 TNT 层（MC 陷阱）
+  for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) for (let dy = 1; dy <= 3; dy++) put(data, cx, cz, bx + x, by - dy, bz + z, AIR);
+  for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) put(data, cx, cz, bx + x, by - 1, bz + z, K('tnt'));
+  for (const [dx, dz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]] as const) {
+    put(data, cx, cz, bx + dx, by - 3, bz + dz, K('chest'));
+    fillChest(seedHash, bx + dx, by - 3, bz + dz, DESERT_LOOT);
+  }
+}
+
+/** 丛林神庙：苔石殿 + 中层平台（底堂明置宝箱、平台暗格宝箱，战利品含竹子） */
+function writeJungleTemple(spot: StructureSpot, terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash: number): void {
+  const mossy = K('mossy_cobblestone');
+  const bx = spot.x;
+  const bz = spot.z;
+  const by = terrain.heightAt(bx, bz) + 1;
+  const W = 7; // 半宽（15）
+  const D = 5; // 半深（11）
+  for (let x = -W; x <= W; x++) {
+    for (let z = -D; z <= D; z++) {
+      putBase(data, cx, cz, bx + x, by, bz + z, mossy);
+      const edge = Math.abs(x) === W || Math.abs(z) === D;
+      const corner = Math.abs(x) === W && Math.abs(z) === D;
+      for (let dy = 1; dy <= 7; dy++) {
+        if (!edge) {
+          put(data, cx, cz, bx + x, by + dy, bz + z, AIR);
+          continue;
+        }
+        put(data, cx, cz, bx + x, by + dy, bz + z, corner ? K('chiseled_stone_bricks') : hash2(seedHash, bx + x, bz + z) < 0.4 ? COBBLE : mossy);
+      }
+      // 顶盖（边缘石砖描边）
+      put(data, cx, cz, bx + x, by + 8, bz + z, edge ? K('stone_bricks') : mossy);
+    }
+  }
+  // 南向门洞
+  for (let dy = 1; dy <= 3; dy++) put(data, cx, cz, bx, by + dy, bz + D, AIR);
+  // 中层平台（后半，by+4）
+  for (let x = -W + 1; x <= W - 1; x++) for (let z = -D + 1; z <= 0; z++) put(data, cx, cz, bx + x, by + 4, bz + z, mossy);
+  // 底堂明置宝箱（北墙前）
+  put(data, cx, cz, bx, by + 1, bz - D + 1, K('chest'));
+  fillChest(seedHash, bx, by + 1, bz - D + 1, JUNGLE_LOOT, [K('bamboo'), 2, 6, 0.5]);
+  // 平台暗格宝箱（东北角，苔石封盖）
+  put(data, cx, cz, bx + W - 1, by + 5, bz - D + 1, K('chest'));
+  put(data, cx, cz, bx + W - 1, by + 6, bz - D + 1, mossy);
+  fillChest(seedHash, bx + W - 1, by + 5, bz - D + 1, JUNGLE_LOOT, [K('bamboo'), 2, 6, 0.5]);
+}
+
 /** 生成本 chunk 覆盖范围内的结构（检查本区域及相邻区域） */
 export function applyStructures(seedHash: number, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
   const rx = Math.floor((cx * CHUNK_SIZE) / REGION);
@@ -356,6 +478,10 @@ export function applyStructures(seedHash: number, terrain: Terrain, cx: number, 
         }
       } else if (spot.kind === 'watchtower') {
         writeWatchtower(spot, terrain, cx, cz, data);
+      } else if (spot.kind === 'desert_temple') {
+        writeDesertTemple(spot, terrain, cx, cz, data, seedHash);
+      } else if (spot.kind === 'jungle_temple') {
+        writeJungleTemple(spot, terrain, cx, cz, data, seedHash);
       } else {
         writeIgloo(spot, terrain, cx, cz, data);
       }
