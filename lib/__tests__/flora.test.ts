@@ -236,24 +236,43 @@ describe('神庙战利品', () => {
 });
 
 describe('群系顶点色', () => {
+  const datas: (Uint16Array | null)[] = Array.from({ length: 9 }, () => null);
+  datas[4] = new Uint16Array(CHUNK_VOLUME);
+  datas[4][localIndex(8, 40, 8)] = BLOCK_BY_KEY.grass.id;
+  datas[4][localIndex(7, 40, 8)] = BLOCK_BY_KEY.grass.id; // 边界测试用：3×3 窗口跨两侧
+  const lights = Array.from({ length: 9 }, () => null);
+  // 天空光拉满，亮度项不为 0，群系倍率才体现在顶点色上
+  const skys = Array.from({ length: 9 }, (_, i) => (i === 4 ? new Uint8Array(CHUNK_VOLUME).fill(15) : null));
+  const build = (b: Uint8Array) => buildFromGrid(0, 0, datas.map((d) => d && new Uint16Array(d)), lights, skys, b);
+  const fill = (biome: Biome) => new Uint8Array(18 * 18).fill(BIOME_LIST.indexOf(biome));
+
   it('同一块草方块在不同群系下顶点色不同', () => {
-    const datas: (Uint16Array | null)[] = Array.from({ length: 9 }, () => null);
-    datas[4] = new Uint16Array(CHUNK_VOLUME);
-    datas[4][localIndex(8, 40, 8)] = BLOCK_BY_KEY.grass.id;
-    const lights = Array.from({ length: 9 }, () => null);
-    // 天空光拉满，亮度项不为 0，群系倍率才体现在顶点色上
-    const skys = Array.from({ length: 9 }, (_, i) => (i === 4 ? new Uint8Array(CHUNK_VOLUME).fill(15) : null));
-    const mk = (biome: Biome) => {
-      const b = new Uint8Array(256).fill(BIOME_LIST.indexOf(biome));
-      return buildFromGrid(0, 0, datas.map((d) => d && new Uint16Array(d)), lights, skys, b);
-    };
-    const plains = mk('plains');
-    const jungle = mk('jungle');
+    const plains = build(fill('plains'));
+    const jungle = build(fill('jungle'));
     expect(plains.solid.colors.length).toBeGreaterThan(0);
     expect(jungle.solid.colors.length).toBe(plains.solid.colors.length);
     // 丛林绿与平原绿的顶点色必有差异（群系 signature）
     let diff = 0;
     for (let i = 0; i < plains.solid.colors.length; i++) if (plains.solid.colors[i] !== jungle.solid.colors[i]) diff++;
     expect(diff).toBeGreaterThan(0);
+  });
+
+  it('群系边界处顶点色为 3×3 平均的过渡色（与两侧纯色都不同）', () => {
+    // 左半平原右半丛林：草方块所在列的 3×3 窗口跨边界
+    const edge = new Uint8Array(18 * 18);
+    for (let z = 0; z < 18; z++) {
+      for (let x = 0; x < 18; x++) edge[z * 18 + x] = BIOME_LIST.indexOf(x < 9 ? 'plains' : 'jungle');
+    }
+    const mid = build(edge);
+    const plains = build(fill('plains'));
+    const jungle = build(fill('jungle'));
+    let diffP = 0;
+    let diffJ = 0;
+    for (let i = 0; i < mid.solid.colors.length; i++) {
+      if (mid.solid.colors[i] !== plains.solid.colors[i]) diffP++;
+      if (mid.solid.colors[i] !== jungle.solid.colors[i]) diffJ++;
+    }
+    expect(diffP).toBeGreaterThan(0);
+    expect(diffJ).toBeGreaterThan(0);
   });
 });

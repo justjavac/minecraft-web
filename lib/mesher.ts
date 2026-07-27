@@ -255,6 +255,9 @@ for (const d of BLOCKS) {
   else if (FOLIAGE_TINT_KEYS.has(d.key)) TINT_KIND[d.id] = 2;
 }
 
+/** tintFor 复用的输出槽（addFace 立即读值，无需每面分配） */
+const tintScratch: [number, number, number] = [0, 0, 0];
+
 /** 水面高度表（源 0.875，流水 1-7 逐级变浅） */
 const WATER_TOP = [0.875, 0.766, 0.656, 0.547, 0.437, 0.328, 0.219, 0.109];
 /** addFace 的 tile 特殊值：水系方块，UV 写到独立 water strip 纹理空间 */
@@ -305,13 +308,29 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
   const idAt = (x: number, y: number, z: number): number => idGrid[gidx(x, y, z)];
   const baseX = cx * CHUNK_SIZE;
   const baseZ = cz * CHUNK_SIZE;
-  /** 群系顶点色（biomes 为中心 chunk 16×16 群系索引；草方块只染顶面） */
+  /** 群系顶点色（biomes 为 18×18 群系索引（中心 chunk + 1 格环）；按 3×3 列平均做边界平滑；草方块只染顶面） */
   const tintFor = (id: number, x: number, z: number, dirY: number): readonly [number, number, number] | null => {
     const kind = TINT_KIND[id];
     if (kind === 0) return null;
     if (kind === 1 && BLOCKS[id].key === 'grass' && dirY !== 1) return null;
-    const biome = BIOME_LIST[biomes ? biomes[z * CHUNK_SIZE + x] : 0] ?? 'plains';
-    return kind === 1 ? GRASS_TINT_RATIO[biome] : FOLIAGE_TINT_RATIO[biome];
+    const table = kind === 1 ? GRASS_TINT_RATIO : FOLIAGE_TINT_RATIO;
+    if (!biomes) return table.plains;
+    // MC 群系边界颜色平滑过渡：3×3 列取平均倍率
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (let dz = 0; dz < 3; dz++) {
+      for (let dx = 0; dx < 3; dx++) {
+        const t = table[BIOME_LIST[biomes[(z + dz) * 18 + (x + dx)]] ?? 'plains'];
+        r += t[0];
+        g += t[1];
+        b += t[2];
+      }
+    }
+    tintScratch[0] = r / 9;
+    tintScratch[1] = g / 9;
+    tintScratch[2] = b / 9;
+    return tintScratch;
   };
   for (let y = 0; y < WORLD_HEIGHT; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -475,12 +494,12 @@ export function buildChunkGeometry(world: World, chunk: Chunk): { solid: Geometr
   return buildFromGrid(chunk.cx, chunk.cz, datas, lights, skys, chunkBiomes(world, chunk.cx, chunk.cz));
 }
 
-/** 中心 chunk 16×16 列的群系索引（群系顶点色用） */
+/** 中心 chunk 及 1 格环共 18×18 列的群系索引（群系顶点色 3×3 平滑用） */
 export function chunkBiomes(world: World, cx: number, cz: number): Uint8Array {
-  const biomes = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
-  for (let z = 0; z < CHUNK_SIZE; z++) {
-    for (let x = 0; x < CHUNK_SIZE; x++) {
-      biomes[z * CHUNK_SIZE + x] = biomeIndex(world.terrain.biomeAt(cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z));
+  const biomes = new Uint8Array(18 * 18);
+  for (let z = -1; z <= CHUNK_SIZE; z++) {
+    for (let x = -1; x <= CHUNK_SIZE; x++) {
+      biomes[(z + 1) * 18 + (x + 1)] = biomeIndex(world.terrain.biomeAt(cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z));
     }
   }
   return biomes;
