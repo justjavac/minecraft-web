@@ -3,7 +3,7 @@ import { survivalStats } from '../game';
 import { resetSurvivalMem, tickSurvival, type SurvivalMem } from '../survival';
 
 function makeMem(): SurvivalMem {
-  return { fallDist: 0, air: 15, regenTick: 0, witherTick: 0 };
+  return { fallDist: 0, air: 15, regenTick: 0, witherTick: 0, regenPotionTick: 0 };
 }
 
 const ENV = {
@@ -88,6 +88,6 @@ describe('生存数值 tick', () => {
     mem.air = 3;
     mem.regenTick = 2;
     resetSurvivalMem(mem);
-    expect(mem).toEqual({ fallDist: 0, air: 15, regenTick: 0, witherTick: 0 });
+    expect(mem).toEqual({ fallDist: 0, air: 15, regenTick: 0, witherTick: 0, regenPotionTick: 0 });
   });
 });

@@ -127,17 +127,16 @@ describe('僵尸猪灵', () => {
     fleeTimer: 0, fleeFromX: 0, fleeFromZ: 0, arrowCd: 1, ignite: -1,
   });
 
-  it('下界只刷僵尸猪灵（2-3 成群、岩浆海以上、下界岩表面）', async () => {
+  it('下界远处刷怪为猪灵/烈焰人/恶魂（岩浆海以上、下界岩表面）', async () => {
     const { trySpawn, mobs, clearMobs } = await import('../mobs');
     clearMobs();
     const w = netherWorld();
     preload(w);
-    let spawned = false;
-    for (let i = 0; i < 40 && !spawned; i++) spawned = trySpawn(w, 8, 8);
-    expect(spawned).toBe(true);
-    expect(mobs.length).toBeGreaterThanOrEqual(2);
+    let spawned = 0;
+    for (let i = 0; i < 40 && spawned < 2; i++) if (trySpawn(w, 8, 8)) spawned++;
+    expect(spawned).toBeGreaterThanOrEqual(2);
     for (const m of mobs) {
-      expect(m.type).toBe('zombified_piglin');
+      expect(['zombified_piglin', 'blaze', 'ghast']).toContain(m.type);
       expect(m.y).toBeGreaterThan(LAVA_SEA);
     }
     clearMobs();

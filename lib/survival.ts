@@ -1,6 +1,7 @@
 // 生存数值 tick：掉落伤害 / 溺水 / 消耗度 / 回血（MC 规则，纯逻辑可单测）
 
 import { survivalStats } from './game';
+import { effects } from './effects';
 import { MAX_HEALTH, MAX_HUNGER } from './store';
 
 export interface SurvivalEnv {
@@ -22,6 +23,8 @@ export interface SurvivalMem {
   regenTick: number;
   /** 凋零 DOT 计时器（满 1 秒扣 1 血） */
   witherTick: number;
+  /** 再生药水计时器（满 2 秒回 1 血） */
+  regenPotionTick: number;
 }
 
 export interface SurvivalSnapshotLite {
@@ -80,6 +83,17 @@ export function tickSurvival(
     mem.witherTick = 0;
   }
 
+  // 再生药水：效果期内每 2 秒回 1 点生命（MC 再生 I）
+  if (effects.regen > 0) {
+    mem.regenPotionTick += env.dt;
+    if (mem.regenPotionTick >= 2 && s.health < MAX_HEALTH) {
+      mem.regenPotionTick = 0;
+      actions.setHealth(Math.min(MAX_HEALTH, s.health + 1));
+    }
+  } else {
+    mem.regenPotionTick = 0;
+  }
+
   // 消耗度（MC exhaustion）：满 4 先扣饱和度，饱和耗尽后扣饥饿
   if (survivalStats.exhaustion >= 4) {
     survivalStats.exhaustion -= 4;
@@ -106,4 +120,5 @@ export function resetSurvivalMem(mem: SurvivalMem): void {
   mem.air = 15;
   mem.regenTick = 0;
   mem.witherTick = 0;
+  mem.regenPotionTick = 0;
 }

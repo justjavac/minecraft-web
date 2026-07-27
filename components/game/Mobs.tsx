@@ -33,6 +33,8 @@ const arrowGeo = new BoxGeometry(0.05, 0.05, 0.5);
 const swordGeo = new BoxGeometry(0.05, 0.5, 0.05);
 const blazeRodGeo = new BoxGeometry(0.09, 0.9, 0.09);
 const fireballGeo = new BoxGeometry(0.22, 0.22, 0.22);
+const ghastBodyGeo = new BoxGeometry(2.2, 2.2, 2.2);
+const ghastTentacleGeo = new BoxGeometry(0.22, 1.1, 0.22);
 
 type MobMats = Record<string, Material>;
 
@@ -60,6 +62,8 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     blaze: l('#e8b830'), // 烈焰人明黄
     blazeRod: l('#c07818'), // 烈焰棒橙
     wither: l('#1a1a1a'), // 凋灵骷髅炭黑
+    ghast: l('#f0f0f0'), // 恶魂雪白
+    ghastTear: l('#c8b8d8'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -183,6 +187,13 @@ function makeMobMesh(type: MobType, mats: MobMats, mobId?: number): Group {
       addPart(g, headGeo, mats.wither, 0, 1.85, 0);
       addPart(g, swordGeo, mats.arrow, 0.42, 1.1, 0.1);
       break;
+    case 'ghast':
+      // 恶魂：雪白巨体 + 下垂触手（MC 下界空中巨怪）
+      addPart(g, ghastBodyGeo, mats.ghast, 0, 1.2, 0);
+      for (const [tx, tz] of [[-0.7, -0.7], [0, -0.7], [0.7, -0.7], [-0.7, 0], [0.7, 0], [-0.7, 0.7], [0, 0.7], [0.7, 0.7]] as const) {
+        addPart(g, ghastTentacleGeo, mats.ghastTear, tx, -0.15, tz);
+      }
+      break;
     case 'chicken':
       addPart(g, chickenBodyGeo, mats.chicken, 0, 0.35, 0);
       addPart(g, chickenHeadGeo, mats.chicken, 0, 0.62, 0.2);
@@ -283,8 +294,9 @@ export function Mobs() {
         seenArrows.add(a.id);
         let mesh = arrowMeshMap.current.get(a.id);
         if (!mesh) {
-          // 烈焰人火球：橙色大球；箭：灰色小条
-          mesh = new Mesh(a.kind === 'fireball' ? fireballGeo : arrowGeo, a.kind === 'fireball' ? mobMats.blaze : mobMats.arrow);
+          // 烈焰人火球：橙色大球；恶魂爆裂球：淡紫大球；箭：灰色小条
+          const isBall = a.kind === 'fireball' || a.kind === 'ghast';
+          mesh = new Mesh(isBall ? fireballGeo : arrowGeo, a.kind === 'ghast' ? mobMats.ghastTear : a.kind === 'fireball' ? mobMats.blaze : mobMats.arrow);
           group.add(mesh);
           arrowMeshMap.current.set(a.id, mesh);
         }

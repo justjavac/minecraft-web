@@ -115,7 +115,7 @@ describe('堡垒生物', () => {
     expect(survivalStats.wither).toBeGreaterThan(0); // 命中上了凋零
     expect(dmg).toBeGreaterThan(0);
     // DOT 结算：5 秒内持续掉血
-    const mem: SurvivalMem = { fallDist: 0, air: 15, regenTick: 0, witherTick: 0 };
+    const mem: SurvivalMem = { fallDist: 0, air: 15, regenTick: 0, witherTick: 0, regenPotionTick: 0 };
     let dot = 0;
     const s = { worldMode: 'survival', health: 20, hunger: 20, saturation: 20 };
     const w0 = survivalStats.wither;

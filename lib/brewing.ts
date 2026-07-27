@@ -6,7 +6,7 @@ import { addStackToSlots, type Slot } from './slots';
 export interface PotionDef {
   name: string;
   /** 饮用效果（null = 无效果的基础药水；键名与 lib/effects.ts 一致） */
-  effect: 'speed' | 'strength' | 'healing' | 'fireRes' | null;
+  effect: 'speed' | 'strength' | 'healing' | 'fireRes' | 'regen' | null;
   /** 效果持续秒数（治疗为瞬发，0） */
   duration: number;
 }
@@ -18,6 +18,7 @@ export const POTIONS: Record<string, PotionDef> = {
   strength: { name: '力量药水', effect: 'strength', duration: 180 },
   healing: { name: '治疗药水', effect: 'healing', duration: 0 },
   fire_res: { name: '抗火药水', effect: 'fireRes', duration: 180 },
+  regeneration: { name: '再生药水', effect: 'regen', duration: 30 },
 };
 
 /** 酿造配方：'<药水>+<材料>' → 药水（MC 核心链：水瓶→粗制→效果药） */
@@ -27,6 +28,7 @@ export const BREWING: Record<string, string> = {
   'awkward+blaze_powder': 'strength',
   'awkward+glistering_melon': 'healing',
   'awkward+magma_cream': 'fire_res',
+  'awkward+ghast_tear': 'regeneration',
 };
 
 export const BREW_TIME = 20; // MC 20 秒一轮

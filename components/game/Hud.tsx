@@ -147,6 +147,7 @@ function SurvivalBars() {
   if (effects.speed > 0) active.push(['迅捷', effects.speed]);
   if (effects.strength > 0) active.push(['力量', effects.strength]);
   if (effects.fireRes > 0) active.push(['抗火', effects.fireRes]);
+  if (effects.regen > 0) active.push(['再生', effects.regen]);
   return (
     <div className="w-full space-y-1 pb-0.5">
       {active.length > 0 && (

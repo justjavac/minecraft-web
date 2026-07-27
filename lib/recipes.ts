@@ -127,6 +127,8 @@ export const RECIPES: Recipe[] = [
   { id: 'sugar', name: '糖', out: { kind: 'material', material: 'sugar', count: 1 }, cost: [{ item: K('sugar_cane'), count: 1 }], needsTable: false },
   { id: 'magma_cream', name: '岩浆膏', out: { kind: 'material', material: 'magma_cream', count: 1 }, cost: [{ item: K('magma_block'), count: 1 }], needsTable: false },
   { id: 'glistering_melon', name: '闪烁的西瓜片', out: { kind: 'material', material: 'glistering_melon', count: 1 }, cost: [{ item: K('melon'), count: 1 }, { item: 'material:gold_ingot', count: 1 }], needsTable: false },
+  // TNT：火药 ×5 + 沙子 ×4（MC 配方）
+  { id: 'tnt', name: 'TNT', out: { kind: 'block', id: KID('tnt'), count: 1 }, cost: [{ item: 'material:gunpowder', count: 5 }, { item: K('sand'), count: 4 }], needsTable: true },
   // —— 附魔（配方与 MC 一致） ——
   { id: 'paper', name: '纸 ×3', out: { kind: 'material', material: 'paper', count: 3 }, cost: [{ item: K('sugar_cane'), count: 3 }], needsTable: false },
   { id: 'book', name: '书', out: { kind: 'material', material: 'book', count: 1 }, cost: [{ item: 'material:paper', count: 3 }, { item: 'material:leather', count: 1 }], needsTable: false },

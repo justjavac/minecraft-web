@@ -12,7 +12,7 @@ import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast';
 
 export interface MobDef {
   name: string;
@@ -33,7 +33,7 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   zombie: { name: '僵尸', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [] },
   skeleton: { name: '骷髅', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 3, attackRange: 16, attackCd: 2, drops: [{ material: 'bone', count: [0, 2] }, { material: 'arrow', count: [0, 2] }] },
   spider: { name: '蜘蛛', hp: 16, speed: 3.2, hostile: true, burnsAtDay: false, damage: 2, attackRange: 1.4, attackCd: 1, drops: [{ material: 'string', count: [0, 2] }] },
-  creeper: { name: '苦力怕', hp: 20, speed: 2.2, hostile: true, burnsAtDay: false, damage: 0, attackRange: 3, attackCd: 1.5, drops: [] },
+  creeper: { name: '苦力怕', hp: 20, speed: 2.2, hostile: true, burnsAtDay: false, damage: 0, attackRange: 3, attackCd: 1.5, drops: [{ material: 'gunpowder', count: [0, 2] }] },
   pig: { name: '猪', hp: 10, speed: 1.5, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'raw_pork', count: [1, 3] }] },
   cow: { name: '牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
   chicken: { name: '鸡', hp: 4, speed: 1.6, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'feather', count: [0, 2] }, { material: 'raw_chicken', count: [1, 1] }] },
@@ -45,6 +45,8 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   blaze: { name: '烈焰人', hp: 20, speed: 2.0, hostile: true, burnsAtDay: false, damage: 4, attackRange: 14, attackCd: 2.5, drops: [{ material: 'blaze_rod', count: [0, 1] }] },
   // 凋灵骷髅：堡垒近战，命中附加凋零 DOT（MC）
   wither_skeleton: { name: '凋灵骷髅', hp: 20, speed: 2.6, hostile: true, burnsAtDay: false, damage: 5, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'coal', count: [0, 1] }, { material: 'bone', count: [0, 2] }] },
+  // 恶魂：高空悬浮，远程爆炸火球（MC 下界空中巨怪）
+  ghast: { name: '恶魂', hp: 10, speed: 0.8, hostile: true, burnsAtDay: false, damage: 0, attackRange: 40, attackCd: 3, drops: [{ material: 'ghast_tear', count: [0, 1] }, { material: 'gunpowder', count: [0, 1] }] },
 };
 
 export interface Mob {
@@ -97,8 +99,8 @@ export interface Arrow {
   age: number;
   /** 玩家发射（命中生物而非玩家；缺省为骷髅射向玩家的箭） */
   fromPlayer?: boolean;
-  /** 烈焰人火球（更大更亮，命中伤害 4） */
-  kind?: 'fireball';
+  /** 烈焰人火球（更大更亮，命中伤害 4）或恶魂爆裂火球（命中/撞墙爆炸） */
+  kind?: 'fireball' | 'ghast';
 }
 
 export const mobs: Mob[] = [];
@@ -254,22 +256,29 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
     if (isWaterId(ground) || BLOCKS[ground]?.lava) continue;
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
-    // 堡垒附近（48 格）：凋灵骷髅/烈焰人为主；远处猪灵成群、少量烈焰人（MC 分布）
+    // 堡垒附近（48 格）：凋灵骷髅/烈焰人为主；远处猪灵成群、少量烈焰人与恶魂（MC 分布）
     const roll = Math.random();
     const type: MobType = fortressNear(world.seedHash, world.terrain, bx, bz, 48)
-      ? roll < 0.55
+      ? roll < 0.5
         ? 'wither_skeleton'
-        : roll < 0.8
+        : roll < 0.72
           ? 'blaze'
-          : 'zombified_piglin'
-      : roll < 0.8
+          : roll < 0.9
+            ? 'zombified_piglin'
+            : 'ghast'
+      : roll < 0.7
         ? 'zombified_piglin'
-        : 'blaze';
+        : roll < 0.88
+          ? 'blaze'
+          : 'ghast';
     if (type === 'zombified_piglin') {
       const pack = 2 + Math.floor(Math.random() * 2); // 2-3 只
       for (let i = 0; i < pack; i++) {
         mobs.push(makeMob(type, bx + 0.5 + (Math.random() - 0.5) * 2, sy, bz + 0.5 + (Math.random() - 0.5) * 2));
       }
+    } else if (type === 'ghast') {
+      // 恶魂需要上方空域（悬浮生成）
+      if (aabbFree(world, bx + 0.5, sy + 2, bz + 0.5, 1.2, 2.5)) mobs.push(makeMob(type, bx + 0.5, sy + 2, bz + 0.5));
     } else {
       mobs.push(makeMob(type, bx + 0.5, sy, bz + 0.5));
     }
@@ -278,7 +287,7 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
   return false;
 }
 
-function spawnArrow(m: Mob, target: { x: number; y: number; z: number }, kind?: 'fireball'): void {
+function spawnArrow(m: Mob, target: { x: number; y: number; z: number }, kind?: 'fireball' | 'ghast'): void {
   const ox = m.x;
   const oy = m.y + 1.5;
   const oz = m.z;
@@ -291,7 +300,7 @@ function spawnArrow(m: Mob, target: { x: number; y: number; z: number }, kind?: 
     id: nextArrowId++,
     x: ox, y: oy, z: oz,
     vx: (dx / d) * speed,
-    vy: (dy / d) * speed + (kind === 'fireball' ? 0 : d * 0.05), // 箭抬高补偿重力下坠；火球直线飞行
+    vy: (dy / d) * speed + (kind ? 0 : d * 0.05), // 箭抬高补偿重力下坠；火球类直线飞行
     vz: (dz / d) * speed,
     age: 0,
     kind,
@@ -332,7 +341,7 @@ function tickArrows(
   for (let i = arrows.length - 1; i >= 0; i--) {
     const a = arrows[i];
     a.age += dt;
-    if (a.kind !== 'fireball') a.vy -= 4 * dt; // 箭的重力（较轻，保证射程内能命中）；火球无重力（MC）
+    if (!a.kind) a.vy -= 4 * dt; // 箭的重力（较轻，保证射程内能命中）；火球类无重力（MC）
     const nx = a.x + a.vx * dt;
     const ny = a.y + a.vy * dt;
     const nz = a.z + a.vz * dt;
@@ -345,6 +354,8 @@ function tickArrows(
     a.y = ny;
     a.z = nz;
     if (BLOCKS[world.getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z))]?.solid) {
+      // 恶魂爆裂火球：撞墙即爆（MC）
+      if (a.kind === 'ghast') explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 10, hurtRadius: 3 });
       arrows.splice(i, 1);
       continue;
     }
@@ -363,13 +374,14 @@ function tickArrows(
         continue;
       }
     } else if (
-      // 骷髅的箭/烈焰人的火球：命中玩家（AABB 粗略判定；火球伤害 4）
+      // 骷髅的箭/烈焰人的火球/恶魂的爆裂球：命中玩家（AABB 粗略判定；爆裂球命中即爆）
       Math.abs(playerPos.x - a.x) < 0.5 &&
       a.y > playerPos.y &&
       a.y < playerPos.y + 1.8 &&
       Math.abs(playerPos.z - a.z) < 0.5
     ) {
-      onAttackPlayer(a.kind === 'fireball' ? 4 : 3);
+      if (a.kind === 'ghast') explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 10, hurtRadius: 3 });
+      else onAttackPlayer(a.kind === 'fireball' ? 4 : 3);
       arrows.splice(i, 1);
       continue;
     }
@@ -437,7 +449,21 @@ export function tickMobs(
       }
     } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0)) {
       // 敌对 AI（蜘蛛白天中立；僵尸猪灵未被激怒时中立）
-      if (m.type === 'skeleton' || m.type === 'blaze') {
+      if (m.type === 'ghast') {
+        // 恶魂：高空慢漂移，40 格内射爆裂火球（MC）
+        if (dist > 30 && dist > 0.01) {
+          mx = (dx / dist) * def.speed;
+          mz = (dz / dist) * def.speed;
+        } else if (dist < 16 && dist > 0.01) {
+          mx = (-dx / dist) * def.speed;
+          mz = (-dz / dist) * def.speed;
+        }
+        m.arrowCd -= dt;
+        if (dist < def.attackRange && m.arrowCd <= 0) {
+          m.arrowCd = def.attackCd;
+          spawnArrow(m, playerPos, 'ghast');
+        }
+      } else if (m.type === 'skeleton' || m.type === 'blaze') {
         // 保持 8-14 距离并远程射击（骷髅箭 / 烈焰人火球）
         if (dist > 14 && dist > 0.01) {
           mx = (dx / dist) * def.speed;
@@ -557,10 +583,10 @@ export function tickMobs(
     // 被 1 格障碍挡住时跳起
     if ((hitX || hitZ) && m.onGround) m.velY = 8.5;
 
-    if (m.type === 'blaze') {
-      // 悬浮：相位起伏，不受重力
-      m.bob = (m.bob ?? Math.random() * 6) + dt * 2;
-      m.y += Math.sin(m.bob) * 0.5 * dt;
+    if (m.type === 'blaze' || m.type === 'ghast') {
+      // 悬浮：相位起伏，不受重力（恶魂起伏更慢）
+      m.bob = (m.bob ?? Math.random() * 6) + dt * (m.type === 'ghast' ? 0.8 : 2);
+      m.y += Math.sin(m.bob) * (m.type === 'ghast' ? 0.3 : 0.5) * dt;
       m.velY = 0;
     } else {
       m.velY = Math.max(m.velY - GRAVITY * dt, -50);
