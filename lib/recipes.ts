@@ -136,6 +136,8 @@ export const RECIPES: Recipe[] = [
   { id: 'repeater', name: '红石中继器', out: { kind: 'block', id: KID('repeater_n'), count: 1 }, cost: [{ item: K('redstone_torch'), count: 2 }, { item: 'material:redstone', count: 1 }, { item: K('stone'), count: 3 }], needsTable: true },
   // —— 附魔（配方与 MC 一致） ——
   { id: 'paper', name: '纸 ×3', out: { kind: 'material', material: 'paper', count: 3 }, cost: [{ item: K('sugar_cane'), count: 3 }], needsTable: false },
+  // 剪刀：铁锭 ×2（MC）
+  { id: 'shears', name: '剪刀', out: { kind: 'tool', tool: 'shears' }, cost: [{ item: 'material:iron_ingot', count: 2 }], needsTable: false },
   { id: 'book', name: '书', out: { kind: 'material', material: 'book', count: 1 }, cost: [{ item: 'material:paper', count: 3 }, { item: 'material:leather', count: 1 }], needsTable: false },
   { id: 'enchanting_table', name: '附魔台', out: { kind: 'block', id: KID('enchanting_table'), count: 1 }, cost: [{ item: 'material:book', count: 1 }, { item: 'material:diamond', count: 2 }, { item: K('obsidian'), count: 4 }], needsTable: true },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },

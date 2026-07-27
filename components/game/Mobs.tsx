@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { BoxGeometry, Group, Mesh, Vector3, type Material } from 'three';
 import { getActiveWorld, playerPosition } from '@/lib/game';
-import { arrows, clearMobs, mobs, tickMobs, type MobType } from '@/lib/mobs';
+import { arrows, clearMobs, mobs, tickMobs, type Mob, type MobType } from '@/lib/mobs';
 import { professionOf, PROFESSION_INFO, type Profession } from '@/lib/trading';
 import { useGameStore } from '@/lib/store';
 import { getAtlasMaterials, type AtlasMaterials } from '@/lib/textures';
@@ -35,6 +35,14 @@ const blazeRodGeo = new BoxGeometry(0.09, 0.9, 0.09);
 const fireballGeo = new BoxGeometry(0.22, 0.22, 0.22);
 const ghastBodyGeo = new BoxGeometry(2.2, 2.2, 2.2);
 const ghastTentacleGeo = new BoxGeometry(0.22, 1.1, 0.22);
+const sheepWoolGeo = new BoxGeometry(1.0, 0.62, 0.62);
+const sheepSlimGeo = new BoxGeometry(0.7, 0.42, 0.42);
+const sheepHeadGeo = new BoxGeometry(0.36, 0.3, 0.3);
+const wolfBodyGeo = new BoxGeometry(0.55, 0.4, 0.9);
+const wolfHeadGeo = new BoxGeometry(0.34, 0.3, 0.34);
+const wolfEarGeo = new BoxGeometry(0.08, 0.14, 0.08);
+const wolfTailGeo = new BoxGeometry(0.12, 0.12, 0.45);
+const collarGeo = new BoxGeometry(0.4, 0.14, 0.14);
 
 type MobMats = Record<string, Material>;
 
@@ -64,6 +72,10 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     wither: l('#1a1a1a'), // 凋灵骷髅炭黑
     ghast: l('#f0f0f0'), // 恶魂雪白
     ghastTear: l('#c8b8d8'),
+    sheepFace: l('#d8b8a0'),
+    wolf: l('#c8c8c8'),
+    wolfDark: l('#909090'),
+    collar: l('#c03030'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -71,6 +83,8 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     arrow: l('#a8a8a8'),
     // 村民职业袍色（交易界面同色）
     ...Object.fromEntries(Object.entries(PROFESSION_INFO).map(([p, info]) => [`robe_${p}`, l(info.robe)])),
+    // 羊毛色（羊模型用，MC 分布六色）
+    ...Object.fromEntries(['white', 'black', 'gray', 'light_gray', 'brown', 'pink'].map((c) => [`wool_${c}`, l({ white: '#e8e8e8', black: '#1a1a1a', gray: '#5a5a5a', light_gray: '#a0a0a0', brown: '#6b4a2f', pink: '#f0a8b8' }[c] ?? '#e8e8e8')])),
   };
 }
 
@@ -85,7 +99,12 @@ function profRobe(mats: MobMats, prof: Profession): Material {
   return mats[`robe_${prof}`] ?? mats.robe;
 }
 
-function makeMobMesh(type: MobType, mats: MobMats, mobId?: number): Group {
+/** 羊毛色材质（buildMobMats 预建 wool_<color> 键） */
+function woolMats(mats: MobMats, key: string): Material {
+  return mats[`wool_${key}`] ?? mats.wolf;
+}
+
+function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
   const g = new Group();
   switch (type) {
     case 'zombie':
@@ -201,12 +220,41 @@ function makeMobMesh(type: MobType, mats: MobMats, mobId?: number): Group {
       break;
     case 'villager': {
       // 长袍身体 + 大头 + 大鼻子；袍色随职业（农民/图书管理员/石匠/牧师/皮匠）
-      const robe = mobId !== undefined ? profRobe(mats, professionOf(mobId)) : mats.robe;
+      const robe = mob ? profRobe(mats, professionOf(mob.id)) : mats.robe;
       addPart(g, legGeo, robe, -0.13, 0.375, 0);
       addPart(g, legGeo, robe, 0.13, 0.375, 0);
       addPart(g, bodyGeo, robe, 0, 1.1, 0);
       addPart(g, headGeo, mats.villagerSkin, 0, 1.66, 0);
       addPart(g, snoutGeo, mats.villagerSkin, 0, 1.56, 0.25);
+      break;
+    }
+    case 'sheep': {
+      // 羊：毛壳（按毛色）+ 头；剪过毛的只剩瘦脸与细身
+      const woolMat = woolMats(mats, mob?.woolColor ?? 'white');
+      addPart(g, pigLegGeo, mats.sheepFace, -0.2, 0.15, -0.2);
+      addPart(g, pigLegGeo, mats.sheepFace, 0.2, 0.15, -0.2);
+      addPart(g, pigLegGeo, mats.sheepFace, -0.2, 0.15, 0.2);
+      addPart(g, pigLegGeo, mats.sheepFace, 0.2, 0.15, 0.2);
+      if (mob?.sheared) {
+        addPart(g, sheepSlimGeo, mats.sheepFace, 0, 0.5, 0);
+      } else {
+        addPart(g, sheepWoolGeo, woolMat, 0, 0.62, 0);
+      }
+      addPart(g, sheepHeadGeo, mats.sheepFace, 0, mob?.sheared ? 0.72 : 0.78, 0.5);
+      break;
+    }
+    case 'wolf': {
+      // 狼：四足 + 头 + 竖耳 + 尾；驯服的有红项圈（MC）
+      addPart(g, pigLegGeo, mats.wolfDark, -0.18, 0.15, -0.2);
+      addPart(g, pigLegGeo, mats.wolfDark, 0.18, 0.15, -0.2);
+      addPart(g, pigLegGeo, mats.wolfDark, -0.18, 0.15, 0.2);
+      addPart(g, pigLegGeo, mats.wolfDark, 0.18, 0.15, 0.2);
+      addPart(g, wolfBodyGeo, mats.wolf, 0, 0.55, 0);
+      addPart(g, wolfHeadGeo, mats.wolf, 0, 0.72, 0.45);
+      addPart(g, wolfEarGeo, mats.wolfDark, -0.12, 0.95, 0.42);
+      addPart(g, wolfEarGeo, mats.wolfDark, 0.12, 0.95, 0.42);
+      addPart(g, wolfTailGeo, mats.wolf, 0, 0.68, -0.5);
+      if (mob?.tamed) addPart(g, collarGeo, mats.collar, 0, 0.62, 0.28);
       break;
     }
   }
@@ -216,7 +264,7 @@ function makeMobMesh(type: MobType, mats: MobMats, mobId?: number): Group {
 const arrowForward = new Vector3(0, 0, 1);
 const arrowDir = new Vector3();
 /** 帧循环复用的去重集合（避免每帧分配） */
-const seenScratch = new Set<number>();
+const seenScratch = new Set<string>();
 const seenArrowsScratch = new Set<number>();
 /** 敌对生物类型（朝向玩家；其余朝移动方向）。模块级常量，避免每生物每帧分配数组字面量 */
 const HOSTILE_TYPES: readonly MobType[] = ['zombie', 'skeleton', 'spider', 'creeper'];
@@ -224,7 +272,7 @@ const HOSTILE_TYPES: readonly MobType[] = ['zombie', 'skeleton', 'spider', 'cree
 /** 生物渲染与 AI 驱动（仅生存模式；网格按 id 复用） */
 export function Mobs() {
   const groupRef = useRef<Group>(null);
-  const meshMap = useRef(new Map<number, Group>());
+  const meshMap = useRef(new Map<string, Group>());
   const arrowMeshMap = useRef(new Map<number, Mesh>());
   const [mobMats, setMobMats] = useState<MobMats | null>(null);
   const kind = useRendererKind();
@@ -260,12 +308,14 @@ export function Mobs() {
       const seen = seenScratch;
       seen.clear();
       for (const m of mobs) {
-        seen.add(m.id);
-        let mesh = meshMap.current.get(m.id);
+        // 羊剪毛/狼驯服会换模型：网格键带状态位，状态变时旧网格被回收重建
+        const meshKey = `${m.id}:${m.sheared ? 1 : 0}${m.tamed ? 1 : 0}`;
+        seen.add(meshKey);
+        let mesh = meshMap.current.get(meshKey);
         if (!mesh) {
-          mesh = makeMobMesh(m.type, mobMats, m.id);
+          mesh = makeMobMesh(m.type, mobMats, m);
           group.add(mesh);
-          meshMap.current.set(m.id, mesh);
+          meshMap.current.set(meshKey, mesh);
         }
       mesh.position.set(m.x, m.y, m.z);
       // 朝向：敌对朝玩家，被动朝移动方向

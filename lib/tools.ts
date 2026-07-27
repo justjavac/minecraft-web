@@ -2,7 +2,7 @@
 
 import { tileIcon, tileOf } from './blocks';
 
-export type ToolKind = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'bow';
+export type ToolKind = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'bow' | 'shears';
 export type ToolTier = 'wood' | 'stone' | 'iron' | 'diamond';
 export type ToolType =
   | 'wooden_pickaxe' | 'stone_pickaxe' | 'iron_pickaxe' | 'diamond_pickaxe'
@@ -10,7 +10,8 @@ export type ToolType =
   | 'wooden_shovel' | 'stone_shovel' | 'iron_shovel' | 'diamond_shovel'
   | 'wooden_sword' | 'stone_sword' | 'iron_sword' | 'diamond_sword'
   | 'wooden_hoe' | 'stone_hoe' | 'iron_hoe'
-  | 'bow';
+  | 'bow'
+  | 'shears';
 
 export interface ToolDef {
   type: ToolType;
@@ -57,4 +58,6 @@ export const TOOLS: Record<ToolType, ToolDef> = {
   wooden_hoe: { type: 'wooden_hoe', kind: 'hoe', tier: 'wood', name: '木锄', speed: 1, durability: 59, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/wooden_hoe') },
   stone_hoe: { type: 'stone_hoe', kind: 'hoe', tier: 'stone', name: '石锄', speed: 1, durability: 131, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/stone_hoe') },
   iron_hoe: { type: 'iron_hoe', kind: 'hoe', tier: 'iron', name: '铁锄', speed: 1, durability: 250, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/iron_hoe') },
+  // 剪刀：剪羊毛工具（MC 耐久 238，铁锭×2 合成）
+  shears: { type: 'shears', kind: 'shears', tier: 'iron', name: '剪刀', speed: 1, durability: 238, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/shears') },
 };

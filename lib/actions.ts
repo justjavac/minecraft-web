@@ -15,7 +15,7 @@ import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { pistonIdFor } from './pistons';
 import { cycleRepeaterDelay, isRepeaterId, toggleLever } from './redstone';
 import { XP_ORE } from './xp';
-import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach } from './mobs';
+import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
 import { useGameStore, MAX_HEALTH } from './store';
@@ -190,6 +190,32 @@ export function tryPlace(): boolean {
       playSound('place');
       lastPlace = now;
       return false;
+    }
+    // 剪刀剪羊毛：羊在准星内且未剪过 → 掉同色羊毛 1-3（MC）
+    if (held?.kind === 'tool' && held.tool === 'shears') {
+      if (mobForTrade?.type === 'sheep' && !mobForTrade.sheared) {
+        mobForTrade.sheared = true;
+        spawnBlockDrop(woolBlockId(mobForTrade.woolColor ?? 'white'), mobForTrade.x, mobForTrade.y + 0.3, mobForTrade.z, 1 + Math.floor(Math.random() * 3));
+        s.damageHeldTool(1);
+        playSound('place');
+        lastPlace = now;
+        return false;
+      }
+    }
+    // 骨头驯狼：1/3 概率驯服（MC 驯狼）
+    if (held?.kind === 'material' && held.material === 'bone') {
+      if (mobForTrade?.type === 'wolf' && !mobForTrade.tamed) {
+        if (s.consumeMaterial('bone', 1)) {
+          if (Math.random() < 1 / 3) {
+            mobForTrade.tamed = true;
+            mobForTrade.aggroTimer = 0;
+            s.setNotice('狼成为了你的伙伴');
+          }
+          playSound('place');
+          lastPlace = now;
+          return false;
+        }
+      }
     }
     // 手持繁殖食物右键：喂养视线内的成年动物（MC：进入恋爱模式，两只恋爱个体才产仔）
     if (held?.kind === 'material') {

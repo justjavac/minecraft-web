@@ -1,18 +1,19 @@
 // 生物系统：类型化怪物（敌对/被动）+ 骷髅箭 + 苦力怕爆炸。纯数据逻辑（不依赖 three，可单测）
 
-import { AIR, BLOCKS, GRASS, isWaterId } from './blocks';
+import { AIR, BLOCK_BY_KEY, BLOCKS, GRASS, isWaterId } from './blocks';
+import type { Biome } from './noise';
 import { dayFactorAt, survivalStats, worldClock } from './game';
 import { useGameStore } from './store';
 import { XP_MOB } from './xp';
 import { explodeAt } from './explosion';
-import { spawnMaterialDrop } from './items';
+import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { fortressNear } from './netherstructures';
 import { aabbFree, collideAxis } from './physics';
 import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf';
 
 export interface MobDef {
   name: string;
@@ -47,6 +48,11 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   wither_skeleton: { name: '凋灵骷髅', hp: 20, speed: 2.6, hostile: true, burnsAtDay: false, damage: 5, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'coal', count: [0, 1] }, { material: 'bone', count: [0, 2] }] },
   // 恶魂：高空悬浮，远程爆炸火球（MC 下界空中巨怪）
   ghast: { name: '恶魂', hp: 10, speed: 0.8, hostile: true, burnsAtDay: false, damage: 0, attackRange: 40, attackCd: 3, drops: [{ material: 'ghast_tear', count: [0, 1] }, { material: 'gunpowder', count: [0, 1] }] },
+  // 羊：毛色随机（掉落同色羊毛；剪刀剪毛可再生，见 tickMobs 吃草）
+  sheep: { name: '羊', hp: 8, speed: 1.2, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [] },
+  // 狼：野生中立（被打群体仇恨才攻击；hostile 走 aggro 门控）；骨头驯服后跟随玩家并护主
+  wolf: { name: '狼', hp: 8, speed: 2.6, hostile: true, burnsAtDay: false, damage: 3, attackRange: 1.4, attackCd: 1, drops: [],
+  },
 };
 
 export interface Mob {
@@ -83,6 +89,12 @@ export interface Mob {
   aggroTimer?: number;
   /** 烈焰人悬浮起伏相位 */
   bob?: number;
+  /** 羊：毛色（wool 颜色 key）与剪毛状态/吃草计时 */
+  woolColor?: string;
+  sheared?: boolean;
+  grazeTimer?: number;
+  /** 狼：已驯服（跟随玩家并护主） */
+  tamed?: boolean;
   /** 村庄锚点（村民不远离村庄；生成时写入） */
   homeX?: number;
   homeZ?: number;
@@ -143,7 +155,7 @@ function exposedToSky(world: World, m: Mob): boolean {
   return true;
 }
 
-function pickSpawnType(night: boolean): MobType {
+function pickSpawnType(night: boolean, biome?: Biome): MobType {
   const r = Math.random();
   if (night) {
     if (r < 0.4) return 'zombie';
@@ -151,9 +163,14 @@ function pickSpawnType(night: boolean): MobType {
     if (r < 0.85) return 'spider';
     return 'creeper';
   }
-  if (r < 0.4) return 'pig';
-  if (r < 0.7) return 'cow';
-  return 'chicken';
+  // 白天被动：林地出狼、平原/热带草原出羊（MC 分布）
+  const foresty = biome === 'forest' || biome === 'taiga' || biome === 'birch_forest' || biome === 'dark_forest' || biome === 'snowy';
+  if (foresty && r < 0.25) return 'wolf';
+  if (!foresty && r < 0.25) return 'sheep';
+  if (r < 0.45) return 'pig';
+  if (r < 0.75) return 'cow';
+  if (r < 0.9) return 'chicken';
+  return foresty ? 'wolf' : 'sheep';
 }
 
 /** 喂食繁殖：在亲代身旁生成同种幼体（90s 长成；产仔掉 1-7 经验，MC） */
@@ -166,10 +183,11 @@ export function breedMob(parent: Mob): Mob {
   return baby;
 }
 
-/** 各物种的繁殖食物（材料名；MC：牛/猪吃小麦，鸡吃种子） */
+/** 各物种的繁殖食物（材料名；MC：牛/猪/羊吃小麦，鸡吃种子） */
 export const BREED_FOOD: Partial<Record<MobType, string>> = {
   cow: 'wheat',
   pig: 'wheat',
+  sheep: 'wheat',
   chicken: 'wheat_seeds',
 };
 
@@ -179,14 +197,32 @@ export function feedMob(m: Mob): void {
   m.hp = Math.min(MOB_DEFS[m.type].hp, m.hp + 4);
 }
 
+/** 羊毛色按 MC 分布（白 82 / 黑灰各 5 / 淡灰 5 / 棕 3 / 粉 1） */
+function pickWoolColor(): string {
+  const r = Math.random();
+  if (r < 0.82) return 'white';
+  if (r < 0.87) return 'black';
+  if (r < 0.92) return 'gray';
+  if (r < 0.97) return 'light_gray';
+  if (r < 0.99) return 'brown';
+  return 'pink';
+}
+
+/** 羊毛方块 id（颜色 key → *_wool 方块） */
+export function woolBlockId(color: string): number {
+  return BLOCK_BY_KEY[`${color}_wool`]?.id ?? BLOCK_BY_KEY.white_wool.id;
+}
+
 function makeMob(type: MobType, x: number, y: number, z: number): Mob {
-  return {
+  const mob: Mob = {
     id: nextId++, type, x, y, z,
     velY: 0, hp: MOB_DEFS[type].hp, attackCd: 0, onGround: false,
     wanderDir: 0, wanderTimer: 0, wanderMoving: false,
     fleeTimer: 0, fleeFromX: 0, fleeFromZ: 0,
     arrowCd: 1, ignite: -1,
   };
+  if (type === 'sheep') mob.woolColor = pickWoolColor();
+  return mob;
 }
 
 /** 在玩家周围环形区域找地表生成（夜晚敌对、白天被动且只在草地上；村庄附近生成村民；蘑菇岛只出蘑菇牛且夜晚不刷怪） */
@@ -200,8 +236,7 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
   if (!night && passiveCount >= MAX_PASSIVE) return false;
   // 白天且靠近村庄中心：70% 生成村民（锚定村庄，不远离）
   const village = !night ? villageCenterNear(world.seedHash, world.terrain, px, pz, 48) : null;
-  const type = village && Math.random() < 0.7 ? 'villager' : pickSpawnType(night);
-  const def = MOB_DEFS[type];
+  const villageRoll = village !== null && Math.random() < 0.7;
   for (let attempt = 0; attempt < 8; attempt++) {
     const ang = Math.random() * Math.PI * 2;
     const r = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
@@ -209,11 +244,11 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     const bz = Math.floor(pz + Math.sin(ang) * r);
     // 未加载的 chunk 不刷：读块会触发隐式全量生成（卡顿）
     if (!world.chunks.has(`${bx >> 4},${bz >> 4}`)) continue;
-    // 群系规则（MC）：蘑菇岛不刷敌对生物，被动只出蘑菇牛
+    // 群系规则（MC）：蘑菇岛不刷敌对生物，被动只出蘑菇牛；林地出狼、平原出羊
     const biome = world.terrain.biomeAt(bx, bz);
     if (biome === 'mushroom_fields' && night) return false;
-    const wantType = biome === 'mushroom_fields' ? 'mooshroom' : type;
-    const wantDef = wantType === type ? def : MOB_DEFS[wantType];
+    const wantType = biome === 'mushroom_fields' ? 'mooshroom' : villageRoll ? 'villager' : pickSpawnType(night, biome);
+    const wantDef = MOB_DEFS[wantType];
     // 从世界顶向下找第一个实心方块作为地表
     let y = WORLD_HEIGHT - 1;
     while (y > 0 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
@@ -447,8 +482,8 @@ export function tickMobs(
         mx = (fx / fd) * def.speed * 1.5;
         mz = (fz / fd) * def.speed * 1.5;
       }
-    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0)) {
-      // 敌对 AI（蜘蛛白天中立；僵尸猪灵未被激怒时中立）
+    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0))) {
+      // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼未被激怒时中立）
       if (m.type === 'ghast') {
         // 恶魂：高空慢漂移，40 格内射爆裂火球（MC）
         if (dist > 30 && dist > 0.01) {
@@ -506,9 +541,57 @@ export function tickMobs(
         }
       }
     } else {
-      // 恋爱中：寻找 8 格内同种恋爱个体，走过去；贴近则产仔（双方进 60s 冷却）
-      let partner: Mob | null = null;
-      if ((m.loveTimer ?? 0) > 0) {
+      // 驯服的狼：护主（攻击玩家刚打过的目标）→ 跟随（远了传送跟上，MC）
+      let handled = false;
+      if (m.type === 'wolf' && m.tamed) {
+        handled = true;
+        const target =
+          lastPlayerTarget.mob && lastPlayerTarget.mob !== m && lastPlayerTarget.mob.hp > 0 && performance.now() / 1000 - lastPlayerTarget.at < 10
+            ? lastPlayerTarget.mob
+            : null;
+        if (target) {
+          const tx = target.x - m.x;
+          const tz2 = target.z - m.z;
+          const td = Math.hypot(tx, tz2);
+          if (td > 0.01 && td < 40) {
+            mx = (tx / td) * def.speed;
+            mz = (tz2 / td) * def.speed;
+          }
+          m.attackCd -= dt;
+          if (m.attackCd <= 0 && td < def.attackRange && Math.abs(target.y - m.y) < 2) {
+            m.attackCd = def.attackCd;
+            damageMob(target, def.damage, undefined);
+          }
+        } else if (dist > 12) {
+          // 传送跟上（MC：距离过远直接瞬移到玩家身边）
+          m.x = playerPos.x + 1;
+          m.z = playerPos.z + 1;
+          m.y = playerPos.y;
+          m.velY = 0;
+        } else if (dist > 3 && dist > 0.01) {
+          mx = (dx / dist) * def.speed;
+          mz = (dz / dist) * def.speed;
+        }
+      }
+      // 羊吃草长毛（MC：剪毛后吃草再生，草方块变泥土）
+      if (m.type === 'sheep' && m.sheared) {
+        m.grazeTimer = (m.grazeTimer ?? 30 + Math.random() * 30) - dt;
+        if (m.grazeTimer <= 0) {
+          const bx2 = Math.floor(m.x);
+          const by2 = Math.floor(m.y) - 1;
+          const bz2 = Math.floor(m.z);
+          if (world.getBlock(bx2, by2, bz2) === GRASS) {
+            world.setBlock(bx2, by2, bz2, BLOCK_BY_KEY.dirt.id);
+            m.sheared = false;
+          }
+          m.grazeTimer = 30 + Math.random() * 30;
+        }
+      }
+      if (handled) {
+        // 驯狼分支已处理移动
+      } else if ((m.loveTimer ?? 0) > 0) {
+        // 恋爱中：寻找 8 格内同种恋爱个体，走过去；贴近则产仔（双方进 60s 冷却）
+        let partner: Mob | null = null;
         for (const other of mobs) {
           if (other === m || other.type !== m.type || other.baby || (other.loveTimer ?? 0) <= 0) continue;
           const od = Math.hypot(other.x - m.x, other.z - m.z);
@@ -517,21 +600,21 @@ export function tickMobs(
           partner = other;
           break;
         }
-      }
-      if (partner) {
-        const px = partner.x - m.x;
-        const pz = partner.z - m.z;
-        const pd = Math.hypot(px, pz);
-        if (pd > 1.2) {
-          mx = (px / pd) * def.speed;
-          mz = (pz / pd) * def.speed;
-        } else {
-          // 配对成功：产仔并清恋爱、进冷却
-          partner.loveTimer = 0;
-          m.loveTimer = 0;
-          partner.breedCd = 60;
-          m.breedCd = 60;
-          if (mobs.length < 40) breedMob(m);
+        if (partner) {
+          const px = partner.x - m.x;
+          const pz = partner.z - m.z;
+          const pd = Math.hypot(px, pz);
+          if (pd > 1.2) {
+            mx = (px / pd) * def.speed;
+            mz = (pz / pd) * def.speed;
+          } else {
+            // 配对成功：产仔并清恋爱、进冷却
+            partner.loveTimer = 0;
+            m.loveTimer = 0;
+            partner.breedCd = 60;
+            m.breedCd = 60;
+            if (mobs.length < 40) breedMob(m);
+          }
         }
       } else if (
         // 持食引诱：玩家手持该物种食物时跟着走（MC 诱饵）
@@ -639,13 +722,26 @@ export function mobInReach(
   return best;
 }
 
+/** 玩家最近攻击的目标（驯狼护主用；attackerPos 存在即记录） */
+export const lastPlayerTarget: { mob: Mob | null; at: number } = { mob: null, at: 0 };
+
 /** 对生物造成伤害（attackerPos 用于被动生物逃跑方向；lootBonus = 抢夺附魔等级），返回是否击杀 */
 export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }, lootBonus = 0): boolean {
   mob.hp -= damage;
+  if (attackerPos) {
+    lastPlayerTarget.mob = mob;
+    lastPlayerTarget.at = performance.now() / 1000;
+  }
   // 僵尸猪灵：受伤激怒自身与 32 格内同伴（MC 群体仇恨）
   if (mob.type === 'zombified_piglin') {
     for (const m of mobs) {
       if (m.type === 'zombified_piglin' && Math.hypot(m.x - mob.x, m.z - mob.z) <= 32) m.aggroTimer = 40;
+    }
+  }
+  // 野狼：受伤激怒自身与 16 格内同伴（MC 狼群复仇）
+  if (mob.type === 'wolf' && !mob.tamed) {
+    for (const m of mobs) {
+      if (m.type === 'wolf' && !m.tamed && Math.hypot(m.x - mob.x, m.z - mob.z) <= 16) m.aggroTimer = 20;
     }
   }
   if (mob.hp > 0) {
@@ -661,6 +757,10 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   for (const drop of MOB_DEFS[mob.type].drops) {
     const count = drop.count[0] + Math.floor(Math.random() * (drop.count[1] - drop.count[0] + 1)) + (lootBonus > 0 ? Math.floor(Math.random() * (lootBonus + 1)) : 0);
     if (count > 0) spawnMaterialDrop(drop.material, mob.x, mob.y + 0.3, mob.z, count);
+  }
+  // 羊：掉同色羊毛 ×1（剪过毛的不掉，MC）
+  if (mob.type === 'sheep' && !mob.sheared) {
+    spawnBlockDrop(woolBlockId(mob.woolColor ?? 'white'), mob.x, mob.y + 0.3, mob.z, 1 + (lootBonus > 0 ? Math.floor(Math.random() * lootBonus) : 0));
   }
   useGameStore.getState().addXp(XP_MOB[mob.type]);
   const i = mobs.indexOf(mob);
