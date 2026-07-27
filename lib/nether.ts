@@ -15,7 +15,6 @@ const K = (key: string) => BLOCK_BY_KEY[key].id;
 export function createNetherTerrain(seed: string): Terrain {
   const sh = hashString(seed);
   const nHill = createNoise2D(mulberry32(sh ^ 0x7e57ab1e));
-  const nPatch = createNoise2D(mulberry32(sh ^ 0x2b61a8));
   const nCaveA = createNoise3D(mulberry32(sh ^ 0x5c1e7a));
   const nCaveB = createNoise3D(mulberry32(sh ^ 0x9d3f2b));
   const nCheese = createNoise3D(mulberry32(sh ^ 0x1a8c4d));
@@ -54,7 +53,6 @@ export function generateNetherChunk(terrain: Terrain, cx: number, cz: number, da
   const netherrack = K('netherrack');
   const soulSand = K('soul_sand');
   const gravel = K('gravel');
-  const quartz = K('nether_quartz_ore');
   const glow = K('glowstone');
   const bedrock = K('bedrock');
 

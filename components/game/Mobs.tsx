@@ -29,6 +29,7 @@ const hornGeo = new BoxGeometry(0.08, 0.12, 0.08);
 const shroomGeo = new BoxGeometry(0.14, 0.06, 0.14);
 const shroomCapGeo = new BoxGeometry(0.18, 0.06, 0.18);
 const arrowGeo = new BoxGeometry(0.05, 0.05, 0.5);
+const swordGeo = new BoxGeometry(0.05, 0.5, 0.05);
 
 type MobMats = Record<string, Material>;
 
@@ -50,6 +51,9 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     cowLight: l('#d8cfc0'),
     mooshroom: l('#a03028'), // 蘑菇牛红身（MC 红蘑菇牛）
     mooshroomSpot: l('#e8e0d8'),
+    piglinSkin: l('#c98a8a'), // 僵尸猪灵：腐粉
+    piglinRot: l('#7f9e5f'), // 僵尸猪灵：尸斑绿
+    goldSword: l('#e8c840'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -137,6 +141,17 @@ function makeMobMesh(type: MobType, mats: MobMats): Group {
       addPart(g, shroomCapGeo, mats.mooshroomSpot, 0.18, 1.13, 0.15);
       addPart(g, shroomGeo, mats.mooshroom, 0, 1.05, -0.25);
       addPart(g, shroomCapGeo, mats.mooshroomSpot, 0, 1.13, -0.25);
+      break;
+    case 'zombified_piglin':
+      // 僵尸猪灵：腐粉与尸斑拼接的人形 + 金剑（MC 标志性中立怪）
+      addPart(g, legGeo, mats.piglinRot, -0.13, 0.375, 0);
+      addPart(g, legGeo, mats.piglinRot, 0.13, 0.375, 0);
+      addPart(g, bodyGeo, mats.piglinSkin, 0, 1.1, 0);
+      addPart(g, armGeo, mats.piglinSkin, -0.34, 1.15, 0);
+      addPart(g, armGeo, mats.piglinRot, 0.34, 1.15, 0);
+      addPart(g, headGeo, mats.piglinSkin, 0, 1.66, 0);
+      addPart(g, snoutGeo, mats.piglinRot, 0, 1.6, 0.22);
+      addPart(g, swordGeo, mats.goldSword, 0.42, 1.0, 0.1);
       break;
     case 'chicken':
       addPart(g, chickenBodyGeo, mats.chicken, 0, 0.35, 0);

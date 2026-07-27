@@ -76,8 +76,7 @@ describe('下界生成', () => {
   });
 });
 
-describe('维度映射与落点', () => {
-  it('主世界 ↔ 下界坐标 1:8 映射', () => {
+describe('维度映射与落点', () => {  it('主世界 ↔ 下界坐标 1:8 映射', () => {
     const p = mapCoords({ x: 80, y: 64, z: -40 }, 'nether');
     expect(p).toEqual({ x: 10, y: 64, z: -5 });
     const back = mapCoords(p, 'overworld');
@@ -111,5 +110,61 @@ describe('维度映射与落点', () => {
     let total = 0;
     for (let x = -16; x < 32; x++) for (let y = 30; y < 50; y++) for (let z = -16; z < 32; z++) if (isPortalId(w.getBlock(x, y, z))) total++;
     expect(total).toBe(6);
+  });
+});
+
+describe('僵尸猪灵', () => {
+  function netherWorld(): World {
+    return new World('piglin-world', undefined, createNetherTerrain('piglin-world'));
+  }
+  function preload(w: World): void {
+    for (let cx = -2; cx <= 2; cx++) for (let cz = -2; cz <= 2; cz++) w.getChunk(cx, cz);
+  }
+  const mkPiglin = (x: number, y: number, z: number) => ({
+    id: Math.random(), type: 'zombified_piglin' as const, x, y, z,
+    velY: 0, hp: 20, attackCd: 0, onGround: true,
+    wanderDir: 0, wanderTimer: 0, wanderMoving: false,
+    fleeTimer: 0, fleeFromX: 0, fleeFromZ: 0, arrowCd: 1, ignite: -1,
+  });
+
+  it('下界只刷僵尸猪灵（2-3 成群、岩浆海以上、下界岩表面）', async () => {
+    const { trySpawn, mobs, clearMobs } = await import('../mobs');
+    clearMobs();
+    const w = netherWorld();
+    preload(w);
+    let spawned = false;
+    for (let i = 0; i < 40 && !spawned; i++) spawned = trySpawn(w, 8, 8);
+    expect(spawned).toBe(true);
+    expect(mobs.length).toBeGreaterThanOrEqual(2);
+    for (const m of mobs) {
+      expect(m.type).toBe('zombified_piglin');
+      expect(m.y).toBeGreaterThan(LAVA_SEA);
+    }
+    clearMobs();
+  });
+
+  it('未被激怒不攻击（贴脸也保持中立）；受伤则群体仇恨并反击', async () => {
+    const { mobs, clearMobs, damageMob, tickMobs } = await import('../mobs');
+    clearMobs();
+    const w = netherWorld();
+    preload(w);
+    const player = { x: 8.5, y: 48, z: 8.5 }; // 与猪灵落点同高（中立期猪灵会自然落地）
+    mobs.push(mkPiglin(9.5, 60, 8.5));
+    mobs.push(mkPiglin(30, 60, 8.5));
+    let hits = 0;
+    const onHit = () => hits++;
+    for (let i = 0; i < 40; i++) tickMobs(w, 0.1, player, onHit);
+    expect(hits).toBe(0); // 中立：贴脸也不打
+    // 激怒其中一只：两只都进仇恨（群体传染 32 格内）
+    damageMob(mobs[0], 5, player);
+    expect(mobs[0].aggroTimer).toBeGreaterThan(0);
+    expect(mobs[1].aggroTimer).toBeGreaterThan(0);
+    // 归位到贴脸（中立期游走/坠落可能偏离），验证激怒后会反击
+    mobs[0].x = player.x + 1;
+    mobs[0].y = player.y;
+    mobs[0].z = player.z;
+    for (let i = 0; i < 60 && hits === 0; i++) tickMobs(w, 0.1, player, onHit);
+    expect(hits).toBeGreaterThan(0); // 激怒后贴脸反击
+    clearMobs();
   });
 });

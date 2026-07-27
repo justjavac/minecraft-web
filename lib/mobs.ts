@@ -9,7 +9,7 @@ import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin';
 
 export interface MobDef {
   name: string;
@@ -36,6 +36,8 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   chicken: { name: '鸡', hp: 4, speed: 1.6, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'feather', count: [0, 2] }, { material: 'raw_chicken', count: [1, 1] }] },
   villager: { name: '村民', hp: 20, speed: 1.2, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [] },
   mooshroom: { name: '蘑菇牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
+  // 僵尸猪灵：中立敌对——不被激怒时不攻击；受伤则群体仇恨（MC 下界特色）
+  zombified_piglin: { name: '僵尸猪灵', hp: 20, speed: 2.4, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'gold_ingot', count: [0, 1] }, { material: 'bone', count: [0, 1] }] },
 };
 
 export interface Mob {
@@ -68,6 +70,8 @@ export interface Mob {
   loveTimer?: number;
   /** 繁殖冷却剩余秒数 */
   breedCd?: number;
+  /** 僵尸猪灵仇恨剩余秒数（>0 时攻击玩家；群体传染） */
+  aggroTimer?: number;
   /** 村庄锚点（村民不远离村庄；生成时写入） */
   homeX?: number;
   homeZ?: number;
@@ -174,7 +178,8 @@ function makeMob(type: MobType, x: number, y: number, z: number): Mob {
 /** 在玩家周围环形区域找地表生成（夜晚敌对、白天被动且只在草地上；村庄附近生成村民；蘑菇岛只出蘑菇牛且夜晚不刷怪） */
 export function trySpawn(world: World, px: number, pz: number): boolean {
   const night = isNight();
-  if (world.terrain.kind === 'nether') return false; // 下界生物生成走专门规则（僵尸猪灵）
+  // 下界：只刷僵尸猪灵（下界岩上 2-3 只成群；不被激怒不攻击）
+  if (world.terrain.kind === 'nether') return trySpawnNether(world, px, pz);
   const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
   const passiveCount = mobs.length - hostileCount;
   if (night && hostileCount >= MAX_HOSTILE) return false;
@@ -213,6 +218,34 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
       mob.homeZ = village.z;
     }
     mobs.push(mob);
+    return true;
+  }
+  return false;
+}
+
+/** 下界刷怪：僵尸猪灵 2-3 只成群（下界岩/灵魂沙表面、岩浆海以上；MC 成群出没） */
+function trySpawnNether(world: World, px: number, pz: number): boolean {
+  const piglins = mobs.filter((m) => m.type === 'zombified_piglin').length;
+  if (piglins >= MAX_HOSTILE) return false;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const ang = Math.random() * Math.PI * 2;
+    const r = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+    const bx = Math.floor(px + Math.cos(ang) * r);
+    const bz = Math.floor(pz + Math.sin(ang) * r);
+    if (!world.chunks.has(`${bx >> 4},${bz >> 4}`)) continue;
+    let y = WORLD_HEIGHT - 8;
+    while (y > 32 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
+    if (y <= 32) continue; // 岩浆海面上方
+    const ground = world.getBlock(bx, y, bz);
+    const gk = BLOCKS[ground]?.key;
+    if (gk !== 'netherrack' && gk !== 'soul_sand') continue;
+    if (isWaterId(ground) || BLOCKS[ground]?.lava) continue;
+    const sy = y + 1;
+    if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
+    const pack = 2 + Math.floor(Math.random() * 2); // 2-3 只
+    for (let i = 0; i < pack; i++) {
+      mobs.push(makeMob('zombified_piglin', bx + 0.5 + (Math.random() - 0.5) * 2, sy, bz + 0.5 + (Math.random() - 0.5) * 2));
+    }
     return true;
   }
   return false;
@@ -345,9 +378,10 @@ export function tickMobs(
         m.growUp = undefined;
       }
     }
-    // 恋爱/繁殖冷却倒数
+    // 恋爱/繁殖冷却倒数；僵尸猪灵仇恨倒数
     if (m.loveTimer !== undefined && m.loveTimer > 0) m.loveTimer -= dt;
     if (m.breedCd !== undefined && m.breedCd > 0) m.breedCd -= dt;
+    if (m.aggroTimer !== undefined && m.aggroTimer > 0) m.aggroTimer -= dt;
     // 白天自燃（需露天且头部不在水中）
     if (!night && def.burnsAtDay && exposedToSky(world, m)) {
       m.hp -= BURN_DAMAGE * dt;
@@ -373,8 +407,8 @@ export function tickMobs(
         mx = (fx / fd) * def.speed * 1.5;
         mz = (fz / fd) * def.speed * 1.5;
       }
-    } else if (def.hostile && (m.type !== 'spider' || night)) {
-      // 敌对 AI（蜘蛛白天中立）
+    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0)) {
+      // 敌对 AI（蜘蛛白天中立；僵尸猪灵未被激怒时中立）
       if (m.type === 'skeleton') {
         // 保持 8-16 距离并射箭
         if (dist > 14 && dist > 0.01) {
@@ -545,6 +579,12 @@ export function mobInReach(
 /** 对生物造成伤害（attackerPos 用于被动生物逃跑方向），返回是否击杀 */
 export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }): boolean {
   mob.hp -= damage;
+  // 僵尸猪灵：受伤激怒自身与 32 格内同伴（MC 群体仇恨）
+  if (mob.type === 'zombified_piglin') {
+    for (const m of mobs) {
+      if (m.type === 'zombified_piglin' && Math.hypot(m.x - mob.x, m.z - mob.z) <= 32) m.aggroTimer = 40;
+    }
+  }
   if (mob.hp > 0) {
     // 被动生物受击逃跑
     if (!MOB_DEFS[mob.type].hostile && attackerPos) {

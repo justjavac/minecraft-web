@@ -119,6 +119,9 @@ export function WorldRenderer() {
   // 创建/加载世界 + 贴图（维度切换时重跑：暂存旧维度状态，加载/恢复新维度）
   useEffect(() => {
     let cancelled = false;
+    // 两个 Map 对象身份恒定（只改字段），cleanup 里用局部引用消除 exhaustive-deps 告警
+    const worlds = worldsRef.current;
+    const dimStates = dimStateRef.current;
     void (async () => {
       try {
         const mats = await getAtlasMaterials(kind);
@@ -146,25 +149,25 @@ export function WorldRenderer() {
           store.setWorldMode(meta?.mode ?? 'creative');
           store.loadSurvival(meta?.survival ?? { health: MAX_HEALTH, hunger: MAX_HUNGER, slots: emptySlots() });
           const center = meta?.player ?? { x: 8.5, y: 40, z: 8.5 };
-          worldsRef.current[dimension] = await loadDimWorld(dimension, meta?.seed ?? seed, center);
+          worlds[dimension] = await loadDimWorld(dimension, meta?.seed ?? seed, center);
         } else if (mode !== 'continue' && firstLoadRef.current) {
           firstLoadRef.current = false;
           await clearWorldStore();
           worldClock.t = 0.3; // 新世界从上午开始
-          worldsRef.current[dimension] = makeDimWorld(dimension, seed);
+          worlds[dimension] = makeDimWorld(dimension, seed);
           clearStorages(); // 清空上一个世界的容器残留
           clearRedstone(); // 清空上一个世界的红石残留
           await saveWorldMeta(worldMeta(seed, { mode: useGameStore.getState().worldMode, dimension: 'overworld' }));
         }
         // 切换维度/首次造访：取缓存或读档新建
-        let w = worldsRef.current[dimension];
+        let w = worlds[dimension];
         if (!w) {
           w = await loadDimWorld(dimension, seed, teleportState.pending ?? { x: 8.5, z: 8.5 });
-          worldsRef.current[dimension] = w;
+          worlds[dimension] = w;
         }
         if (cancelled) return;
         // 恢复该维度的模块状态
-        const ds = dimStateRef.current[dimension];
+        const ds = dimStates[dimension];
         clearStorages();
         clearFurnaces();
         if (ds) {
@@ -199,10 +202,10 @@ export function WorldRenderer() {
     return () => {
       cancelled = true;
       useGameStore.getState().setWorldReady(false);
-      const w = worldsRef.current[dimension];
+      const w = worlds[dimension];
       if (w) void saveModifiedChunks(w, currentExtras(dimension), dimPrefix(dimension));
       // 暂存本维度模块状态（位置/容器/熔炉），其余运行时状态清掉
-      dimStateRef.current[dimension] = {
+      dimStates[dimension] = {
         player: { ...playerPosition },
         storages: [...storages],
         furnaces: [...furnaces],
