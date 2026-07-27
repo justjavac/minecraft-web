@@ -6,6 +6,7 @@ import { dayFactorAt, bossState, pearlTeleport, survivalStats, worldClock } from
 import { useGameStore } from './store';
 import { XP_MOB } from './xp';
 import { explodeAt } from './explosion';
+import { endCrystals, hitCrystal } from './endfight';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { fortressNear } from './netherstructures';
 import { aabbFree, collideAxis } from './physics';
@@ -13,7 +14,7 @@ import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon';
 
 export interface MobDef {
   name: string;
@@ -59,6 +60,8 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   // 凋灵：Boss——悬浮弹幕（凋灵骷髅弹带凋零 DOT），半血以下免疫箭矢（MC）；击杀掉下界之星
   wither: { name: '凋灵', hp: 300, speed: 2.2, hostile: true, burnsAtDay: false, damage: 8, attackRange: 30, attackCd: 2, drops: [{ material: 'nether_star', count: [1, 1] }],
   },
+  // 末影龙：末地 Boss——盘旋/俯冲/栖息喷息三态（完全自管理飞行，穿方块）；掉落为空，结算见 lib/endfight.ts（龙蛋 + 返回门）
+  ender_dragon: { name: '末影龙', hp: 200, speed: 0, hostile: true, burnsAtDay: false, damage: 8, attackRange: 2.5, attackCd: 1, drops: [] },
 };
 
 export interface Mob {
@@ -105,6 +108,13 @@ export interface Mob {
   teleportTimer?: number;
   /** 凋灵：破坏方块计时与弹幕计时 */
   smashTimer?: number;
+  /** 末影龙：三态飞行状态机（盘旋/俯冲/栖息）与目标点 */
+  dragonPhase?: 'circle' | 'strafe' | 'perch';
+  dragonAngle?: number;
+  phaseTimer?: number;
+  strafeX?: number;
+  strafeY?: number;
+  strafeZ?: number;
   /** 村庄锚点（村民不远离村庄；生成时写入） */
   homeX?: number;
   homeZ?: number;
@@ -240,6 +250,15 @@ function makeMob(type: MobType, x: number, y: number, z: number): Mob {
 export function makeWither(x: number, y: number, z: number): Mob {
   const m = makeMob('wither', x, y, z);
   m.aggroTimer = Number.MAX_SAFE_INTEGER; // Boss 全程激怒
+  return m;
+}
+
+/** 末影龙：末地 Boss（盘旋初态，随机起始相位） */
+export function makeEnderDragon(x: number, y: number, z: number): Mob {
+  const m = makeMob('ender_dragon', x, y, z);
+  m.dragonPhase = 'circle';
+  m.dragonAngle = Math.random() * Math.PI * 2;
+  m.phaseTimer = 5;
   return m;
 }
 
@@ -557,14 +576,20 @@ function tickArrows(
       arrows.splice(i, 1);
       continue;
     }
-    // 玩家射出的箭/珍珠：命中生物（AABB 粗略判定；珍珠不伤人、命中即传送到生物处）
+    // 玩家射出的箭/珍珠：命中生物（AABB 粗略判定；珍珠不伤人、命中即传送到生物处；龙体型大判定放宽）
     if (a.fromPlayer) {
+      // 末影水晶：箭命中即爆（MC 远程击毁水晶是标准打法）
+      const c = endCrystals.find((c) => c.alive && Math.abs(c.x - a.x) < 0.9 && Math.abs(c.y - a.y) < 1 && Math.abs(c.z - a.z) < 0.9);
+      if (c) {
+        hitCrystal(c, world, playerPos, onAttackPlayer);
+        arrows.splice(i, 1);
+        continue;
+      }
       const hitMob = mobs.find(
         (m) =>
-          Math.abs(m.x - a.x) < 0.55 &&
-          a.y > m.y - 0.2 &&
-          a.y < m.y + 2 &&
-          Math.abs(m.z - a.z) < 0.55,
+          m.type === 'ender_dragon'
+            ? Math.abs(m.x - a.x) < 2.5 && a.y > m.y - 1 && a.y < m.y + 2.5 && Math.abs(m.z - a.z) < 2.5
+            : Math.abs(m.x - a.x) < 0.55 && a.y > m.y - 0.2 && a.y < m.y + 2 && Math.abs(m.z - a.z) < 0.55,
       );
       if (hitMob) {
         if (a.kind === 'pearl') {
@@ -597,6 +622,87 @@ function tickArrows(
   }
 }
 
+/** 末影龙三态飞行（MC boss 战节奏）：盘旋绕岛 → 俯冲玩家（冲撞 8 伤）→ 栖息祭坛喷龙息（10 格 DOT 3/s）。
+ *  完全自管理位置（MC 龙穿方块），不参与通用重力/碰撞。 */
+function tickDragon(world: World, m: Mob, dt: number, playerPos: { x: number; y: number; z: number }, onAttackPlayer: (d: number) => void): void {
+  m.phaseTimer = (m.phaseTimer ?? 6) - dt;
+  m.attackCd = Math.max(0, m.attackCd - dt);
+  const pd = Math.hypot(playerPos.x - m.x, playerPos.y - m.y, playerPos.z - m.z);
+  if (m.dragonPhase === 'strafe') {
+    // 俯冲：直线冲向锁定的目标点并掠过（飞过才拉升回盘旋，MC 龙俯冲轨迹）
+    const tx = m.strafeX ?? playerPos.x;
+    const ty = m.strafeY ?? playerPos.y;
+    const tz = m.strafeZ ?? playerPos.z;
+    const dx = tx - m.x;
+    const dy = ty - m.y;
+    const dz = tz - m.z;
+    const d = Math.hypot(dx, dy, dz);
+    const sp = 16;
+    if (d > 0.01) {
+      const ux = dx / d;
+      const uy = dy / d;
+      const uz = dz / d;
+      m.x += ux * sp * dt;
+      m.y += uy * sp * dt;
+      m.z += uz * sp * dt;
+      // 已越过目标点（位移方向与剩余方向反向）或超时 → 回盘旋
+      const overshot = (m.x - tx) * ux + (m.y - ty) * uy + (m.z - tz) * uz >= 0;
+      if (overshot || m.phaseTimer <= 0) {
+        m.dragonPhase = 'circle';
+        m.phaseTimer = 6 + Math.random() * 4;
+      }
+    } else {
+      m.dragonPhase = 'circle';
+      m.phaseTimer = 6 + Math.random() * 4;
+    }
+    // 冲撞：触碰玩家 8 伤害（MC 龙撞击带击退，简化只伤害；移动前后两点都判定，避免大步进跨过玩家）
+    if ((pd < 2.2 || Math.hypot(playerPos.x - m.x, playerPos.y - m.y, playerPos.z - m.z) < 2.2) && m.attackCd <= 0) {
+      m.attackCd = 1;
+      onAttackPlayer(8);
+    }
+  } else if (m.dragonPhase === 'perch') {
+    // 栖息祭坛上空：缓降至驻点，喷龙息（MC 栖息喷吐，区域 DOT）
+    const perchY = Math.max(world.terrain.heightAt(0, 0), 56) + 6;
+    m.x += (0.5 - m.x) * Math.min(1, dt * 3);
+    m.z += (0.5 - m.z) * Math.min(1, dt * 3);
+    m.y += (perchY - m.y) * Math.min(1, dt * 3);
+    if (pd < 10 && m.attackCd <= 0) {
+      m.attackCd = 1;
+      onAttackPlayer(3); // 龙息 DOT（每秒 3 点）
+    }
+    if (m.phaseTimer <= 0) {
+      m.dragonPhase = 'circle';
+      m.phaseTimer = 8 + Math.random() * 5;
+    }
+  } else {
+    // 盘旋：绕岛心半径 28，高度 76-92 正弦起伏
+    m.dragonPhase = 'circle';
+    m.dragonAngle = (m.dragonAngle ?? 0) + dt * 0.45;
+    const targetY = 84 + Math.sin(m.dragonAngle * 1.7) * 8;
+    const tx = Math.cos(m.dragonAngle) * 28 + 0.5;
+    const tz = Math.sin(m.dragonAngle) * 28 + 0.5;
+    m.x += (tx - m.x) * Math.min(1, dt * 2.5);
+    m.z += (tz - m.z) * Math.min(1, dt * 2.5);
+    m.y += (targetY - m.y) * Math.min(1, dt * 2);
+    // 盘旋结束：玩家在岛上时 60% 俯冲、20% 栖息，否则继续盘旋（MC 节奏）
+    if (m.phaseTimer <= 0) {
+      const roll = Math.random();
+      if (roll < 0.6 && playerPos.y > 40 && pd < 80) {
+        m.dragonPhase = 'strafe';
+        m.strafeX = playerPos.x;
+        m.strafeY = playerPos.y + 1;
+        m.strafeZ = playerPos.z;
+        m.phaseTimer = 3;
+      } else if (roll < 0.8) {
+        m.dragonPhase = 'perch';
+        m.phaseTimer = 4;
+      } else {
+        m.phaseTimer = 6 + Math.random() * 4;
+      }
+    }
+  }
+}
+
 /** 每帧推进：生成/AI/攻击/箭/燃烧/清理；lureFood = 玩家手持的繁殖食物（引诱用） */
 export function tickMobs(
   world: World,
@@ -615,12 +721,12 @@ export function tickMobs(
 
   tickArrows(world, dt, playerPos, onAttackPlayer);
 
-  // Boss 血条状态：凋灵存活且在 48 格内（无则清空）
-  const boss = mobs.find((m) => m.type === 'wither' && Math.hypot(m.x - playerPos.x, m.z - playerPos.z) < 48);
+  // Boss 血条状态：凋灵/末影龙存活且玩家在附近（凋灵 48 格、龙全岛 96 格；无则清空）
+  const boss = mobs.find((m) => (m.type === 'wither' && Math.hypot(m.x - playerPos.x, m.z - playerPos.z) < 48) || (m.type === 'ender_dragon' && Math.hypot(m.x - playerPos.x, m.z - playerPos.z) < 96));
   if (boss) {
-    bossState.name = '凋灵';
+    bossState.name = MOB_DEFS[boss.type].name;
     bossState.hp = Math.max(0, boss.hp);
-    bossState.max = MOB_DEFS.wither.hp;
+    bossState.max = MOB_DEFS[boss.type].hp;
   } else if (bossState.name) {
     bossState.name = '';
     bossState.hp = 0;
@@ -641,6 +747,11 @@ export function tickMobs(
     if (m.loveTimer !== undefined && m.loveTimer > 0) m.loveTimer -= dt;
     if (m.breedCd !== undefined && m.breedCd > 0) m.breedCd -= dt;
     if (m.aggroTimer !== undefined && m.aggroTimer > 0) m.aggroTimer -= dt;
+    // 末影龙：完全自管理飞行（穿方块、无环境伤害），跳过通用管线
+    if (m.type === 'ender_dragon') {
+      tickDragon(world, m, dt, playerPos, onAttackPlayer);
+      continue;
+    }
     // 白天自燃（需露天且头部不在水中）
     if (!night && def.burnsAtDay && exposedToSky(world, m)) {
       m.hp -= BURN_DAMAGE * dt;
@@ -959,7 +1070,8 @@ export function mobInReach(
     const px = ox + dx * t;
     const py = oy + dy * t;
     const pz = oz + dz * t;
-    if (Math.hypot(m.x - px, m.y + 0.9 - py, m.z - pz) < 0.9) {
+    const hitR = m.type === 'ender_dragon' ? 2.6 : 0.9; // 龙体型大，判定放宽（MC 龙碰撞箱长约 8 格）
+    if (Math.hypot(m.x - px, m.y + 0.9 - py, m.z - pz) < hitR) {
       best = m;
       bestT = t;
     }
@@ -973,9 +1085,14 @@ export function mobInReach(
 export const lastPlayerTarget: { mob: Mob | null; at: number } = { mob: null, at: 0 };
 
 /** 对生物造成伤害（attackerPos 用于被动生物逃跑方向；lootBonus = 抢夺附魔等级；world 用于末影人受击瞬移），返回是否击杀 */
+/** 末影龙击杀回调（lib/endfight.ts 注入：龙蛋 + 返回门激活；避免 mobs ↔ endfight 循环依赖） */
+let dragonDeathHandler: ((world: World) => void) | null = null;
+export function setDragonDeathHandler(h: (world: World) => void): void {
+  dragonDeathHandler = h;
+}
+
 export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }, lootBonus = 0, world?: World): boolean {
-  mob.hp -= damage;
-  if (attackerPos) {
+  mob.hp -= damage;  if (attackerPos) {
     lastPlayerTarget.mob = mob;
     lastPlayerTarget.at = performance.now() / 1000;
   }
@@ -1018,6 +1135,8 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   if (mob.type === 'wither_skeleton' && Math.random() < 0.03) {
     spawnBlockDrop(BLOCK_BY_KEY.wither_skeleton_skull.id, mob.x, mob.y + 0.3, mob.z, 1);
   }
+  // 末影龙：击杀结算（龙蛋 + 返回门激活，lib/endfight.ts）
+  if (mob.type === 'ender_dragon' && world) dragonDeathHandler?.(world);
   useGameStore.getState().addXp(XP_MOB[mob.type]);
   const i = mobs.indexOf(mob);
   if (i >= 0) mobs.splice(i, 1);

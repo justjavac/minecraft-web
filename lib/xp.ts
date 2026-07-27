@@ -16,6 +16,7 @@ export const XP_MOB: Record<MobType, number> = {
   wolf: 2,
   enderman: 5,
   wither: 50,
+  ender_dragon: 500, // MC 首杀 12000 的简化：约升 16 级
   pig: 2,
   cow: 2,
   chicken: 2,

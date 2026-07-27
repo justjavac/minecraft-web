@@ -17,8 +17,8 @@ export function getActiveWorld(): World | null {
 /** 玩家脚底位置，Player 每帧写入，WorldRenderer 读取用于 chunk 调度 */
 export const playerPosition = { x: 8.5, y: 40, z: 8.5 };
 
-/** 跨维度传送：Player 站在门内写入待传送坐标，WorldRenderer 切换维度后消费 */
-export const teleportState: { pending: { x: number; y: number; z: number } | null } = { pending: null };
+/** 跨维度传送：Player 站在门内写入待传送坐标，WorldRenderer 切换维度后消费；fromEnd = 末地返回主世界（回维度暂存位，不造门） */
+export const teleportState: { pending: ({ x: number; y: number; z: number } & { fromEnd?: boolean }) | null } = { pending: null };
 
 /** 末影珍珠落点传送：mobs 命中写入，Player 下帧消费（瞬移 + 清空） */
 export const pearlTeleport: { pending: { x: number; y: number; z: number } | null } = { pending: null };

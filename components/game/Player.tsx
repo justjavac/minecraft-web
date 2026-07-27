@@ -13,7 +13,8 @@ import { END_SPAWN } from '@/lib/end';
 import { isPortalId } from '@/lib/portal';
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
-import { checkEndermanStare, damageMob, mobInReach } from '@/lib/mobs';
+import { checkEndermanStare, damageMob, mobInReach, mobs } from '@/lib/mobs';
+import { crystalInReach, hitCrystal, tickCrystals } from '@/lib/endfight';
 import { SEA_LEVEL, type Biome } from '@/lib/noise';
 import { aabbFree, collideAxis, type Aabb } from '@/lib/physics';
 import { playSound } from '@/lib/sound';
@@ -439,6 +440,8 @@ export function Player() {
     tickEffects(dt);
     // 信标：校验金字塔并给范围内玩家刷新所选效果（MC）
     tickBeacons(world, p.x, p.y, p.z);
+    // 末影水晶：龙在存活水晶附近时缓慢回血（MC 治疗光束）
+    tickCrystals(mobs.find((m) => m.type === 'ender_dragon') ?? null, dt);
     // 末影人对视激怒：准星盯上末影人即激怒（MC 规则，每秒检查一次）
     stareAcc.current += dt;
     if (stareAcc.current >= 1) {
@@ -487,10 +490,15 @@ export function Player() {
     {
       const feet = world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
       const eye = world.getBlock(Math.floor(p.x), Math.floor(p.y) + 1, Math.floor(p.z));
-      // 末地传送门：接触即传送（MC 即时，无读秒）；落点固定末地出生平台
+      // 末地传送门：接触即传送（MC 即时，无读秒）；主世界→末地落固定出生平台，末地→主世界回维度暂存位（MC 返回门）
       if (feet === BLOCK_BY_KEY.end_portal.id || eye === BLOCK_BY_KEY.end_portal.id) {
-        teleportState.pending = { ...END_SPAWN };
-        gs.setDimension('end');
+        if (gs.dimension === 'end') {
+          teleportState.pending = { x: p.x, y: p.y, z: p.z, fromEnd: true };
+          gs.setDimension('overworld');
+        } else {
+          teleportState.pending = { ...END_SPAWN };
+          gs.setDimension('end');
+        }
         return;
       }
       if (isPortalId(feet) || isPortalId(eye)) {
@@ -547,6 +555,16 @@ export function Player() {
           playSound('dig_choppy', 0.8);
           survivalStats.exhaustion += 0.1; // MC：攻击消耗
           attacked = true;
+        } else {
+          // 末影水晶：准星指向且 reach 内 → 击爆（MC 近战可击毁）
+          const c = crystalInReach(camera.position, rayDir, REACH);
+          if (c) {
+            attackCd.current = 0.25;
+            hitCrystal(c, world, playerPosition, (d) => {
+              if (!gs.dead) gs.damagePlayer(d);
+            });
+            attacked = true;
+          }
         }
       }
       if (attacked) {

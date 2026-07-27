@@ -11,6 +11,7 @@ import { CrackOverlay } from './CrackOverlay';
 import { BreakParticles } from './BreakParticles';
 import { Mobs } from './Mobs';
 import { BeaconBeams } from './BeaconBeams';
+import { EndCrystals } from './EndCrystals';
 import { ItemDrops } from './ItemDrops';
 import { Tnt } from './Tnt';
 import { DayNight } from './DayNight';
@@ -89,6 +90,7 @@ export function GameCanvas() {
         <Player />
         <Mobs />
         <BeaconBeams />
+        <EndCrystals />
         <ItemDrops />
         <Tnt />
         <BlockHighlight />

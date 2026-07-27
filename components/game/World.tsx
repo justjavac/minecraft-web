@@ -22,7 +22,8 @@ import { createNetherTerrain } from '@/lib/nether';
 import { clearFurnaces, furnaces, tickFurnaces, type FurnaceState } from '@/lib/furnace';
 import { brews, clearBrews, tickBrewing, type BrewState } from '@/lib/brewing';
 import { clearStorages, storages } from '@/lib/storage';
-import { clearMobs } from '@/lib/mobs';
+import { clearMobs, makeEnderDragon, mobs } from '@/lib/mobs';
+import { clearEndFight, dragonState, initEndFight } from '@/lib/endfight';
 import { tickFluids, clearFluids } from '@/lib/fluids';
 import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
@@ -189,17 +190,24 @@ export function WorldRenderer() {
           for (const [k, v] of ds.brews) brews.set(k, v);
           useGameStore.getState().setSpawnPoint(ds.player);
         }
-        // 跨维度传送：落点扫描 + 无门造门 + 传送坐标落定（末地落固定出生平台，不造下界门）
+        // 跨维度传送：落点扫描 + 无门造门 + 传送坐标落定（末地落固定出生平台，不造下界门；末地返回主世界不造门）
         if (teleportState.pending) {
           const tp = teleportState.pending;
           if (dimension === 'end') {
             useGameStore.getState().setSpawnPoint({ x: tp.x, y: tp.y, z: tp.z }); // tp 即 END_SPAWN
-          } else {
+          } else if (!tp.fromEnd) {
             const landing = findLanding(w, Math.floor(tp.x), Math.floor(tp.z), dimension);
             ensurePortal(w, Math.floor(landing.x), Math.floor(landing.y), Math.floor(landing.z));
             useGameStore.getState().setSpawnPoint(landing);
           }
           teleportState.pending = null;
+        }
+        // 末地：初始化龙战（柱顶水晶；未屠龙则生成末影龙）
+        if (dimension === 'end') {
+          initEndFight(w);
+          if (!dragonState.slain && !mobs.some((m) => m.type === 'ender_dragon')) mobs.push(makeEnderDragon(0.5, 84, 0.5));
+        } else {
+          clearEndFight();
         }
         w.onChunkRemoved = (c) => {
           void saveChunk(dimPrefix(dimension) + `${c.cx},${c.cz}`, c.data);

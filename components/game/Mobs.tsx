@@ -50,6 +50,16 @@ const enderEyeGeo = new BoxGeometry(0.08, 0.06, 0.02);
 const witherRibGeo = new BoxGeometry(0.7, 0.16, 0.3);
 const witherHeadGeo = new BoxGeometry(0.44, 0.44, 0.44);
 const witherSideHeadGeo = new BoxGeometry(0.34, 0.34, 0.34);
+// 末影龙：躯干纵贯 z 轴（头朝 +z，与 mob 朝向 yaw 一致），部件以体心为原点
+const dragonBodyGeo = new BoxGeometry(1.1, 1, 4.2);
+const dragonNeckGeo = new BoxGeometry(0.55, 0.55, 1.1);
+const dragonHeadGeo = new BoxGeometry(0.85, 0.85, 1.3);
+const dragonSnoutGeo = new BoxGeometry(0.5, 0.4, 0.6);
+const dragonHornGeo = new BoxGeometry(0.12, 0.5, 0.12);
+const dragonTailGeo = new BoxGeometry(0.55, 0.55, 2.2);
+const dragonTailTipGeo = new BoxGeometry(0.3, 0.3, 1.8);
+const dragonWingGeo = new BoxGeometry(3.2, 0.12, 1.7);
+const dragonEyeBandGeo = new BoxGeometry(0.9, 0.15, 0.15);
 
 type MobMats = Record<string, Material>;
 
@@ -86,6 +96,9 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     enderman: l('#141414'),
     enderEyes: l('#b050e0'),
     witherBody: l('#242028'),
+    dragonBody: l('#171221'),
+    dragonWing: l('#2b2340'),
+    dragonEye: l('#c860ff'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -99,10 +112,11 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
   };
 }
 
-function addPart(g: Group, geo: BoxGeometry, mat: Material, x: number, y: number, z: number): void {
+function addPart(g: Group, geo: BoxGeometry, mat: Material, x: number, y: number, z: number): Mesh {
   const m = new Mesh(geo, mat);
   m.position.set(x, y, z);
   g.add(m);
+  return m;
 }
 
 /** 职业袍色材质（buildMobMats 预建 robe_<profession> 键） */
@@ -236,6 +250,23 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, witherSideHeadGeo, mats.witherBody, -0.42, 1.55, 0);
       addPart(g, witherSideHeadGeo, mats.witherBody, 0.42, 1.55, 0);
       break;
+    case 'ender_dragon': {
+      // 末影龙 Boss：黑紫长躯 + 双翼展开 + 紫眼（MC 标志造型）；部件以体心为原点
+      addPart(g, dragonBodyGeo, mats.dragonBody, 0, 0, 0);
+      addPart(g, dragonNeckGeo, mats.dragonBody, 0, 0.3, 2.3);
+      addPart(g, dragonHeadGeo, mats.dragonBody, 0, 0.45, 3.1);
+      addPart(g, dragonSnoutGeo, mats.dragonBody, 0, 0.3, 3.9);
+      addPart(g, dragonEyeBandGeo, mats.dragonEye, 0, 0.65, 3.45);
+      addPart(g, dragonHornGeo, mats.dragonWing, -0.25, 1.05, 2.9);
+      addPart(g, dragonHornGeo, mats.dragonWing, 0.25, 1.05, 2.9);
+      addPart(g, dragonTailGeo, mats.dragonBody, 0, -0.1, -2.8);
+      addPart(g, dragonTailTipGeo, mats.dragonBody, 0, -0.05, -4.6);
+      const lw = addPart(g, dragonWingGeo, mats.dragonWing, -2.1, 0.7, 0.4);
+      lw.rotation.z = 0.5;
+      const rw = addPart(g, dragonWingGeo, mats.dragonWing, 2.1, 0.7, 0.4);
+      rw.rotation.z = -0.5;
+      break;
+    }
     case 'ghast':
       // 恶魂：雪白巨体 + 下垂触手（MC 下界空中巨怪）
       addPart(g, ghastBodyGeo, mats.ghast, 0, 1.2, 0);
