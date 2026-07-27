@@ -181,6 +181,15 @@ export function tryPlace(): boolean {
       }
       return false;
     }
+    // 右键村民：打开交易界面（MC；不看手持物，优先于繁殖判定）
+    camera.getWorldDirection(dir);
+    const mobForTrade = mobInReach(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
+    if (mobForTrade?.type === 'villager') {
+      s.setTradeMob(mobForTrade.id);
+      playSound('place');
+      lastPlace = now;
+      return false;
+    }
     // 手持繁殖食物右键：喂养视线内的成年动物（MC：进入恋爱模式，两只恋爱个体才产仔）
     if (held?.kind === 'material') {
       camera.getWorldDirection(dir);

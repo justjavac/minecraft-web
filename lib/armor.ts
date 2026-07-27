@@ -25,10 +25,10 @@ export const ARMOR_DEFS: Record<ArmorPiece, ArmorDef> = {
 };
 
 export interface ArmorSlots {
-  helmet: { durability: number } | null;
-  chestplate: { durability: number } | null;
-  leggings: { durability: number } | null;
-  boots: { durability: number } | null;
+  helmet: { durability: number; ench?: import('./xp').EnchMap } | null;
+  chestplate: { durability: number; ench?: import('./xp').EnchMap } | null;
+  leggings: { durability: number; ench?: import('./xp').EnchMap } | null;
+  boots: { durability: number; ench?: import('./xp').EnchMap } | null;
 }
 
 export function emptyArmorSlots(): ArmorSlots {

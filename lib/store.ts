@@ -11,6 +11,7 @@ import { applyCraft, canCraft, hasSpaceFor, type Recipe } from './recipes';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
 import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS, type ToolType } from './tools';
+import { executeTrade, professionOf, TRADES } from './trading';
 import { levelFromXp, subtractLevels, type EnchOffer } from './xp';
 
 export type Screen = 'menu' | 'playing';
@@ -118,6 +119,8 @@ interface GameStore {
   brewingOpen: string | null;
   /** 附魔台界面开关（不绑位置，null 未打开） */
   enchantOpen: string | null;
+  /** 正在交易的村民 id（null 未打开交易界面） */
+  tradeMob: number | null;
   /** 打开的容器（箱子/木桶）位置 key，null 未打开 */
   storageOpen: string | null;
   /** 创造模式热键栏 9 格内容（选块界面可更换） */
@@ -158,6 +161,9 @@ interface GameStore {
   setFurnaceOpen: (key: string | null) => void;
   setBrewingOpen: (key: string | null) => void;
   setEnchantOpen: (key: string | null) => void;
+  setTradeMob: (id: number | null) => void;
+  /** 执行当前村民的第 i 项交易（扣付出、给获得、加经验） */
+  executeMobTrade: (i: number) => void;
   setStorageOpen: (key: string | null) => void;
   /** 把热键栏/背包某格的整叠物品移入打开的容器 */
   storagePut: (area: 'hotbar' | 'main', slotIndex: number) => void;
@@ -225,7 +231,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   armorSlots: emptyArmorSlots(),
   craftingOpen: false,
   craftingTable: false,
-  furnaceOpen: null, brewingOpen: null, enchantOpen: null,
+  furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null,
   storageOpen: null,
   hotbarBlocks: [...HOTBAR_BLOCKS],
   pickerOpen: false,
@@ -241,12 +247,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       hasLocked: false, spawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION, xpTotal: 0,
       dimension: 'overworld',
-      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null,
+      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
     });
   },
   continueGame: () =>
     set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null, loadError: null }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
@@ -355,7 +361,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         armorSlots,
         xpTotal,
         // 死亡时关掉所有打开的界面（仅受伤未死不动）
-        ...(died ? { craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null, pickerOpen: false } : {}),
+        ...(died ? { craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, pickerOpen: false } : {}),
       };
     });
     return true;
@@ -377,13 +383,13 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set((s) => ({
       craftingOpen,
       craftingTable: craftingOpen ? (withTable ?? s.craftingTable) : s.craftingTable,
-      ...(craftingOpen ? { furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null, pickerOpen: false } : {}),
+      ...(craftingOpen ? { furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, pickerOpen: false } : {}),
     }));
   },
   setFurnaceOpen: (furnaceOpen) => {
     if (furnaceOpen && typeof document !== 'undefined') document.exitPointerLock();
     // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(furnaceOpen ? { furnaceOpen, craftingOpen: false, brewingOpen: null, enchantOpen: null, storageOpen: null, pickerOpen: false } : { furnaceOpen });
+    set(furnaceOpen ? { furnaceOpen, craftingOpen: false, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, pickerOpen: false } : { furnaceOpen });
   },
   setBrewingOpen: (brewingOpen) => {
     if (brewingOpen && typeof document !== 'undefined') document.exitPointerLock();
@@ -393,6 +399,20 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setEnchantOpen: (enchantOpen) => {
     if (enchantOpen && typeof document !== 'undefined') document.exitPointerLock();
     set(enchantOpen ? { enchantOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false } : { enchantOpen });
+  },
+  setTradeMob: (tradeMob) => {
+    if (tradeMob !== null && typeof document !== 'undefined') document.exitPointerLock();
+    set(tradeMob !== null ? { tradeMob, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false, enchantOpen: null } : { tradeMob });
+  },
+  executeMobTrade: (i) => {
+    const s = get();
+    if (s.tradeMob === null) return;
+    const trade = TRADES[professionOf(s.tradeMob)][i];
+    if (!trade) return;
+    const r = executeTrade(s.hotbarSlots, s.mainSlots, trade);
+    if (!r) return;
+    set({ hotbarSlots: r.hotbar, mainSlots: r.backpack });
+    s.addXp(r.xp);
   },
   setStorageOpen: (storageOpen) => {
     if (storageOpen && typeof document !== 'undefined') document.exitPointerLock();
@@ -501,7 +521,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     slots[s.selectedSlot] = prev ? { kind: 'armor', piece: slot.piece, durability: prev.durability } : null;
     set({
       hotbarSlots: slots,
-      armorSlots: { ...s.armorSlots, [slot.piece]: { durability: slot.durability } },
+      armorSlots: { ...s.armorSlots, [slot.piece]: { durability: slot.durability, ench: slot.ench } },
     });
     return true;
   },
@@ -590,7 +610,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set((s) => {
       const cur = s.armorSlots[piece];
       if (!cur) return s;
-      const slot: Slot = { kind: 'armor', piece, durability: cur.durability };
+      const slot: Slot = { kind: 'armor', piece, durability: cur.durability, ench: cur.ench };
       let hotbarSlots = s.hotbarSlots;
       let mainSlots = s.mainSlots;
       const hi = hotbarSlots.indexOf(null);

@@ -20,6 +20,7 @@ import { CraftingDialog } from './CraftingDialog';
 import { FurnaceDialog } from './FurnaceDialog';
 import { BrewingDialog } from './BrewingDialog';
 import { EnchantingDialog } from './EnchantingDialog';
+import { TradingDialog } from './TradingDialog';
 import { StorageDialog } from './StorageDialog';
 import { TileIcon } from './TileIcon';
 import { BlockPicker } from './BlockPicker';
@@ -397,6 +398,9 @@ export function Hud() {
 
       {/* 附魔台界面 */}
       <EnchantingDialog />
+
+      {/* 村民交易界面 */}
+      <TradingDialog />
 
       {/* 容器界面（箱子/木桶） */}
       <StorageDialog />

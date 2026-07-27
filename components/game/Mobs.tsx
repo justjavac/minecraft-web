@@ -5,6 +5,7 @@ import { useFrame } from '@react-three/fiber';
 import { BoxGeometry, Group, Mesh, Vector3, type Material } from 'three';
 import { getActiveWorld, playerPosition } from '@/lib/game';
 import { arrows, clearMobs, mobs, tickMobs, type MobType } from '@/lib/mobs';
+import { professionOf, PROFESSION_INFO, type Profession } from '@/lib/trading';
 import { useGameStore } from '@/lib/store';
 import { getAtlasMaterials, type AtlasMaterials } from '@/lib/textures';
 import { useRendererKind } from './renderer-kind';
@@ -64,6 +65,8 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     robe: l('#7a5230'),
     villagerSkin: l('#b58a6a'),
     arrow: l('#a8a8a8'),
+    // 村民职业袍色（交易界面同色）
+    ...Object.fromEntries(Object.entries(PROFESSION_INFO).map(([p, info]) => [`robe_${p}`, l(info.robe)])),
   };
 }
 
@@ -73,7 +76,12 @@ function addPart(g: Group, geo: BoxGeometry, mat: Material, x: number, y: number
   g.add(m);
 }
 
-function makeMobMesh(type: MobType, mats: MobMats): Group {
+/** 职业袍色材质（buildMobMats 预建 robe_<profession> 键） */
+function profRobe(mats: MobMats, prof: Profession): Material {
+  return mats[`robe_${prof}`] ?? mats.robe;
+}
+
+function makeMobMesh(type: MobType, mats: MobMats, mobId?: number): Group {
   const g = new Group();
   switch (type) {
     case 'zombie':
@@ -180,14 +188,16 @@ function makeMobMesh(type: MobType, mats: MobMats): Group {
       addPart(g, chickenHeadGeo, mats.chicken, 0, 0.62, 0.2);
       addPart(g, beakGeo, mats.beak, 0, 0.58, 0.38);
       break;
-    case 'villager':
-      // 长袍身体 + 大头 + 大鼻子
-      addPart(g, legGeo, mats.robe, -0.13, 0.375, 0);
-      addPart(g, legGeo, mats.robe, 0.13, 0.375, 0);
-      addPart(g, bodyGeo, mats.robe, 0, 1.1, 0);
+    case 'villager': {
+      // 长袍身体 + 大头 + 大鼻子；袍色随职业（农民/图书管理员/石匠/牧师/皮匠）
+      const robe = mobId !== undefined ? profRobe(mats, professionOf(mobId)) : mats.robe;
+      addPart(g, legGeo, robe, -0.13, 0.375, 0);
+      addPart(g, legGeo, robe, 0.13, 0.375, 0);
+      addPart(g, bodyGeo, robe, 0, 1.1, 0);
       addPart(g, headGeo, mats.villagerSkin, 0, 1.66, 0);
       addPart(g, snoutGeo, mats.villagerSkin, 0, 1.56, 0.25);
       break;
+    }
   }
   return g;
 }
@@ -242,7 +252,7 @@ export function Mobs() {
         seen.add(m.id);
         let mesh = meshMap.current.get(m.id);
         if (!mesh) {
-          mesh = makeMobMesh(m.type, mobMats);
+          mesh = makeMobMesh(m.type, mobMats, m.id);
           group.add(mesh);
           meshMap.current.set(m.id, mesh);
         }

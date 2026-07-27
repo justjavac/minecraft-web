@@ -142,7 +142,7 @@ describe('附魔应用与效果', () => {
     setup(slots);
     useGameStore.setState({
       worldMode: 'survival',
-      armorSlots: { helmet: { piece: 'helmet', durability: 55, ench: { protection: 4 } }, chestplate: null, leggings: null, boots: null },
+      armorSlots: { helmet: { durability: 55, ench: { protection: 4 } }, chestplate: null, leggings: null, boots: null },
       health: 20,
     });
     useGameStore.getState().damagePlayer(10);
