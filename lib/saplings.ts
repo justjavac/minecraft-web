@@ -70,11 +70,7 @@ function growTree(world: World, x: number, y: number, z: number, wood: string): 
 }
 
 let growAcc = 0;
-let rngState = 0x9e3779b9;
-function rand(): number {
-  rngState = (rngState * 1103515245 + 12345) | 0;
-  return ((rngState >>> 9) & 0x7fffffff) / 0x7fffffff;
-}
+const rand = mulberry32(0x9e3779b9);
 
 // ——— 树叶凋零队列 ———
 

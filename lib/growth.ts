@@ -2,17 +2,14 @@
 // 仙人掌四邻出现实心方块即破。无登记表——按 MC 随机刻方式从已加载 chunk 随机抽样
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, type BlockId } from './blocks';
+import { mulberry32 } from './noise';
 import { WORLD_HEIGHT, type World } from './world';
 
 /** 柱高上限（竹子为复刻简化值，MC 为 12-16） */
 const MAX_HEIGHT: Record<string, number> = { cactus: 3, sugar_cane: 3, bamboo: 6 };
 
 let acc = 0;
-let rngState = 0x9e3779b9;
-function rand(): number {
-  rngState = (rngState * 1103515245 + 12345) | 0;
-  return ((rngState >>> 9) & 0x7fffffff) / 0x7fffffff;
-}
+const rand = mulberry32(0x9e3779b9);
 
 /** 水平四邻是否有实心方块 */
 function adjacentSolid(world: World, x: number, y: number, z: number): boolean {
@@ -54,7 +51,8 @@ export function tickGrowth(world: World, dt: number): void {
         world.setBlock(x, y, z, AIR);
         onDrop?.(id, x + 0.5, y + 0.3, z + 0.5);
       } else if (key === 'cactus' || key === 'sugar_cane' || key === 'bamboo') {
-        if (rand() < 1 / 8) tryGrow(world, x, y, z, key);
+        // MC 随机刻：命中即尝试拔节（抽样本身已稀疏，不加额外门槛）
+        tryGrow(world, x, y, z, key);
       }
     }
   }
