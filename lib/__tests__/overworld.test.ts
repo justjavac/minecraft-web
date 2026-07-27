@@ -31,6 +31,7 @@ const mockTerrain = (over: Partial<Terrain>): Terrain => ({
   treeAt: () => null,
   caveAt: () => false,
   snowlineAt: () => Infinity,
+  undergroundAt: () => null,
   ...over,
 });
 

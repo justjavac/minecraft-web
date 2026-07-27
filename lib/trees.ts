@@ -10,6 +10,29 @@ import type { TreeKind } from './noise';
  */
 export type PutFn = (x: number, y: number, z: number, id: BlockId, onlyAir: boolean) => void;
 
+/** 树的可选装饰：vines = 树干四周垂下藤蔓（丛林/沼泽观感） */
+export interface TreeOpts {
+  vines?: boolean;
+}
+
+/** 藤蔓贴附方向表：藤格在树干 +z 侧贴北面（vine_n），+x 侧贴西面（vine_w），依此类推 */
+const VINE_SIDE: [dx: number, dz: number, key: string][] = [
+  [0, 1, 'vine_n'],
+  [1, 0, 'vine_w'],
+  [0, -1, 'vine_s'],
+  [-1, 0, 'vine_e'],
+];
+
+/** 树干四面垂藤：从冠底向下 2-5 格（只进空气） */
+function addVines(put: PutFn, x: number, z: number, canopyBaseY: number, rand: () => number): void {
+  for (const [dx, dz, key] of VINE_SIDE) {
+    if (rand() < 0.4) continue;
+    const vine = BLOCK_BY_KEY[key].id;
+    const len = 2 + Math.floor(rand() * 4);
+    for (let i = 0; i < len; i++) put(x + dx, canopyBaseY - i, z + dz, vine, true);
+  }
+}
+
 /** 各树种从地表（含）算起的最大总高（生成前用它判断世界顶能否放下） */
 export const TREE_MAX_H: Record<TreeKind, number> = {
   oak: 6,
@@ -46,7 +69,7 @@ function plus(put: PutFn, cx: number, y: number, cz: number, id: BlockId): void 
 }
 
 /** 在 (x, z) 列、地表高度 h 处长一棵树（树叶只占空气，先干后叶） */
-export function writeTree(put: PutFn, kind: TreeKind, x: number, h: number, z: number, rand: () => number): void {
+export function writeTree(put: PutFn, kind: TreeKind, x: number, h: number, z: number, rand: () => number, opts?: TreeOpts): void {
   const [log, leaves] = woodParts(kind);
   switch (kind) {
     case 'oak': {
@@ -54,6 +77,7 @@ export function writeTree(put: PutFn, kind: TreeKind, x: number, h: number, z: n
       layer(put, x, h + 3, z, 1, leaves, false);
       layer(put, x, h + 4, z, 1, leaves, false);
       put(x, h + 5, z, leaves, true);
+      if (opts?.vines) addVines(put, x, z, h + 3, rand);
       return;
     }
     case 'birch': {
@@ -76,12 +100,13 @@ export function writeTree(put: PutFn, kind: TreeKind, x: number, h: number, z: n
       return;
     }
     case 'jungle': {
-      // 高干小冠（10-14），树冠外扩 2 格
+      // 高干小冠（10-14），树冠外扩 2 格；丛林树垂藤是 MC 标志
       const H = 10 + Math.floor(rand() * 5);
       for (let y = h + 1; y <= h + H; y++) put(x, y, z, log, false);
       layer(put, x, h + H - 1, z, 2, leaves, true);
       layer(put, x, h + H, z, 1, leaves, false);
       put(x, h + H + 1, z, leaves, true);
+      addVines(put, x, z, h + H - 1, rand);
       return;
     }
     case 'acacia': {

@@ -13,6 +13,7 @@ describe('海底洞穴灌水', () => {
       treeAt: () => null,
       caveAt: (_x: number, y: number) => y >= 8 && y <= 18, // 直通海床面的开放洞
       snowlineAt: () => Infinity,
+      undergroundAt: () => null,
     };
     const w = new World('flood-test', undefined, terrain);
     // 洞口到洞底全部是水（灌水也会挡住岩浆填充）
@@ -33,6 +34,7 @@ describe('海底洞穴灌水', () => {
       treeAt: () => null,
       caveAt: (_x: number, y: number) => y >= 20 && y <= 30,
       snowlineAt: () => Infinity,
+      undergroundAt: () => null,
     };
     const w = new World('dry-cave', undefined, terrain);
     expect(w.getBlock(8, 25, 8)).toBe(AIR);

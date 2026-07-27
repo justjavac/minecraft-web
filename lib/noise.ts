@@ -51,6 +51,8 @@ export interface Terrain {
   caveAt(x: number, y: number, z: number, h?: number): boolean;
   /** 雪线：山地列 y ≥ 此值地表积雪/封冻；非山地列为 Infinity */
   snowlineAt(x: number, z: number): number;
+  /** 地下洞穴群系区（2D 场 + 深度在调用处把关）：dripstone 滴水石洞 / lush 繁茂洞穴 / null 普通 */
+  undergroundAt(x: number, z: number): 'dripstone' | 'lush' | null;
 }
 
 export function hashString(s: string): number {
@@ -102,6 +104,8 @@ export function createTerrain(seed: string): Terrain {
   const nRidge = createNoise2D(mulberry32(sh ^ 0x8f1b3d));
   const nMesa = createNoise2D(mulberry32(sh ^ 0x5e7a9c));
   const nMush = createNoise2D(mulberry32(sh ^ 0x3d6e8f));
+  // 洞穴群系场（滴水石/繁茂洞穴分区）
+  const nCaveBio = createNoise2D(mulberry32(sh ^ 0x6a1c4e));
   // 洞穴 3D 噪声：意面隧道双场 + 奶酪洞腔
   const nCaveA = createNoise3D(mulberry32(sh ^ 0x1f2e3d));
   const nCaveB = createNoise3D(mulberry32(sh ^ 0x4c5a6b));
@@ -176,6 +180,14 @@ export function createTerrain(seed: string): Terrain {
     if (mountainMask(x, z) < 0.35) return Infinity;
     // 基准雪线 y≈92，温度越低雪线越低（寒带山脚也积雪）
     return Math.floor(92 + temperature(x, z) * 18);
+  }
+
+  /** 洞穴群系分区：场值高为滴水石洞，低为繁茂洞穴，中段为普通洞穴 */
+  function undergroundAt(x: number, z: number): 'dripstone' | 'lush' | null {
+    const v = nCaveBio(x * 0.0016, z * 0.0016);
+    if (v > 0.38) return 'dripstone';
+    if (v < -0.38) return 'lush';
+    return null;
   }
 
   function caveAt(x: number, y: number, z: number, h?: number): boolean {
@@ -296,7 +308,7 @@ export function createTerrain(seed: string): Terrain {
     return kinds[Math.floor(hash2(sh ^ 0x31c8d2, x, z) * kinds.length)];
   }
 
-  return { heightAt, biomeAt, treeAt, caveAt, snowlineAt };
+  return { heightAt, biomeAt, treeAt, caveAt, snowlineAt, undergroundAt };
 }
 
 /** 全空地形，供测试使用 */
@@ -306,4 +318,5 @@ export const VOID_TERRAIN: Terrain = {
   treeAt: () => null,
   caveAt: () => false,
   snowlineAt: () => Infinity,
+  undergroundAt: () => null,
 };

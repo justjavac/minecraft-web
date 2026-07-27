@@ -162,6 +162,44 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
       }
     }
   }
+  // 洞穴群系装饰（滴水石洞/繁茂洞穴）：洞地板铺滴水石/苔藓并立笋或杜鹃，洞顶倒挂钟乳/洞穴藤蔓
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      const zone = terrain.undergroundAt(wx, wz);
+      if (!zone) continue;
+      const h = cachedHeightAt(wx, wz);
+      if (h < 0) continue;
+      const yMax = Math.min(h - 4, WORLD_HEIGHT - 2); // 只装饰够深的洞，不动地表坑洼
+      for (let y = 5; y <= yMax; y++) {
+        const i = localIndex(x, y, z);
+        if (data[i] !== AIR) continue;
+        const below = data[localIndex(x, y - 1, z)];
+        const above = data[localIndex(x, y + 1, z)];
+        const r = hash2(seedHash ^ Math.imul(y, 0x9e3779b9), wx, wz);
+        if (BLOCKS[below]?.opaque) {
+          if (zone === 'dripstone') {
+            if (r < 0.3) data[localIndex(x, y - 1, z)] = K('dripstone_block');
+            else if (r < 0.42) {
+              data[localIndex(x, y - 1, z)] = K('dripstone_block');
+              data[i] = K('pointed_dripstone');
+            }
+          } else {
+            if (r < 0.35) data[localIndex(x, y - 1, z)] = K('moss_block');
+            else if (r < 0.45) {
+              data[localIndex(x, y - 1, z)] = K('moss_block');
+              data[i] = r < 0.42 ? K('azalea') : K('flowering_azalea');
+            }
+          }
+        } else if (BLOCKS[above]?.opaque) {
+          if (zone === 'dripstone') {
+            if (r < 0.1) data[i] = K('pointed_dripstone_down');
+          } else if (r < 0.08) data[i] = K('cave_vines');
+        }
+      }
+    }
+  }
   // 树木与巨蘑菇：检查本 chunk 及周围 TREE_RING 格内的列，只写入落在本 chunk 的部分（跨 chunk 一致）
   const put = (lx: number, y: number, lz: number, id: number, onlyAir: boolean) => {
     if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
@@ -179,7 +217,8 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
       const kind = terrain.treeAt(wx, wz);
       if (kind) {
         if (h + TREE_MAX_H[kind] >= WORLD_HEIGHT) continue;
-        writeTree(put, kind, tx, h, tz, rand);
+        // 丛林树自带垂藤（trees.ts）；沼泽橡树按群系加垂藤
+        writeTree(put, kind, tx, h, tz, rand, { vines: cachedBiomeAt(wx, wz) === 'swamp' });
         continue;
       }
       // 巨蘑菇：蘑菇岛成群、黑森林偶见（红/棕各半）
@@ -240,6 +279,12 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
             data[aboveI] = K('pumpkin');
             break;
           }
+          // 高草丛（双格，MC 平原点缀）
+          if (r < 0.003 && h + 2 < WORLD_HEIGHT && data[localIndex(x, h + 2, z)] === AIR) {
+            data[aboveI] = K('tall_grass');
+            data[localIndex(x, h + 2, z)] = K('tall_grass_top');
+            break;
+          }
           if (r >= 0.012) break;
           data[aboveI] =
             pick < 0.45 ? K('short_grass') : pick < 0.6 ? K('dandelion') : pick < 0.75 ? K('poppy') : pick < 0.85 ? K('cornflower') : pick < 0.95 ? K('oxeye_daisy') : K('allium');
@@ -254,6 +299,12 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
         }
         case 'taiga': {
           if ((surf !== GRASS && surf !== PODZOL) || r >= 0.05) break;
+          // 大型蕨（双格，针叶林标志）
+          if (pick < 0.2 && h + 2 < WORLD_HEIGHT && data[localIndex(x, h + 2, z)] === AIR) {
+            data[aboveI] = K('large_fern');
+            data[localIndex(x, h + 2, z)] = K('large_fern_top');
+            break;
+          }
           data[aboveI] = pick < 0.5 ? K('fern') : pick < 0.75 ? K('short_grass') : pick < 0.9 ? K('poppy') : K('brown_mushroom');
           break;
         }
@@ -280,11 +331,29 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
         }
         case 'savanna': {
           if (surf !== GRASS || r >= 0.2) break;
+          // 高草丛（双格，热带草原标志；与短草混生）
+          if (pick < 0.3 && h + 2 < WORLD_HEIGHT && data[localIndex(x, h + 2, z)] === AIR) {
+            data[aboveI] = K('tall_grass');
+            data[localIndex(x, h + 2, z)] = K('tall_grass_top');
+            break;
+          }
           data[aboveI] = pick < 0.8 ? K('short_grass') : K('dandelion');
           break;
         }
         case 'jungle': {
-          if (surf !== GRASS || r >= 0.06) break;
+          if (surf !== GRASS) break;
+          // 竹子成丛（茎段 + 带叶顶段，高 3-6）
+          if (r < 0.02 && h + 7 < WORLD_HEIGHT) {
+            const bh = 3 + Math.floor(pick * 4);
+            let ok = true;
+            for (let i = 1; i <= bh; i++) if (data[localIndex(x, h + i, z)] !== AIR) { ok = false; break; }
+            if (ok) {
+              for (let i = 1; i < bh; i++) data[localIndex(x, h + i, z)] = K('bamboo');
+              data[localIndex(x, h + bh, z)] = K('bamboo_top');
+            }
+            break;
+          }
+          if (r >= 0.06) break;
           data[aboveI] = pick < 0.05 ? K('melon') : pick < 0.5 ? K('fern') : K('short_grass');
           break;
         }
