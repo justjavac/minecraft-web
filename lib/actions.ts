@@ -382,10 +382,10 @@ export function tryPlace(): boolean {
   // 锻造台：手持下界合金锭右击 → 物品栏首个钻石工具升级为下界合金（保留附魔/耐久，MC）
   if (hitId === BLOCK_BY_KEY.smithing_table.id) {
     if (s.smithingUpgrade()) {
-      s.setNotice('已升级为下界合金工具（附魔与耐久保留）');
+      s.setNotice('已升级为下界合金（附魔与耐久保留）');
       playSound('place');
     } else {
-      s.setNotice('手持下界合金锭，且物品栏有钻石工具');
+      s.setNotice('手持下界合金锭，且物品栏有钻石工具/装备');
     }
     lastPlace = now;
     return false;

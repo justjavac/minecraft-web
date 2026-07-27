@@ -1,6 +1,6 @@
 // 热键栏槽位模型与纯函数操作（不依赖 store，可单测）
 
-import type { ArmorPiece } from './armor';
+import type { ArmorMaterial, ArmorPiece } from './armor';
 import type { BlockId } from './blocks';
 import type { ToolType } from './tools';
 import type { EnchMap } from './xp';
@@ -10,7 +10,7 @@ export type Slot =
   | { kind: 'block'; id: BlockId; count: number }
   | { kind: 'material'; material: string; count: number }
   | { kind: 'tool'; tool: ToolType; durability: number; ench?: EnchMap }
-  | { kind: 'armor'; piece: ArmorPiece; durability: number; ench?: EnchMap }
+  | { kind: 'armor'; piece: ArmorPiece; material?: ArmorMaterial; durability: number; ench?: EnchMap }
   | null;
 
 /** 可堆叠的槽位（方块/材料） */
@@ -76,11 +76,11 @@ export function addToolToSlots(slots: Slot[], tool: ToolType, durability: number
 }
 
 /** 给装备找一个空槽，满则返回 null */
-export function addArmorToSlots(slots: Slot[], piece: ArmorPiece, durability: number): Slot[] | null {
+export function addArmorToSlots(slots: Slot[], piece: ArmorPiece, durability: number, material?: ArmorMaterial): Slot[] | null {
   const i = slots.indexOf(null);
   if (i < 0) return null;
   const next = [...slots];
-  next[i] = { kind: 'armor', piece, durability };
+  next[i] = { kind: 'armor', piece, material, durability };
   return next;
 }
 

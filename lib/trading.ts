@@ -1,6 +1,6 @@
 // 村民交易：职业交易表（MC 风格）与交易执行。纯数据逻辑（可单测）
 
-import { ARMOR_DEFS, type ArmorPiece } from './armor';
+import { armorDef, type ArmorPiece } from './armor';
 import { BLOCK_BY_KEY } from './blocks';
 import { MATERIAL_INFO } from './materials';
 import { mulberry32 } from './noise';
@@ -73,7 +73,7 @@ export function professionOf(mobId: number): Profession {
 /** 材料名（界面显示；armor:xxx 为装备特别编码） */
 export function tradeItemName(item: TradeItem): string {
   if (item.kind === 'block') return BLOCK_BY_KEY[Object.keys(BLOCK_BY_KEY).find((k) => BLOCK_BY_KEY[k].id === item.id) ?? ''].name;
-  if (item.material.startsWith('armor:')) return ARMOR_DEFS[item.material.slice(6) as ArmorPiece]?.name ?? item.material;
+  if (item.material.startsWith('armor:')) return armorDef('leather', item.material.slice(6) as ArmorPiece).name;
   return MATERIAL_INFO[item.material]?.name ?? item.material;
 }
 
@@ -135,7 +135,7 @@ export function executeTrade(
     const empty = h.findIndex((s) => s === null);
     if (empty >= 0) {
       h = [...h];
-      h[empty] = { kind: 'armor', piece, durability: ARMOR_DEFS[piece].durability };
+      h[empty] = { kind: 'armor', piece, durability: armorDef('leather', piece).durability };
     }
   } else {
     const out =

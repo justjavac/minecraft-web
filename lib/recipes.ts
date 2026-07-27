@@ -2,7 +2,7 @@
 
 import { BLOCK_BY_KEY, COBBLE, CRAFTING_TABLE, FURNACE, GLASS, LOG, PLANKS, type BlockId } from './blocks';
 import { countsOf, type Slot } from './slots';
-import type { ArmorPiece } from './armor';
+import { PIECE_COST, PIECE_NAME, type ArmorMaterial, type ArmorPiece } from './armor';
 import type { ToolType } from './tools';
 
 export interface RecipeOutBlock {
@@ -22,6 +22,8 @@ export interface RecipeOutTool {
 export interface RecipeOutArmor {
   kind: 'armor';
   piece: ArmorPiece;
+  /** 装备材质（缺省皮革；铁/金/钻可合成，下界合金只能锻造升级） */
+  material?: ArmorMaterial;
 }
 
 export type RecipeOut = RecipeOutBlock | RecipeOutMaterial | RecipeOutTool | RecipeOutArmor;
@@ -156,10 +158,24 @@ export const RECIPES: Recipe[] = [
   { id: 'wooden_sword', name: '木剑', out: { kind: 'tool', tool: 'wooden_sword' }, cost: [{ item: PLANKS_ITEM, count: 2 }, { item: STICK, count: 1 }], needsTable: true },
   { id: 'stone_sword', name: '石剑', out: { kind: 'tool', tool: 'stone_sword' }, cost: [{ item: COBBLE_ITEM, count: 2 }, { item: STICK, count: 1 }], needsTable: true },
   // —— 皮革装备（MC 配方用量 5/8/7/4） ——
-  { id: 'leather_helmet', name: '皮革头盔', out: { kind: 'armor', piece: 'helmet' }, cost: [{ item: 'material:leather', count: 5 }], needsTable: true },
-  { id: 'leather_chestplate', name: '皮革胸甲', out: { kind: 'armor', piece: 'chestplate' }, cost: [{ item: 'material:leather', count: 8 }], needsTable: true },
-  { id: 'leather_leggings', name: '皮革护腿', out: { kind: 'armor', piece: 'leggings' }, cost: [{ item: 'material:leather', count: 7 }], needsTable: true },
-  { id: 'leather_boots', name: '皮革靴子', out: { kind: 'armor', piece: 'boots' }, cost: [{ item: 'material:leather', count: 4 }], needsTable: true },
+  // —— 铁/金/钻石装备（用量同皮革 5/8/7/4，MC；下界合金装备不可合成——锻造台升级） ——
+  ...([
+    ['iron', 'material:iron_ingot', '铁'],
+    ['gold', 'material:gold_ingot', '金'],
+    ['diamond', 'material:diamond', '钻石'],
+  ] as const).flatMap(([mat, item, cn]): Recipe[] =>
+    (['helmet', 'chestplate', 'leggings', 'boots'] as const).map((piece) => ({
+      id: `${mat}_${piece}`,
+      name: `${cn}${PIECE_NAME[piece]}`,
+      out: { kind: 'armor', piece, material: mat },
+      cost: [{ item, count: PIECE_COST[piece] }],
+      needsTable: true,
+    })),
+  ),
+  { id: 'leather_helmet', name: '皮革头盔', out: { kind: 'armor', piece: 'helmet', material: 'leather' }, cost: [{ item: 'material:leather', count: 5 }], needsTable: true },
+  { id: 'leather_chestplate', name: '皮革胸甲', out: { kind: 'armor', piece: 'chestplate', material: 'leather' }, cost: [{ item: 'material:leather', count: 8 }], needsTable: true },
+  { id: 'leather_leggings', name: '皮革护腿', out: { kind: 'armor', piece: 'leggings', material: 'leather' }, cost: [{ item: 'material:leather', count: 7 }], needsTable: true },
+  { id: 'leather_boots', name: '皮革靴子', out: { kind: 'armor', piece: 'boots', material: 'leather' }, cost: [{ item: 'material:leather', count: 4 }], needsTable: true },
   // —— 铁/钻石工具（配方同木石） ——
   ...(['iron', 'diamond'] as const).flatMap((tier): Recipe[] => {
     const mat = tier === 'iron' ? 'material:iron_ingot' : 'material:diamond';
@@ -220,7 +236,7 @@ export function applyCraft(
     next[i] = { kind: 'tool', tool: recipe.out.tool, durability: toolDurability };
   } else if (recipe.out.kind === 'armor') {
     const i = next.indexOf(null);
-    next[i] = { kind: 'armor', piece: recipe.out.piece, durability: toolDurability };
+    next[i] = { kind: 'armor', piece: recipe.out.piece, material: recipe.out.material ?? 'leather', durability: toolDurability };
   } else {
     const out = recipe.out;
     let left = out.count; // 用局部变量，不能改共享配方对象

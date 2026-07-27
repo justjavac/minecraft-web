@@ -8,7 +8,7 @@ import { MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/stor
 import { effects } from '@/lib/effects';
 import { levelFromXp } from '@/lib/xp';
 import { loadWorldMeta, type WorldMeta } from '@/lib/persistence';
-import { armorPoints, ARMOR_DEFS } from '@/lib/armor';
+import { armorDefOf, armorPoints } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
 import { TOOLS } from '@/lib/tools';
 import type { Slot } from '@/lib/slots';
@@ -95,7 +95,7 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
         ? materialTile(slot.material)
         : slot.kind === 'tool'
           ? TOOLS[slot.tool].iconTile
-          : ARMOR_DEFS[slot.piece].iconTile;
+          : armorDefOf(slot).iconTile;
   const title =
     slot.kind === 'block'
       ? BLOCKS[slot.id].name
@@ -103,12 +103,12 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
         ? materialName(slot.material)
         : slot.kind === 'tool'
           ? TOOLS[slot.tool].name
-          : ARMOR_DEFS[slot.piece].name;
+          : armorDefOf(slot).name;
   const durabilityPct =
     slot.kind === 'tool'
       ? slot.durability / TOOLS[slot.tool].durability
       : slot.kind === 'armor'
-        ? slot.durability / ARMOR_DEFS[slot.piece].durability
+        ? slot.durability / armorDefOf(slot).durability
         : null;
   return (
     <div title={title} onClick={onClick} className={cls}>
@@ -346,7 +346,7 @@ export function Hud() {
             ? materialName(heldSlot.material)
             : heldSlot.kind === 'tool'
               ? TOOLS[heldSlot.tool].name
-              : ARMOR_DEFS[heldSlot.piece].name;
+              : armorDefOf(heldSlot).name;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 select-none">

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Mesh, type BufferGeometry, type Group } from 'three';
-import { ARMOR_DEFS } from '@/lib/armor';
+import { armorDefOf } from '@/lib/armor';
 import { getActiveWorld, playerPosition } from '@/lib/game';
 import { clearDrops, itemDrops, tickDrops, type ItemDrop } from '@/lib/items';
 import { materialTile } from '@/lib/materials';
@@ -107,7 +107,7 @@ function geometryForDrop(d: ItemDrop, cache: Map<string, BufferGeometry>): Buffe
         ? TOOLS[d.drop.tool].iconTile
         : d.drop.kind === 'material'
           ? materialTile(d.drop.material)
-          : ARMOR_DEFS[d.drop.piece].iconTile;
+          : armorDefOf(d.drop).iconTile;
     key = `t:${tile}`;
     build = () => toGeometry(buildTileGeometry(tile));
   }

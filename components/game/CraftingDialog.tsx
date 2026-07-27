@@ -1,6 +1,6 @@
 'use client';
 
-import { ARMOR_DEFS, type ArmorPiece } from '@/lib/armor';
+import { armorDefOf, type ArmorPiece } from '@/lib/armor';
 import { RECIPES, canCraft, type Recipe } from '@/lib/recipes';
 import { useGameStore } from '@/lib/store';
 import type { Slot } from '@/lib/slots';
@@ -99,23 +99,24 @@ export function CraftingDialog() {
           <div className="flex flex-col gap-1">
             {ARMOR_ORDER.map((piece) => {
               const cur = armorSlots[piece];
+              const def = armorDefOf({ piece, material: cur?.material }); // 空槽按皮革基准显示
               return (
                 <button
                   key={piece}
                   onClick={() => cur && unequipArmor(piece)}
-                  title={cur ? ARMOR_DEFS[piece].name : `空${ARMOR_DEFS[piece].name}槽`}
+                  title={cur ? def.name : `空${def.name}槽`}
                   className={`${SLOT} ${cur ? '' : 'opacity-60'}`}
                 >
                   <span className={cur ? '' : 'grayscale'}>
-                    <TileIcon tile={ARMOR_DEFS[piece].iconTile} size={28} />
+                    <TileIcon tile={def.iconTile} size={28} />
                   </span>
                   {cur && (
                     <div className="absolute bottom-0.5 left-1 right-1 h-0.5 bg-zinc-700">
                       <div
                         className="h-full"
                         style={{
-                          width: `${(cur.durability / ARMOR_DEFS[piece].durability) * 100}%`,
-                          backgroundColor: cur.durability / ARMOR_DEFS[piece].durability > 0.3 ? '#4ade80' : '#ef4444',
+                          width: `${(cur.durability / def.durability) * 100}%`,
+                          backgroundColor: cur.durability / def.durability > 0.3 ? '#4ade80' : '#ef4444',
                         }}
                       />
                     </div>

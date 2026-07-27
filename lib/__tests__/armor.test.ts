@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { armorPoints, ARMOR_DEFS, emptyArmorSlots } from '../armor';
+import { armorDef, armorPoints, emptyArmorSlots } from '../armor';
 import { hurtState } from '../game';
 import { clearDrops, itemDrops } from '../items';
 import { emptySlots } from '../slots';
@@ -36,7 +36,7 @@ describe('皮甲装备', () => {
     useGameStore.getState().addArmor('helmet');
     expect(useGameStore.getState().equipSelectedArmor()).toBe(true);
     let s = useGameStore.getState();
-    expect(s.armorSlots.helmet).toEqual({ durability: ARMOR_DEFS.helmet.durability });
+    expect(s.armorSlots.helmet).toEqual({ durability: armorDef('leather', 'helmet').durability });
     expect(s.hotbarSlots[0]).toBeNull();
 
     useGameStore.getState().addArmor('helmet', 30);
@@ -72,5 +72,57 @@ describe('皮甲装备', () => {
     expect(itemDrops.some((d) => d.drop.kind === 'armor' && d.drop.piece === 'boots')).toBe(true);
     expect(useGameStore.getState().armorSlots.boots).toBeNull();
     clearDrops();
+  });
+});
+
+describe('装备材质（铁/金/钻/下界合金）', () => {
+  beforeEach(resetStore);
+
+  it('护甲点数按材质：皮革 7、金 11、铁 15、钻/合金 20（MC 全套）', () => {
+    for (const [mat, total] of [['leather', 7], ['gold', 11], ['iron', 15], ['diamond', 20], ['netherite', 20]] as const) {
+      const slots = emptyArmorSlots();
+      for (const p of ['helmet', 'chestplate', 'leggings', 'boots'] as const) slots[p] = { durability: 1, material: mat };
+      expect(armorPoints(slots)).toBe(total);
+    }
+    // 混搭：钻胸 8 + 铁头 2 = 10
+    const mix = emptyArmorSlots();
+    mix.helmet = { durability: 1, material: 'iron' };
+    mix.chestplate = { durability: 1, material: 'diamond' };
+    expect(armorPoints(mix)).toBe(10);
+  });
+
+  it('耐久按 MC 数值（铁 165/240/225/195，合金 407/592/555/481）；定义名随材质', () => {
+    expect(armorDef('iron', 'helmet').durability).toBe(165);
+    expect(armorDef('iron', 'chestplate').durability).toBe(240);
+    expect(armorDef('netherite', 'boots').durability).toBe(481);
+    expect(armorDef('netherite', 'chestplate').durability).toBe(592);
+    expect(armorDef('diamond', 'leggings').points).toBe(6);
+    expect(armorDef('gold', 'chestplate').points).toBe(5);
+    expect(armorDef('netherite', 'helmet').name).toBe('下界合金头盔');
+  });
+
+  it('穿戴保留材质；死亡掉落带材质', () => {
+    useGameStore.getState().addArmor('chestplate', undefined, 'iron');
+    useGameStore.getState().equipSelectedArmor();
+    expect(useGameStore.getState().armorSlots.chestplate).toEqual({ durability: 240, material: 'iron' });
+    clearDrops();
+    useGameStore.getState().damagePlayer(40); // 铁甲减伤后仍致死
+    expect(itemDrops.some((d) => d.drop.kind === 'armor' && d.drop.piece === 'chestplate' && d.drop.material === 'iron')).toBe(true);
+    clearDrops();
+  });
+
+  it('铁/金/钻 12 件装备配方（用量 5/8/7/4 同皮革，MC）；下界合金不可合成', async () => {
+    const { RECIPES } = await import('../recipes');
+    const mat: Record<string, string> = { iron: 'material:iron_ingot', gold: 'material:gold_ingot', diamond: 'material:diamond' };
+    const cost: Record<string, number> = { helmet: 5, chestplate: 8, leggings: 7, boots: 4 };
+    for (const [m, item] of Object.entries(mat)) {
+      for (const [piece, n] of Object.entries(cost)) {
+        const r = RECIPES.find((r) => r.id === `${m}_${piece}`);
+        expect(r, `${m}_${piece}`).toBeDefined();
+        expect(r!.out).toEqual({ kind: 'armor', piece, material: m });
+        expect(r!.cost).toEqual([{ item, count: n }]);
+      }
+    }
+    expect(RECIPES.some((r) => r.id.startsWith('netherite_') && r.out.kind === 'armor')).toBe(false);
   });
 });

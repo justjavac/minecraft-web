@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ARMOR_DEFS } from '../armor';
+import { armorDef } from '../armor';
 import { COBBLE, LOG, PLANKS } from '../blocks';
 import { applyCraft, canCraft, hasSpaceFor, RECIPES } from '../recipes';
 import { addStackToSlots, emptySlots } from '../slots';
@@ -46,7 +46,7 @@ describe('合成配方', () => {
     slots = addStackToSlots(slots, { kind: 'material', material: 'leather' }, 5).slots;
     const recipe = RECIPES.find((r) => r.id === 'leather_helmet')!;
     expect(canCraft(slots, recipe)).toBe(true);
-    slots = applyCraft(slots, recipe, ARMOR_DEFS.helmet.durability);
+    slots = applyCraft(slots, recipe, armorDef('leather', 'helmet').durability);
     expect(slots.some((s) => s?.kind === 'armor' && s.piece === 'helmet' && s.durability === 55)).toBe(true);
     expect(canCraft(slots, recipe)).toBe(false); // 皮革已耗尽
   });

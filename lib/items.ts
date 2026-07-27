@@ -1,7 +1,7 @@
 // 掉落物实体：破坏方块/死亡时生成，旋转浮动，延时拾取，5 分钟消失。纯数据逻辑（可单测）
 
 import { BLOCKS, type BlockId } from './blocks';
-import type { ArmorPiece } from './armor';
+import type { ArmorMaterial, ArmorPiece } from './armor';
 import type { ToolType } from './tools';
 import type { World } from './world';
 
@@ -9,7 +9,7 @@ export type DropKind =
   | { kind: 'block'; blockId: BlockId }
   | { kind: 'material'; material: string }
   | { kind: 'tool'; tool: ToolType }
-  | { kind: 'armor'; piece: ArmorPiece };
+  | { kind: 'armor'; piece: ArmorPiece; material?: ArmorMaterial };
 
 export interface ItemDrop {
   id: number;
@@ -53,8 +53,8 @@ export function spawnToolDrop(tool: ToolType, x: number, y: number, z: number, d
   spawn({ kind: 'tool', tool }, x, y, z, 1, durability);
 }
 
-export function spawnArmorDrop(piece: ArmorPiece, x: number, y: number, z: number, durability: number): void {
-  spawn({ kind: 'armor', piece }, x, y, z, 1, durability);
+export function spawnArmorDrop(piece: ArmorPiece, x: number, y: number, z: number, durability: number, material?: ArmorMaterial): void {
+  spawn({ kind: 'armor', piece, material }, x, y, z, 1, durability);
 }
 
 export function clearDrops(): void {

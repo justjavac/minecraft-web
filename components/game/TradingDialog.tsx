@@ -4,7 +4,7 @@ import { useGameStore } from '@/lib/store';
 import { canAfford, professionOf, PROFESSION_INFO, TRADES, tradeItemName, type TradeItem } from '@/lib/trading';
 import { BLOCKS } from '@/lib/blocks';
 import { materialTile } from '@/lib/materials';
-import { ARMOR_DEFS, type ArmorPiece } from '@/lib/armor';
+import { armorDef, type ArmorPiece } from '@/lib/armor';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import { TileIcon } from './TileIcon';
 
 function itemTile(item: TradeItem): number {
   if (item.kind === 'block') return BLOCKS[item.id].side;
-  if (item.material.startsWith('armor:')) return ARMOR_DEFS[item.material.slice(6) as ArmorPiece].iconTile;
+  if (item.material.startsWith('armor:')) return armorDef('leather', item.material.slice(6) as ArmorPiece).iconTile;
   return materialTile(item.material);
 }
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BLOCKS } from '@/lib/blocks';
 import { FUELS, getFurnace, SMELTING, SMELT_TIME, type FurnaceStack } from '@/lib/furnace';
-import { ARMOR_DEFS } from '@/lib/armor';
+import { armorDefOf } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
 import { useGameStore } from '@/lib/store';
 import { TOOLS } from '@/lib/tools';
@@ -112,7 +112,7 @@ export function FurnaceDialog() {
                       ? materialTile(slot.material)
                       : slot.kind === 'tool'
                         ? TOOLS[slot.tool].iconTile
-                        : ARMOR_DEFS[slot.piece].iconTile;
+                        : armorDefOf(slot).iconTile;
                 // 双重身份物品（如原木）：提供「燃 / 烧」两个去向按钮
                 if (both) {
                   return (

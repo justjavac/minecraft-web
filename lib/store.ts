@@ -1,7 +1,7 @@
 // zustand 全局状态：界面、种子、热键栏、飞行/暂停、生存数值、槽位背包、装备
 
 import { create } from 'zustand';
-import { ARMOR_DEFS, armorPoints, emptyArmorSlots, type ArmorPiece, type ArmorSlots } from './armor';
+import { armorDef, armorPoints, emptyArmorSlots, type ArmorMaterial, type ArmorPiece, type ArmorSlots } from './armor';
 import { HOTBAR_BLOCKS, type BlockId } from './blocks';
 import { getBrew, putIntoBrewing, takePotion } from './brewing';
 import { FOODS, getFurnace, putIntoFurnace, takeOutput } from './furnace';
@@ -186,7 +186,7 @@ interface GameStore {
   /** 给工具找空槽，满则返回 false */
   addTool: (tool: ToolType, durability?: number) => boolean;
   /** 给装备找空槽，满则返回 false */
-  addArmor: (piece: ArmorPiece, durability?: number) => boolean;
+  addArmor: (piece: ArmorPiece, durability?: number, material?: ArmorMaterial) => boolean;
   /** 把选中的装备穿上（已有装备换回手中），非装备返回 false */
   equipSelectedArmor: () => boolean;
   /** 从选中槽位消耗一个方块用于放置，返回其 id；选中不是方块或为空返回 null */
@@ -325,7 +325,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       let armorSlots = s.armorSlots;
       if (points > 0) {
         armorSlots = { ...s.armorSlots };
-        for (const piece of Object.keys(ARMOR_DEFS) as ArmorPiece[]) {
+        for (const piece of ['helmet', 'chestplate', 'leggings', 'boots'] as const) {
           const cur = armorSlots[piece];
           if (!cur) continue;
           const durability = cur.durability - 1;
@@ -346,11 +346,11 @@ export const useGameStore = create<GameStore>()((set, get) => ({
           if (slot.kind === 'block') spawnBlockDrop(slot.id, x, y + 0.5, z, slot.count);
           else if (slot.kind === 'material') spawnMaterialDrop(slot.material, x, y + 0.5, z, slot.count);
           else if (slot.kind === 'tool') spawnToolDrop(slot.tool, x, y + 0.5, z, slot.durability);
-          else spawnArmorDrop(slot.piece, x, y + 0.5, z, slot.durability);
+          else spawnArmorDrop(slot.piece, x, y + 0.5, z, slot.durability, slot.material);
         }
-        for (const piece of Object.keys(ARMOR_DEFS) as ArmorPiece[]) {
+        for (const piece of ['helmet', 'chestplate', 'leggings', 'boots'] as const) {
           const cur = armorSlots[piece];
-          if (cur) spawnArmorDrop(piece, x, y + 0.5, z, cur.durability);
+          if (cur) spawnArmorDrop(piece, x, y + 0.5, z, cur.durability, cur.material);
         }
         hotbarSlots = emptySlots();
         mainSlots = emptyBackpack();
@@ -505,13 +505,13 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set({ mainSlots: main });
     return true;
   },
-  addArmor: (piece, durability) => {
-    const hot = addArmorToSlots(get().hotbarSlots, piece, durability ?? ARMOR_DEFS[piece].durability);
+  addArmor: (piece, durability, material) => {
+    const hot = addArmorToSlots(get().hotbarSlots, piece, durability ?? armorDef(material ?? 'leather', piece).durability, material);
     if (hot) {
       set({ hotbarSlots: hot });
       return true;
     }
-    const main = addArmorToSlots(get().mainSlots, piece, durability ?? ARMOR_DEFS[piece].durability);
+    const main = addArmorToSlots(get().mainSlots, piece, durability ?? armorDef(material ?? 'leather', piece).durability, material);
     if (!main) return false;
     set({ mainSlots: main });
     return true;
@@ -522,10 +522,10 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (!slot || slot.kind !== 'armor') return false;
     const prev = s.armorSlots[slot.piece];
     const slots = [...s.hotbarSlots];
-    slots[s.selectedSlot] = prev ? { kind: 'armor', piece: slot.piece, durability: prev.durability } : null;
+    slots[s.selectedSlot] = prev ? { kind: 'armor', piece: slot.piece, material: prev.material, durability: prev.durability, ench: prev.ench } : null;
     set({
       hotbarSlots: slots,
-      armorSlots: { ...s.armorSlots, [slot.piece]: { durability: slot.durability, ench: slot.ench } },
+      armorSlots: { ...s.armorSlots, [slot.piece]: { durability: slot.durability, material: slot.material, ench: slot.ench } },
     });
     return true;
   },
@@ -576,21 +576,24 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set((s) => {
       const held = s.hotbarSlots[s.selectedSlot];
       if (held?.kind !== 'material' || held.material !== 'netherite_ingot') return s;
-      // 热键栏优先、背包其次：找第一个可升级的钻石工具
-      const hi = s.hotbarSlots.findIndex((sl) => sl?.kind === 'tool' && netheriteUpgradeOf(sl.tool));
-      const mi = hi < 0 ? s.mainSlots.findIndex((sl) => sl?.kind === 'tool' && netheriteUpgradeOf(sl.tool)) : -1;
+      // 热键栏优先、背包其次：找第一个可升级的钻石工具或钻石甲（MC 锻造台）
+      const upgradable = (sl: Slot): boolean =>
+        (sl?.kind === 'tool' && netheriteUpgradeOf(sl.tool) !== null) || (sl?.kind === 'armor' && sl.material === 'diamond');
+      const hi = s.hotbarSlots.findIndex(upgradable);
+      const mi = hi < 0 ? s.mainSlots.findIndex(upgradable) : -1;
       if (hi < 0 && mi < 0) return s;
       const hotbarSlots = [...s.hotbarSlots];
       const mainSlots = [...s.mainSlots];
-      if (hi >= 0) {
-        const sl = hotbarSlots[hi];
-        if (sl?.kind !== 'tool') return s;
-        hotbarSlots[hi] = { ...sl, tool: netheriteUpgradeOf(sl.tool)! }; // 耐久/附魔原样保留（MC）
-      } else {
-        const sl = mainSlots[mi];
-        if (sl?.kind !== 'tool') return s;
-        mainSlots[mi] = { ...sl, tool: netheriteUpgradeOf(sl.tool)! };
-      }
+      const upgrade = (sl: Slot): Slot => {
+        if (sl?.kind === 'tool') {
+          const to = netheriteUpgradeOf(sl.tool);
+          return to ? { ...sl, tool: to } : sl; // 耐久/附魔原样保留（MC）
+        }
+        if (sl?.kind === 'armor' && sl.material === 'diamond') return { ...sl, material: 'netherite' as const };
+        return sl;
+      };
+      if (hi >= 0) hotbarSlots[hi] = upgrade(hotbarSlots[hi]);
+      else mainSlots[mi] = upgrade(mainSlots[mi]);
       // 消耗手持 1 锭（选中格即材料格）
       const cur = hotbarSlots[s.selectedSlot];
       if (cur?.kind !== 'material') return s;
@@ -610,7 +613,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       recipe.out.kind === 'tool'
         ? TOOLS[recipe.out.tool].durability
         : recipe.out.kind === 'armor'
-          ? ARMOR_DEFS[recipe.out.piece].durability
+          ? armorDef(recipe.out.material ?? 'leather', recipe.out.piece).durability
           : 0;
     const next = applyCraft(merged, recipe, durability);
     set({ hotbarSlots: next.slice(0, 9), mainSlots: next.slice(9) });

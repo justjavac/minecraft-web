@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { BLOCKS } from '@/lib/blocks';
-import { ARMOR_DEFS } from '@/lib/armor';
+import { armorDefOf } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
 import { mulberry32 } from '@/lib/noise';
 import { useGameStore } from '@/lib/store';
@@ -133,8 +133,8 @@ export function EnchantingDialog() {
                     ? materialTile(slot.material)
                     : slot.kind === 'tool'
                       ? TOOLS[slot.tool].iconTile
-                      : ARMOR_DEFS[slot.piece].iconTile;
-              const name = slot.kind === 'block' ? BLOCKS[slot.id].name : slot.kind === 'material' ? materialName(slot.material) : slot.kind === 'tool' ? TOOLS[slot.tool].name : ARMOR_DEFS[slot.piece].name;
+                      : armorDefOf(slot).iconTile;
+              const name = slot.kind === 'block' ? BLOCKS[slot.id].name : slot.kind === 'material' ? materialName(slot.material) : slot.kind === 'tool' ? TOOLS[slot.tool].name : armorDefOf(slot).name;
               const enchList =
                 (slot.kind === 'tool' || slot.kind === 'armor') && slot.ench
                   ? Object.entries(slot.ench)

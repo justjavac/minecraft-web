@@ -124,4 +124,16 @@ describe('锻造台升级', () => {
     useGameStore.setState({ hotbarSlots: [{ kind: 'material', material: 'netherite_ingot', count: 1 }, ...emptySlots().slice(1)] });
     expect(useGameStore.getState().smithingUpgrade()).toBe(false);
   });
+
+  it('钻石甲也可锻造升级为下界合金甲（保留附魔/耐久，MC）', () => {
+    const s = useGameStore.getState();
+    const slots = emptySlots();
+    slots[0] = { kind: 'material', material: 'netherite_ingot', count: 2 };
+    slots[2] = { kind: 'armor', piece: 'chestplate', material: 'diamond', durability: 300, ench: { protection: 2 } };
+    useGameStore.setState({ hotbarSlots: slots, selectedSlot: 0 });
+    expect(s.smithingUpgrade()).toBe(true);
+    const st = useGameStore.getState();
+    expect(st.hotbarSlots[2]).toEqual({ kind: 'armor', piece: 'chestplate', material: 'netherite', durability: 300, ench: { protection: 2 } });
+    expect(st.hotbarSlots[0]).toEqual({ kind: 'material', material: 'netherite_ingot', count: 1 });
+  });
 });

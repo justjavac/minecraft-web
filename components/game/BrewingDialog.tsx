@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BLOCKS } from '@/lib/blocks';
 import { BREW_TIME, BREWING, getBrew, POTIONS, type BrewStack } from '@/lib/brewing';
-import { ARMOR_DEFS } from '@/lib/armor';
+import { armorDefOf } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
 import { useGameStore } from '@/lib/store';
 import { TOOLS } from '@/lib/tools';
@@ -121,8 +121,8 @@ export function BrewingDialog() {
                       ? materialTile(slot.material)
                       : slot.kind === 'tool'
                         ? TOOLS[slot.tool].iconTile
-                        : ARMOR_DEFS[slot.piece].iconTile;
-                const name = slot.kind === 'block' ? BLOCKS[slot.id].name : slot.kind === 'material' ? materialName(slot.material) : slot.kind === 'tool' ? TOOLS[slot.tool].name : ARMOR_DEFS[slot.piece].name;
+                        : armorDefOf(slot).iconTile;
+                const name = slot.kind === 'block' ? BLOCKS[slot.id].name : slot.kind === 'material' ? materialName(slot.material) : slot.kind === 'tool' ? TOOLS[slot.tool].name : armorDefOf(slot).name;
                 return (
                   <button
                     key={i}
