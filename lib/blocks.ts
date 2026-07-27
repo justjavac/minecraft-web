@@ -534,6 +534,18 @@ add('pointed_dripstone_down', '滴水石笋（倒挂）', 'pointed_dripstone_dow
 add('azalea', '杜鹃花丛', 'azalea_side', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
 add('flowering_azalea', '盛开的杜鹃花丛', 'flowering_azalea_side', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
 add('cave_vines', '洞穴藤蔓', 'cave_vines', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, hang: true, ...GRASS_SND });
+
+// ——— 紫水晶洞/下界残余/覆雪 ———
+add('smooth_basalt', '平滑玄武岩', 'smooth_basalt', { cat: 'stone', tool: 'pickaxe', needsPick: true });
+add('amethyst_cluster', '紫水晶簇', 'amethyst_cluster', {
+  cat: 'ore', shape: 'cross', opaque: false, solid: false, tool: 'pickaxe', digTime: 0.5, light: 5, ...GLASS_SND,
+});
+add('netherrack', '下界岩', 'netherrack', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 2 });
+add('magma_block', '岩浆块', 'magma', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 2.5, light: 3 });
+// 雪层：薄板（1/8 高，无碰撞），寒带地表覆盖
+add('snow_layer', '雪层', 'snow', {
+  cat: 'earth', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, solid: false, tool: 'shovel', digTime: 0.2, ...GRASS_SND,
+});
 // 树苗（可生长，wood 见 lib/saplings.ts；红树在原版叫"红树胎生苗"）
 const SAPLINGS: [key: string, tex: string, cn: string, wood: string][] = [
   ['oak_sapling', 'oak_sapling', '橡树树苗', 'oak'],
