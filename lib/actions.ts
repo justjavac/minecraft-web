@@ -1,10 +1,11 @@
 // 放置与破坏动作：鼠标（Player）与触屏按钮（TouchControls）共用
 
 import { Vector3 } from 'three';
-import { AIR, BLOCKS, BLOCK_BY_KEY, CRAFTING_TABLE, DIRT, FURNACE, GRASS, WHEAT_CROP_0, type BlockId } from './blocks';
+import { AIR, BLOCKS, BLOCK_BY_KEY, CRAFTING_TABLE, DIRT, FURNACE, GRASS, isColumnPlantId, WHEAT_CROP_0, type BlockId } from './blocks';
 import { dropFurnaceContents, FOODS } from './furnace';
 import { isFarmlandId, isWheatCropId } from './crops';
 import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, playerPosition, worldClock } from './game';
+import { setGrowthDropHandler } from './growth';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
@@ -18,6 +19,8 @@ import { WORLD_HEIGHT, type World } from './world';
 
 // 树叶凋零掉的树苗走方块掉落物管线
 setSaplingDropHandler((id, x, y, z) => spawnBlockDrop(id, x, y, z));
+// 仙人掌邻贴实心破坏的掉落同理
+setGrowthDropHandler((id, x, y, z) => spawnBlockDrop(id, x, y, z));
 
 const REACH = 6; // 挖掘/放置距离
 const PLACE_COOLDOWN = 150; // ms
@@ -54,6 +57,19 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
       world.setBlock(x, otherY, z, AIR);
     }
   }
+  // 双格高植物：破坏任一段另一段同步消失（顶段不掉落，dropBlock 已归底段）
+  if (def?.twoHigh && BLOCKS[world.getBlock(x, y + 1, z)]?.plantTop) world.setBlock(x, y + 1, z, AIR);
+  if (def?.plantTop && BLOCKS[world.getBlock(x, y - 1, z)]?.twoHigh) world.setBlock(x, y - 1, z, AIR);
+  // 柱状植物（仙人掌/甘蔗/竹子）：破坏任一节，上方各节一并掉落（MC 规则）
+  if (isColumnPlantId(oldId)) {
+    let cy = y + 1;
+    while (isColumnPlantId(world.getBlock(x, cy, z))) {
+      const aid = world.getBlock(x, cy, z);
+      world.setBlock(x, cy, z, AIR);
+      if (useGameStore.getState().worldMode === 'survival') spawnBlockDrop(BLOCKS[aid].dropBlock ?? aid, x + 0.5, cy + 0.4, z + 0.5);
+      cy++;
+    }
+  }
   // 耕地被破坏：上面的作物一律清掉（创造模式也清，否则留浮空作物）；种子掉落物只在生存模式产生
   if (isFarmlandId(oldId) && isWheatCropId(world.getBlock(x, y + 1, z))) {
     world.setBlock(x, y + 1, z, AIR);
@@ -84,8 +100,8 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
       } else {
         spawnMaterialDrop('wheat_seeds', x + 0.5, y + 0.4, z + 0.5, 1);
       }
-    } else if (oldId === BLOCK_BY_KEY.short_grass.id || oldId === BLOCK_BY_KEY.fern.id) {
-      // 草丛/蕨：25% 掉小麦种子（MC 种草得种子的途径）
+    } else if (oldId === BLOCK_BY_KEY.short_grass.id || oldId === BLOCK_BY_KEY.fern.id || oldId === BLOCK_BY_KEY.tall_grass.id || oldId === BLOCK_BY_KEY.large_fern.id) {
+      // 草丛/蕨/高草丛/大型蕨：25% 掉小麦种子（MC 种草得种子的途径）
       if (Math.random() < 0.25) spawnMaterialDrop('wheat_seeds', x + 0.5, y + 0.4, z + 0.5, 1);
     } else if (tierOk) {
       spawnBlockDrop(def.dropBlock ?? oldId, x + 0.5, y + 0.4, z + 0.5);
@@ -295,8 +311,24 @@ export function tryPlace(): boolean {
     // 点在方块底面：放上半台阶（注册顺序底/顶相邻；无上半变体的如床除外）
     if (fy === -1 && def.fullBlock !== undefined) id = id + 1;
   } else if (def.shape === 'cross') {
-    // 花草：下方必须是不透明的支撑方块
-    if (!BLOCKS[world.getBlock(px, py - 1, pz)]?.opaque) return false;
+    // 花草：默认需底面不透明支撑；悬挂植物（洞穴藤蔓）需顶面不透明
+    if (def.hang) {
+      if (!BLOCKS[world.getBlock(px, py + 1, pz)]?.opaque) return false;
+    } else if (!BLOCKS[world.getBlock(px, py - 1, pz)]?.opaque) return false;
+    // 双格高植物：上方须为空，两段一次放齐（顶段注册序相邻）
+    if (def.twoHigh) {
+      if (py + 1 >= WORLD_HEIGHT || world.getBlock(px, py + 1, pz) !== AIR) return false;
+      if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;
+      world.setBlock(px, py, pz, id);
+      world.setBlock(px, py + 1, pz, id + 1);
+      playSound(def.placeSound);
+      lastPlace = now;
+      return true;
+    }
+  } else if (def.shape === 'panel') {
+    // 藤蔓：点在实心墙面才成立，朝向 = 贴附方向（选块界面只有 n 款基础型）
+    if (fy !== 0 || !hitDef?.opaque) return false;
+    id = BLOCK_BY_KEY[fx === 1 ? 'vine_w' : fx === -1 ? 'vine_e' : fz === 1 ? 'vine_n' : 'vine_s'].id;
   } else if (def.shape === 'door') {
     // 门：需不透明支撑且上方为空；朝向随玩家视线（注册序：bottom, top, open_bottom, open_top 每朝向 4 连）
     if (!BLOCKS[world.getBlock(px, py - 1, pz)]?.opaque) return false;

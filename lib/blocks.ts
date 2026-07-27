@@ -633,5 +633,11 @@ export function isLavaId(id: BlockId): boolean {
   return BLOCKS[id]?.lava === true;
 }
 
+/** 是否柱状植物（仙人掌/甘蔗/竹子）：破坏任一节，上方各节一并掉落 */
+export function isColumnPlantId(id: BlockId): boolean {
+  const k = BLOCKS[id]?.key;
+  return k === 'cactus' || k === 'sugar_cane' || k === 'bamboo' || k === 'bamboo_top';
+}
+
 /** 热键栏 9 格（创造模式初始值，可在选块界面更换） */
 export const HOTBAR_BLOCKS: BlockId[] = [GRASS, DIRT, STONE, COBBLE, LOG, PLANKS, GLASS, BRICK, CRAFTING_TABLE];
