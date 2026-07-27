@@ -23,7 +23,7 @@ export const ATLAS_COLS = 8;
 /** 默认贴图单格分辨率（内置 Faithful 32x） */
 export const TILE_PX = 32;
 /** canvas 绘制图标（工作台/熔炉/装备/食物）的 atlas 起始格号；pack 贴图格数须小于它 */
-export const ICON_TILE_START = 400;
+export const ICON_TILE_START = 448;
 /** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧） */
 export const ICON_TILE_COUNT = 17;
 /** atlas 总行数（pack 格 + 图标格） */

@@ -6,8 +6,9 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-// 副作用导入：材料注册会把物品图标 stem 一并 intern 进 TILE_STEMS
+// 副作用导入：材料/工具注册会把物品图标 stem 一并 intern 进 TILE_STEMS
 import '../lib/materials';
+import '../lib/tools';
 import { TILE_STEMS } from '../lib/blocks';
 
 const SRC = process.argv[2];
