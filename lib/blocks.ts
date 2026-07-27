@@ -546,6 +546,22 @@ add('magma_block', '岩浆块', 'magma', { cat: 'stone', tool: 'pickaxe', needsP
 add('snow_layer', '雪层', 'snow', {
   cat: 'earth', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, solid: false, tool: 'shovel', digTime: 0.2, ...GRASS_SND,
 });
+
+// ——— 红石（供能网络见 lib/redstone.ts） ———
+// 红石粉：贴地薄片，连接电源与元件
+add('redstone_dust', '红石粉', 'redstone_dust_dot', {
+  cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.0625, 1], opaque: false, solid: false, digTime: 0.05, ...GRASS_SND,
+});
+// 红石火把：常亮电源（微光 7，MC 一致）
+add('redstone_torch', '红石火把', 'redstone_torch', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.05, light: 7, ...GRASS_SND });
+// 拉杆：右击切换开/关（开时供能）
+const leverOff = add('lever', '拉杆', 'lever', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
+add('lever_on', '拉杆（开）', 'lever', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.05, light: 7, dropBlock: leverOff.id, ...GRASS_SND });
+// 红石块：永久电源（可被挖走）
+add('redstone_block', '红石块', 'redstone_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
+// 红石灯：供能点亮（发光 15），断能熄灭
+const lampOff = add('redstone_lamp', '红石灯', 'redstone_lamp', { cat: 'utility', digTime: 0.45, ...GLASS_SND });
+add('redstone_lamp_lit', '红石灯（亮）', 'redstone_lamp_on', { cat: 'utility', digTime: 0.45, light: 15, dropBlock: lampOff.id, ...GLASS_SND });
 // 树苗（可生长，wood 见 lib/saplings.ts；红树在原版叫"红树胎生苗"）
 const SAPLINGS: [key: string, tex: string, cn: string, wood: string][] = [
   ['oak_sapling', 'oak_sapling', '橡树树苗', 'oak'],

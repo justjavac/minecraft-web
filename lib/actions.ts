@@ -9,6 +9,7 @@ import { setGrowthDropHandler } from './growth';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
+import { toggleLever } from './redstone';
 import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach } from './mobs';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
@@ -268,6 +269,13 @@ export function tryPlace(): boolean {
     lastPlace = now;
     return true;
   }
+  // 拉杆：右键切换开/关（供能网络随之重算）
+  if (hitId === BLOCK_BY_KEY.lever.id || hitId === BLOCK_BY_KEY.lever_on.id) {
+    toggleLever(world, bx, by, bz);
+    playSound('place');
+    lastPlace = now;
+    return true;
+  }
   // 门：右键切换开/关（上下两格同步；注册序每朝向 [bottom, top, open_bottom, open_top]）
   const hitDef = BLOCKS[hitId];
   if (hitDef?.shape === 'door') {
@@ -300,8 +308,8 @@ export function tryPlace(): boolean {
 
   // —— 形状放置规则 ——
   if (def.shape === 'slab') {
-    // 雪层：下方必须是实心方块（MC 规则，不能悬空放）
-    if (id === BLOCK_BY_KEY.snow_layer.id && !BLOCKS[world.getBlock(px, py - 1, pz)]?.solid) return false;
+    // 雪层/红石粉：下方必须是实心方块（MC 规则，不能悬空放）
+    if ((id === BLOCK_BY_KEY.snow_layer.id || id === BLOCK_BY_KEY.redstone_dust.id) && !BLOCKS[world.getBlock(px, py - 1, pz)]?.solid) return false;
     // 点击同类台阶本身：合并成完整方块（MC 规则；无 fullBlock 的台阶形方块如床不合并）
     if (hitDef?.shape === 'slab' && hitDef.fullBlock !== undefined && hitDef.fullBlock === def.fullBlock) {
       if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;

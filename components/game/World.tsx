@@ -22,6 +22,7 @@ import { tickFluids, clearFluids } from '@/lib/fluids';
 import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
 import { tickSaplings, clearSaplings } from '@/lib/saplings';
+import { clearRedstone } from '@/lib/redstone';
 import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
@@ -109,6 +110,7 @@ export function WorldRenderer() {
           worldClock.t = 0.3; // 新世界从上午开始
           w = new World(seed);
           clearStorages(); // 清空上一个世界的容器残留
+          clearRedstone(); // 清空上一个世界的红石残留
           await saveWorldMeta(worldMeta(seed, { mode: useGameStore.getState().worldMode }));
         }
         if (cancelled) return;
@@ -138,6 +140,7 @@ export function WorldRenderer() {
       clearFluids();
       clearSaplings();
       clearCrops();
+      clearRedstone();
       worldRef.current = null;
       setActiveWorld(null);
     };

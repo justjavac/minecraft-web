@@ -57,6 +57,7 @@ pnpm dev         # 打开 http://localhost:3000
 - **生物按群系**（MC 规则）：蘑菇岛不刷敌对生物、只出**蘑菇牛**（菌丝上；红身白斑背蘑菇）；夜晚刷僵尸/骷髅/蜘蛛/苦力怕，白天猪/牛/鸡游荡
 - **地下**：基岩层打底，y≤16 渐变为深板岩（深层矿变体同效）；矿石按 MC 分布——煤三角峰中层（山地增量）、铁双峰（中层主峰 + 山地点峰）、铜峰中层、金深层（**恶地富矿带**）、青金石中层、红石/钻石深层（钻石越深越多）、**绿宝石只出山地**；**紫水晶洞**（玄武岩-方解石-紫晶三层球壳 + 发光晶簇）；**洞穴群系**：滴水石洞（石笋/倒挂钟乳）与繁茂洞穴（苔藓 + 杜鹃花丛 + 洞穴藤蔓）；**地下含水层**水帘洞；深层洞腔更大，y≤10 有岩浆湖
 - **种植**：仙人掌/甘蔗/竹子按 MC 随机刻拔节（甘蔗只能种在水边；仙人掌四邻不能有实心，否则断开掉落）；破坏柱作物任一节，上方各节全部掉落
+- **红石基础**：红石矿掉红石粉，合成红石火把（常亮电源）/拉杆（右击开关）/红石块/红石灯；红石粉贴地传能（邻接电源 15 级、逐格衰减）；元件反应：**红石灯亮灭、橡木门供能自动开关、TNT 供能引爆**
 
 ## 自定义
 
@@ -66,7 +67,7 @@ pnpm dev         # 打开 http://localhost:3000
 ## 开发者
 
 - 技术栈：Next.js (App Router) + shadcn/ui + Three.js (@react-three/fiber)，pnpm 管理
-- 脚本：`pnpm dev` / `pnpm test`（vitest 207 用例）/ `pnpm lint` / `pnpm build`（静态导出 `out/`，离线可构建，可部署到任意静态托管）
+- 脚本：`pnpm dev` / `pnpm test`（vitest 215 用例）/ `pnpm lint` / `pnpm build`（静态导出 `out/`，离线可构建，可部署到任意静态托管）
 - CI：GitHub Actions（push/PR 跑 lint + test + build）
 - 世界生成：多噪声场群系与山脊地形（lib/noise.ts）+ 确定性矿脉（lib/oregen.ts）+ 流体传播（lib/fluids.ts）+ 共享树形库（lib/trees.ts）；chunk 网格化在 Web Worker 池中执行
 - 贴图工具：`scripts/build-pack.ts` 从 Faithful 源包（GitHub `Faithful-Resource-Pack/Faithful-Java-32x`）重提取 atlas（需 python+PIL）

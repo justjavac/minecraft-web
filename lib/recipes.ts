@@ -108,6 +108,12 @@ export const RECIPES: Recipe[] = [
   { id: 'bread', name: '面包', out: { kind: 'material', material: 'bread', count: 1 }, cost: [{ item: 'material:wheat', count: 3 }], needsTable: false },
   // 骨粉：1 骨头 → 3 骨粉（MC）
   { id: 'bonemeal', name: '骨粉 ×3', out: { kind: 'material', material: 'bonemeal', count: 3 }, cost: [{ item: 'material:bone', count: 1 }], needsTable: false },
+  // —— 红石（配方与 MC 一致；红石灯用海晶灯替代萤石） ——
+  { id: 'redstone_torch', name: '红石火把', out: { kind: 'block', id: KID('redstone_torch'), count: 1 }, cost: [{ item: 'material:redstone', count: 1 }, { item: STICK, count: 1 }], needsTable: false },
+  { id: 'lever', name: '拉杆', out: { kind: 'block', id: KID('lever'), count: 1 }, cost: [{ item: STICK, count: 1 }, { item: COBBLE_ITEM, count: 1 }], needsTable: false },
+  { id: 'redstone_block', name: '红石块', out: { kind: 'block', id: KID('redstone_block'), count: 1 }, cost: [{ item: 'material:redstone', count: 9 }], needsTable: false },
+  { id: 'redstone_from_block', name: '红石 ×9', out: { kind: 'material', material: 'redstone', count: 9 }, cost: [{ item: K('redstone_block'), count: 1 }], needsTable: false },
+  { id: 'redstone_lamp', name: '红石灯', out: { kind: 'block', id: KID('redstone_lamp'), count: 1 }, cost: [{ item: 'material:redstone', count: 4 }, { item: K('sea_lantern'), count: 1 }], needsTable: true },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_pickaxe', name: '石镐', out: { kind: 'tool', tool: 'stone_pickaxe' }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'wooden_axe', name: '木斧', out: { kind: 'tool', tool: 'wooden_axe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },

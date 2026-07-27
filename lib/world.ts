@@ -5,6 +5,7 @@ import { BADLANDS_BANDS, BIOME_SURFACE } from './biomes';
 import { enqueueFluid } from './fluids';
 import { notifyCropBlockSet } from './crops';
 import { notifyBlockSet } from './saplings';
+import { notifyRedstone } from './redstone';
 import { createTerrain, hash2, hashString, mulberry32, SEA_LEVEL, type Biome, type Terrain } from './noise';
 import { applyOres } from './oregen';
 import { applyGeodes } from './geodes';
@@ -517,6 +518,8 @@ export class World {
     notifyBlockSet(this, x, y, z, oldId, id);
     // 小麦作物登记（同上）
     notifyCropBlockSet(x, y, z, id);
+    // 红石电源登记与粉网络重算（同上）
+    notifyRedstone(this, x, y, z, oldId, id);
   }
 
   private markDirty(cx: number, cz: number): void {
