@@ -7,7 +7,7 @@ import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
 
 const REGION = 64; // 结构区域边长（格）
 
-export type StructureKind = 'village' | 'desert_village' | 'savanna_village' | 'taiga_village' | 'watchtower' | 'igloo' | 'desert_temple' | 'jungle_temple';
+export type StructureKind = 'village' | 'desert_village' | 'savanna_village' | 'taiga_village' | 'watchtower' | 'igloo' | 'desert_temple' | 'jungle_temple' | 'ruined_portal';
 
 export interface StructureSpot {
   kind: StructureKind;
@@ -49,6 +49,13 @@ export function structureAt(seedHash: number, terrain: Terrain, rx: number, rz: 
   if (h <= SEA_LEVEL + 1) return null;
   if (!flatEnough(terrain, x, z)) return null;
   const r = regionHash(seedHash, rx, rz, 1);
+  // 废弃传送门：任何陆地群系都可能出（独立盐哈希，不吃村庄配额）
+  if (
+    regionHash(seedHash, rx, rz, 7) < 0.02 &&
+    biome !== 'ocean' && biome !== 'river' && biome !== 'mushroom_fields'
+  ) {
+    return { kind: 'ruined_portal', x, z };
+  }
   switch (biome) {
     // MC 村庄群系：平原 / 热带草原 / 针叶林 / 雪原 / 沙漠
     case 'plains':
@@ -175,6 +182,7 @@ const VILLAGE_MATS: Record<StructureKind, VillageMats> = {
   igloo: PLAINS_MATS,
   desert_temple: PLAINS_MATS,
   jungle_temple: PLAINS_MATS,
+  ruined_portal: PLAINS_MATS,
 };
 
 function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
@@ -357,6 +365,11 @@ const JUNGLE_LOOT: LootEntry[] = [
   ['arrow', 2, 6, 0.6],
   ['cooked_pork', 1, 2, 0.4],
 ];
+const PORTAL_LOOT: LootEntry[] = [
+  ['gold_ingot', 2, 6, 0.8],
+  ['iron_ingot', 1, 3, 0.5],
+  ['emerald', 1, 2, 0.3],
+];
 
 /** 宝箱战利品预填（只填全空的新箱子；已初始化/被开过的跳过——跨 chunk 生成与重载均幂等） */
 function fillChest(seedHash: number, x: number, y: number, z: number, table: LootEntry[], blockExtra?: [id: BlockId, min: number, max: number, chance: number]): void {
@@ -453,6 +466,40 @@ function writeJungleTemple(spot: StructureSpot, terrain: Terrain, cx: number, cz
   fillChest(seedHash, bx + W - 1, by + 5, bz - D + 1, JUNGLE_LOOT, [K('bamboo'), 2, 6, 0.5]);
 }
 
+/** 废弃传送门：下界岩基座 + 残破黑曜石门框（约一成哭泣黑曜石）+ 金宝箱 */
+function writeRuinedPortal(spot: StructureSpot, terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash: number): void {
+  const netherrack = K('netherrack');
+  const obsidian = K('obsidian');
+  const crying = K('crying_obsidian');
+  const magma = K('magma_block');
+  const bx = spot.x;
+  const bz = spot.z;
+  const by = terrain.heightAt(bx, bz) + 1;
+  const rand = mulberry32((seedHash ^ Math.imul(bx, 374761393) ^ Math.imul(bz, 668265263)) | 0);
+  const obs = () => (rand() < 0.1 ? crying : obsidian);
+  // 下界岩基座 7×4（混岩浆块）
+  for (let x = -3; x <= 3; x++) {
+    for (let z = -1; z <= 2; z++) {
+      putBase(data, cx, cz, bx + x, by, bz + z, rand() < 0.12 ? magma : netherrack);
+      for (let dy = 1; dy <= 6; dy++) put(data, cx, cz, bx + x, by + dy, bz + z, AIR); // 上方清空（半截埋进山坡时开门）
+    }
+  }
+  // 残破门框（宽 4 高 5，缺角断边）
+  const frame: [number, number][] = [];
+  for (let dx = -2; dx <= 1; dx++) frame.push([dx, 0]); // 底边
+  for (let dy = 0; dy <= 4; dy++) frame.push([-2, dy]); // 左柱全
+  for (let dy = 0; dy <= 2; dy++) frame.push([1, dy]); // 右柱残
+  frame.push([0, 4], [1, 4]); // 顶边残（缺 -1）
+  for (const [dx, dy] of frame) {
+    if (dy === 0) continue; // 底边并入基座
+    put(data, cx, cz, bx + dx, by + dy, bz, obs());
+  }
+  // 门框内嵌金块（三成）与金宝箱
+  if (rand() < 0.3) put(data, cx, cz, bx - 1, by + 1, bz, K('gold_block'));
+  put(data, cx, cz, bx + 3, by + 1, bz + 1, K('chest'));
+  fillChest(seedHash, bx + 3, by + 1, bz + 1, PORTAL_LOOT, [K('obsidian'), 1, 2, 0.6]);
+}
+
 /** 生成本 chunk 覆盖范围内的结构（检查本区域及相邻区域） */
 export function applyStructures(seedHash: number, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
   const rx = Math.floor((cx * CHUNK_SIZE) / REGION);
@@ -482,6 +529,8 @@ export function applyStructures(seedHash: number, terrain: Terrain, cx: number, 
         writeDesertTemple(spot, terrain, cx, cz, data, seedHash);
       } else if (spot.kind === 'jungle_temple') {
         writeJungleTemple(spot, terrain, cx, cz, data, seedHash);
+      } else if (spot.kind === 'ruined_portal') {
+        writeRuinedPortal(spot, terrain, cx, cz, data, seedHash);
       } else {
         writeIgloo(spot, terrain, cx, cz, data);
       }
