@@ -15,7 +15,7 @@ import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { pistonIdFor } from './pistons';
 import { cycleRepeaterDelay, isRepeaterId, toggleLever } from './redstone';
 import { XP_ORE } from './xp';
-import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
+import { BREED_FOOD, feedMob, fireEnderPearl, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
 import { useGameStore, MAX_HEALTH } from './store';
@@ -181,6 +181,19 @@ export function tryPlace(): boolean {
         s.setNotice('没有箭了');
       }
       return false;
+    }
+    // 手持末影珍珠右键：投掷，落点传送 + 2 伤害（MC）
+    if (held?.kind === 'material' && held.material === 'ender_pearl') {
+      if (s.consumeMaterial('ender_pearl', 1)) {
+        camera.getWorldDirection(dir);
+        fireEnderPearl(
+          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
+          { x: dir.x, y: dir.y, z: dir.z },
+        );
+        playSound('place');
+        lastPlace = now;
+        return false;
+      }
     }
     // 右键村民：打开交易界面（MC；不看手持物，优先于繁殖判定）
     camera.getWorldDirection(dir);

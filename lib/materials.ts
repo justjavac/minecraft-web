@@ -36,6 +36,7 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   glistering_melon: { name: '闪烁的西瓜片', tile: tileIcon('item/glistering_melon_slice') },
   ghast_tear: { name: '恶魂之泪', tile: tileIcon('item/ghast_tear') },
   gunpowder: { name: '火药', tile: tileIcon('item/gunpowder') },
+  ender_pearl: { name: '末影珍珠', tile: tileIcon('item/ender_pearl') },
   regeneration: { name: '再生药水', tile: tileIcon('item/potion') },
   paper: { name: '纸', tile: tileIcon('item/paper') },
   book: { name: '书', tile: tileIcon('item/book') },

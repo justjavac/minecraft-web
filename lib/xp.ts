@@ -14,6 +14,7 @@ export const XP_MOB: Record<MobType, number> = {
   ghast: 5,
   sheep: 2,
   wolf: 2,
+  enderman: 5,
   pig: 2,
   cow: 2,
   chicken: 2,

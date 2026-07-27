@@ -2,7 +2,7 @@
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, GRASS, isWaterId } from './blocks';
 import type { Biome } from './noise';
-import { dayFactorAt, survivalStats, worldClock } from './game';
+import { dayFactorAt, pearlTeleport, survivalStats, worldClock } from './game';
 import { useGameStore } from './store';
 import { XP_MOB } from './xp';
 import { explodeAt } from './explosion';
@@ -13,7 +13,7 @@ import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman';
 
 export interface MobDef {
   name: string;
@@ -52,6 +52,9 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   sheep: { name: '羊', hp: 8, speed: 1.2, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [] },
   // 狼：野生中立（被打群体仇恨才攻击；hostile 走 aggro 门控）；骨头驯服后跟随玩家并护主
   wolf: { name: '狼', hp: 8, speed: 2.6, hostile: true, burnsAtDay: false, damage: 3, attackRange: 1.4, attackCd: 1, drops: [],
+  },
+  // 末影人：高个传送怪——对视/受击激怒，被追/受伤即瞬移（MC 标志）；水触即伤
+  enderman: { name: '末影人', hp: 40, speed: 3.2, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.6, attackCd: 1, drops: [{ material: 'ender_pearl', count: [0, 1] }],
   },
 };
 
@@ -95,6 +98,8 @@ export interface Mob {
   grazeTimer?: number;
   /** 狼：已驯服（跟随玩家并护主） */
   tamed?: boolean;
+  /** 末影人：传送计时（被追/受伤触发瞬移） */
+  teleportTimer?: number;
   /** 村庄锚点（村民不远离村庄；生成时写入） */
   homeX?: number;
   homeZ?: number;
@@ -111,8 +116,8 @@ export interface Arrow {
   age: number;
   /** 玩家发射（命中生物而非玩家；缺省为骷髅射向玩家的箭） */
   fromPlayer?: boolean;
-  /** 烈焰人火球（更大更亮，命中伤害 4）或恶魂爆裂火球（命中/撞墙爆炸） */
-  kind?: 'fireball' | 'ghast';
+  /** 烈焰人火球（更大更亮，命中伤害 4）或恶魂爆裂火球（命中/撞墙爆炸）或末影珍珠（落点传送） */
+  kind?: 'fireball' | 'ghast' | 'pearl';
 }
 
 export const mobs: Mob[] = [];
@@ -158,10 +163,11 @@ function exposedToSky(world: World, m: Mob): boolean {
 function pickSpawnType(night: boolean, biome?: Biome): MobType {
   const r = Math.random();
   if (night) {
-    if (r < 0.4) return 'zombie';
-    if (r < 0.65) return 'skeleton';
-    if (r < 0.85) return 'spider';
-    return 'creeper';
+    if (r < 0.37) return 'zombie';
+    if (r < 0.62) return 'skeleton';
+    if (r < 0.82) return 'spider';
+    if (r < 0.9) return 'creeper';
+    return 'enderman'; // 夜晚稀有末影人（MC）
   }
   // 白天被动：林地出狼、平原/热带草原出羊（MC 分布）
   const foresty = biome === 'forest' || biome === 'taiga' || biome === 'birch_forest' || biome === 'dark_forest' || biome === 'snowy';
@@ -292,7 +298,7 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
     if (isWaterId(ground) || BLOCKS[ground]?.lava) continue;
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
-    // 堡垒附近（48 格）：凋灵骷髅/烈焰人为主；灵魂沙谷恶魂成群（MC）；远处猪灵成群、少量烈焰人与恶魂
+    // 堡垒附近（48 格）：凋灵骷髅/烈焰人为主；灵魂沙谷恶魂成群（MC）；诡异森林末影人成群（MC）；远处猪灵成群、少量烈焰人与恶魂
     const roll = Math.random();
     const biome = world.terrain.biomeAt(bx, bz);
     const type: MobType = fortressNear(world.seedHash, world.terrain, bx, bz, 48)
@@ -309,11 +315,15 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
           : roll < 0.75
             ? 'zombified_piglin'
             : 'blaze'
-        : roll < 0.7
-          ? 'zombified_piglin'
-          : roll < 0.88
-            ? 'blaze'
-            : 'ghast';
+        : biome === 'warped_forest'
+          ? roll < 0.7
+            ? 'enderman'
+            : 'zombified_piglin'
+          : roll < 0.7
+            ? 'zombified_piglin'
+            : roll < 0.88
+              ? 'blaze'
+              : 'ghast';
     if (type === 'zombified_piglin') {
       const pack = 2 + Math.floor(Math.random() * 2); // 2-3 只
       for (let i = 0; i < pack; i++) {
@@ -325,6 +335,53 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
     } else {
       mobs.push(makeMob(type, bx + 0.5, sy, bz + 0.5));
     }
+    return true;
+  }
+  return false;
+}
+
+// 末影人：瞬移（MC 标志）与对视激怒
+
+/** 末影人瞬移：±8 格内找安全落点（实心地面 + 上方 3 格空、非岩浆水），nearX/Z 给定则向其附近瞬移 */
+export function teleportEnderman(world: World, m: Mob, nearX?: number, nearZ?: number): boolean {
+  for (let i = 0; i < 8; i++) {
+    const cx = (nearX ?? m.x) + (Math.random() - 0.5) * 16;
+    const cz = (nearZ ?? m.z) + (Math.random() - 0.5) * 16;
+    const bx = Math.floor(cx);
+    const bz = Math.floor(cz);
+    if (!world.chunks.has(`${bx >> 4},${bz >> 4}`)) continue;
+    let y = Math.min(WORLD_HEIGHT - 5, Math.floor(m.y) + 5);
+    while (y > 1 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
+    if (y <= 1) continue;
+    const ground = world.getBlock(bx, y, bz);
+    if (BLOCKS[ground]?.lava || isWaterId(ground)) continue;
+    const b1 = world.getBlock(bx, y + 1, bz);
+    const b2 = world.getBlock(bx, y + 2, bz);
+    const b3 = world.getBlock(bx, y + 3, bz);
+    if (BLOCKS[b1]?.solid || BLOCKS[b2]?.solid || BLOCKS[b3]?.solid) continue;
+    if (isWaterId(b1) || BLOCKS[b1]?.lava) continue;
+    m.x = bx + 0.5;
+    m.y = y + 1;
+    m.z = bz + 0.5;
+    m.velY = 0;
+    return true;
+  }
+  return false;
+}
+
+/** 玩家视线是否盯在末影人身上（Player 每秒调用；盯上即激怒——MC 对视规则） */
+export function checkEndermanStare(
+  world: World,
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+): boolean {
+  const mob = mobInReach(world, ox, oy, oz, dx, dy, dz, 24);
+  if (mob?.type === 'enderman' && (mob.aggroTimer ?? 0) <= 0) {
+    mob.aggroTimer = 30;
     return true;
   }
   return false;
@@ -365,6 +422,22 @@ export function firePlayerArrow(origin: { x: number; y: number; z: number }, dir
   });
 }
 
+/** 玩家射末影珍珠：弧线投掷，落点传送玩家（lib/game.ts pearlTeleport 消费） */
+export function fireEnderPearl(origin: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }): void {
+  const d = Math.max(Math.hypot(dir.x, dir.y, dir.z), 0.01);
+  const speed = 15;
+  arrows.push({
+    id: nextArrowId++,
+    x: origin.x, y: origin.y, z: origin.z,
+    vx: (dir.x / d) * speed,
+    vy: (dir.y / d) * speed + 1.5, // 抬高成弧（MC 珍珠抛物线）
+    vz: (dir.z / d) * speed,
+    age: 0,
+    fromPlayer: true,
+    kind: 'pearl',
+  });
+}
+
 /** 苦力怕爆炸：委托共享爆炸逻辑（防爆方块除外，MC 一致） */
 function explode(
   world: World,
@@ -384,7 +457,7 @@ function tickArrows(
   for (let i = arrows.length - 1; i >= 0; i--) {
     const a = arrows[i];
     a.age += dt;
-    if (!a.kind) a.vy -= 4 * dt; // 箭的重力（较轻，保证射程内能命中）；火球类无重力（MC）
+    if (!a.kind || a.kind === 'pearl') a.vy -= 4 * dt; // 箭与珍珠的重力（较轻，保证射程内能命中）；火球类无重力（MC）
     const nx = a.x + a.vx * dt;
     const ny = a.y + a.vy * dt;
     const nz = a.z + a.vz * dt;
@@ -399,10 +472,15 @@ function tickArrows(
     if (BLOCKS[world.getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z))]?.solid) {
       // 恶魂爆裂火球：撞墙即爆（MC）
       if (a.kind === 'ghast') explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 10, hurtRadius: 3 });
+      // 末影珍珠：落点传送玩家 + 2 点伤害（MC）
+      if (a.kind === 'pearl') {
+        pearlTeleport.pending = { x: Math.floor(a.x) + 0.5, y: Math.ceil(a.y) + 0.01, z: Math.floor(a.z) + 0.5 };
+        onAttackPlayer(2);
+      }
       arrows.splice(i, 1);
       continue;
     }
-    // 玩家射出的箭：命中生物（AABB 粗略判定）
+    // 玩家射出的箭/珍珠：命中生物（AABB 粗略判定；珍珠不伤人、命中即传送到生物处）
     if (a.fromPlayer) {
       const hitMob = mobs.find(
         (m) =>
@@ -412,7 +490,12 @@ function tickArrows(
           Math.abs(m.z - a.z) < 0.55,
       );
       if (hitMob) {
-        damageMob(hitMob, 9, { x: a.x - a.vx, z: a.z - a.vz });
+        if (a.kind === 'pearl') {
+          pearlTeleport.pending = { x: Math.floor(a.x) + 0.5, y: Math.ceil(a.y) + 0.01, z: Math.floor(a.z) + 0.5 };
+          onAttackPlayer(2);
+        } else {
+          damageMob(hitMob, 9, { x: a.x - a.vx, z: a.z - a.vz });
+        }
         arrows.splice(i, 1);
         continue;
       }
@@ -480,6 +563,16 @@ export function tickMobs(
     let mx = 0;
     let mz = 0;
 
+    // 末影人水触掉血（MC：不论是否激怒；掉血即激怒并瞬移逃离）
+    if (m.type === 'enderman' && isWaterId(world.getBlock(Math.floor(m.x), Math.floor(m.y), Math.floor(m.z)))) {
+      damageMob(m, 2 * dt, undefined, 0, world);
+      if (m.hp <= 0) continue;
+      if ((m.teleportTimer ?? 0) <= 0) {
+        teleportEnderman(world, m);
+        m.teleportTimer = 1;
+      }
+    }
+
     if (m.fleeTimer > 0) {
       // 受击逃跑
       m.fleeTimer -= dt;
@@ -490,10 +583,34 @@ export function tickMobs(
         mx = (fx / fd) * def.speed * 1.5;
         mz = (fz / fd) * def.speed * 1.5;
       }
-    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0))) {
-      // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼未被激怒时中立）
-      if (m.type === 'ghast') {
-        // 恶魂：高空慢漂移，40 格内射爆裂火球（MC）
+    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0)) && (m.type !== 'enderman' || (m.aggroTimer ?? 0) > 0)) {
+      // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼/末影人未被激怒时中立）
+      if (m.type === 'enderman') {
+        // 末影人：高速追击 + 近身/受击瞬移闪避 + 定期瞬移逼近（MC）
+        if (dist < 4) {
+          // 近身即瞬移闪避（MC）
+          if ((m.teleportTimer ?? 0) <= 0) {
+            teleportEnderman(world, m);
+            m.teleportTimer = 2;
+          }
+        } else {
+          if (dist > 0.01 && dist < CHASE_RANGE) {
+            mx = (dx / dist) * def.speed;
+            mz = (dz / dist) * def.speed;
+          }
+          // 远处定期瞬移逼近玩家（MC）
+          m.teleportTimer = (m.teleportTimer ?? 4) - dt;
+          if (m.teleportTimer <= 0 && dist > 8) {
+            teleportEnderman(world, m, playerPos.x, playerPos.z);
+            m.teleportTimer = 3 + Math.random() * 3;
+          }
+        }
+        m.attackCd -= dt;
+        if (m.attackCd <= 0 && dist < def.attackRange && Math.abs(playerPos.y - m.y) < 2) {
+          m.attackCd = def.attackCd;
+          onAttackPlayer(def.damage);
+        }
+      } else if (m.type === 'ghast') {        // 恶魂：高空慢漂移，40 格内射爆裂火球（MC）
         if (dist > 30 && dist > 0.01) {
           mx = (dx / dist) * def.speed;
           mz = (dz / dist) * def.speed;
@@ -733,8 +850,8 @@ export function mobInReach(
 /** 玩家最近攻击的目标（驯狼护主用；attackerPos 存在即记录） */
 export const lastPlayerTarget: { mob: Mob | null; at: number } = { mob: null, at: 0 };
 
-/** 对生物造成伤害（attackerPos 用于被动生物逃跑方向；lootBonus = 抢夺附魔等级），返回是否击杀 */
-export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }, lootBonus = 0): boolean {
+/** 对生物造成伤害（attackerPos 用于被动生物逃跑方向；lootBonus = 抢夺附魔等级；world 用于末影人受击瞬移），返回是否击杀 */
+export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }, lootBonus = 0, world?: World): boolean {
   mob.hp -= damage;
   if (attackerPos) {
     lastPlayerTarget.mob = mob;
@@ -751,6 +868,11 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
     for (const m of mobs) {
       if (m.type === 'wolf' && !m.tamed && Math.hypot(m.x - mob.x, m.z - mob.z) <= 16) m.aggroTimer = 20;
     }
+  }
+  // 末影人：受击激怒，且六成概率立即瞬移闪避（MC）
+  if (mob.type === 'enderman') {
+    mob.aggroTimer = 30;
+    if (world && Math.random() < 0.6) teleportEnderman(world, mob);
   }
   if (mob.hp > 0) {
     // 被动生物受击逃跑

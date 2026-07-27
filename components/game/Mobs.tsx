@@ -43,6 +43,10 @@ const wolfHeadGeo = new BoxGeometry(0.34, 0.3, 0.34);
 const wolfEarGeo = new BoxGeometry(0.08, 0.14, 0.08);
 const wolfTailGeo = new BoxGeometry(0.12, 0.12, 0.45);
 const collarGeo = new BoxGeometry(0.4, 0.14, 0.14);
+const enderLegGeo = new BoxGeometry(0.18, 1.2, 0.18);
+const enderBodyGeo = new BoxGeometry(0.42, 1.1, 0.26);
+const enderArmGeo = new BoxGeometry(0.12, 1.4, 0.12);
+const enderEyeGeo = new BoxGeometry(0.08, 0.06, 0.02);
 
 type MobMats = Record<string, Material>;
 
@@ -76,6 +80,8 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     wolf: l('#c8c8c8'),
     wolfDark: l('#909090'),
     collar: l('#c03030'),
+    enderman: l('#141414'),
+    enderEyes: l('#b050e0'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -205,6 +211,17 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, armGeo, mats.wither, 0.34, 1.3, 0);
       addPart(g, headGeo, mats.wither, 0, 1.85, 0);
       addPart(g, swordGeo, mats.arrow, 0.42, 1.1, 0.1);
+      break;
+    case 'enderman':
+      // 末影人：炭黑高个（2.9 高）+ 紫瞳 + 垂手长臂（MC 标志造型）
+      addPart(g, enderLegGeo, mats.enderman, -0.12, 0.6, 0);
+      addPart(g, enderLegGeo, mats.enderman, 0.12, 0.6, 0);
+      addPart(g, enderBodyGeo, mats.enderman, 0, 1.75, 0);
+      addPart(g, enderArmGeo, mats.enderman, -0.36, 1.3, 0);
+      addPart(g, enderArmGeo, mats.enderman, 0.36, 1.3, 0);
+      addPart(g, headGeo, mats.enderman, 0, 2.55, 0);
+      addPart(g, enderEyeGeo, mats.enderEyes, -0.09, 2.6, 0.22);
+      addPart(g, enderEyeGeo, mats.enderEyes, 0.09, 2.6, 0.22);
       break;
     case 'ghast':
       // 恶魂：雪白巨体 + 下垂触手（MC 下界空中巨怪）

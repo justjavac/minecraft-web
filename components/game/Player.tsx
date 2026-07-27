@@ -7,12 +7,12 @@ import { Euler, PerspectiveCamera, Vector3 } from 'three';
 import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
 import { breakBlock, tryPlace } from '@/lib/actions';
 import { isFarmlandId, isWheatCropId } from '@/lib/crops';
-import { cameraRef, debugInfo, digState, getActiveWorld, playerPosition, survivalStats, targetBlock, teleportState, touchInput } from '@/lib/game';
+import { cameraRef, debugInfo, digState, getActiveWorld, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput } from '@/lib/game';
 import { otherDimension } from '@/lib/dimension';
 import { isPortalId } from '@/lib/portal';
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
-import { damageMob, mobInReach } from '@/lib/mobs';
+import { checkEndermanStare, damageMob, mobInReach } from '@/lib/mobs';
 import { SEA_LEVEL, type Biome } from '@/lib/noise';
 import { aabbFree, collideAxis, type Aabb } from '@/lib/physics';
 import { playSound } from '@/lib/sound';
@@ -109,6 +109,8 @@ export function Player() {
   const wasDead = useRef(false);
   /** 下界传送门：门内停留计时（3 秒触发传送，MC 一致） */
   const portalAcc = useRef(0);
+  /** 末影人对视检查计时 */
+  const stareAcc = useRef(0);
 
   // 维度切换：重置位置状态（落点由 WorldRenderer 经 spawnPoint 下发）
   const dimension = useGameStore((s) => s.dimension);
@@ -421,6 +423,17 @@ export function Player() {
     }
     // 药水效果计时（创造模式也递减，MC 一致）
     tickEffects(dt);
+    // 末影人对视激怒：准星盯上末影人即激怒（MC 规则，每秒检查一次）
+    stareAcc.current += dt;
+    if (stareAcc.current >= 1) {
+      stareAcc.current = 0;
+      const cam = cameraRef.current;
+      if (cam) {
+        const d = new Vector3();
+        cam.getWorldDirection(d);
+        checkEndermanStare(world, cam.position.x, cam.position.y, cam.position.z, d.x, d.y, d.z);
+      }
+    }
 
     // 脚步声：着地行走时按实际位移触发（顶墙走不响）
     const hDist = Math.hypot(p.x - prevStep.current.x, p.z - prevStep.current.z);
@@ -469,6 +482,14 @@ export function Player() {
       } else {
         portalAcc.current = 0;
       }
+    }
+
+    // 末影珍珠落点传送（mobs 命中写入，本帧消费）
+    if (pearlTeleport.pending) {
+      pos.current = { ...pearlTeleport.pending };
+      pearlTeleport.pending = null;
+      velY.current = 0;
+      prevStep.current = { x: pos.current.x, z: pos.current.z };
     }
 
     state.camera.position.set(p.x, p.y + EYE, p.z);

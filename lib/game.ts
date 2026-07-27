@@ -20,6 +20,9 @@ export const playerPosition = { x: 8.5, y: 40, z: 8.5 };
 /** 跨维度传送：Player 站在门内写入待传送坐标，WorldRenderer 切换维度后消费 */
 export const teleportState: { pending: { x: number; y: number; z: number } | null } = { pending: null };
 
+/** 末影珍珠落点传送：mobs 命中写入，Player 下帧消费（瞬移 + 清空） */
+export const pearlTeleport: { pending: { x: number; y: number; z: number } | null } = { pending: null };
+
 /** 当前相机，Player 挂载时写入，供触屏按钮执行挖/放 */
 export const cameraRef: { current: Camera | null } = { current: null };
 
