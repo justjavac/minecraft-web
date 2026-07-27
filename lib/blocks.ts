@@ -117,8 +117,8 @@ export interface BlockDef {
   slabTop?: boolean;
   /** 台阶对应的完整方块 id（两个半砖合并） */
   fullBlock?: BlockId;
-  /** 楼梯朝向（0 北 -z / 1 东 +x / 2 南 +z / 3 西 -x） */
-  facing?: 0 | 1 | 2 | 3;
+  /** 楼梯/藤蔓/活塞朝向（0 北 -z / 1 东 +x / 2 南 +z / 3 西 -x；活塞另有 4 上 / 5 下） */
+  facing?: 0 | 1 | 2 | 3 | 4 | 5;
   /** 完整碰撞盒 [minX,minY,minZ,maxX,maxY,maxZ]（默认全格；门的薄面板按朝向） */
   box3?: [number, number, number, number, number, number];
   /** 门半格（上/下） */
@@ -573,6 +573,18 @@ add('redstone_block', '红石块', 'redstone_block', { cat: 'ore', tool: 'pickax
 // 红石灯：供能点亮（发光 15），断能熄灭
 const lampOff = add('redstone_lamp', '红石灯', 'redstone_lamp', { cat: 'utility', digTime: 0.45, ...GLASS_SND });
 add('redstone_lamp_lit', '红石灯（亮）', 'redstone_lamp_on', { cat: 'utility', digTime: 0.45, light: 15, dropBlock: lampOff.id, ...GLASS_SND });
+
+// ——— 活塞（红石驱动推块，lib/pistons.ts；6 朝向各 1 id，破坏统一掉 n 款） ———
+const pistonN = add('piston_n', '活塞', { side: 'piston_side', top: 'piston_top', bottom: 'piston_bottom' }, { cat: 'utility', facing: 0, digTime: 0.75 });
+for (const [suf, f] of [['e', 1], ['s', 2], ['w', 3], ['u', 4], ['d', 5]] as const) {
+  add(`piston_${suf}`, '活塞', { side: 'piston_side', top: 'piston_top', bottom: 'piston_bottom' }, { cat: 'utility', facing: f, digTime: 0.75, dropBlock: pistonN.id });
+}
+const stickyN = add('piston_sticky_n', '粘性活塞', { side: 'piston_side', top: 'piston_top_sticky', bottom: 'piston_bottom' }, { cat: 'utility', facing: 0, digTime: 0.75 });
+for (const [suf, f] of [['e', 1], ['s', 2], ['w', 3], ['u', 4], ['d', 5]] as const) {
+  add(`piston_sticky_${suf}`, '粘性活塞', { side: 'piston_side', top: 'piston_top_sticky', bottom: 'piston_bottom' }, { cat: 'utility', facing: f, digTime: 0.75, dropBlock: stickyN.id });
+}
+// 活塞头（推出态的前端块；背向无活塞自动消失，破坏统一掉活塞 n 款不现实——直接不掉落）
+add('piston_head', '活塞头', { side: 'piston_side', top: 'piston_top', bottom: 'piston_inner' }, { cat: 'utility', digTime: 0.75 });
 
 // ——— 下界传送门（打火石点燃黑曜石框；lib/portal.ts；面板朝向随门框轴向，不可破坏） ———
 const portalNs = add('nether_portal_ns', '下界传送门', 'nether_portal', {

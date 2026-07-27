@@ -1,7 +1,8 @@
 // 红石供能：电源（红石火把/开着的拉杆/红石块）+ 红石粉 BFS 衰减传播 + 元件供能反应
-// world.setBlock 经 notifyRedstone 触发局部重算；消费端：红石灯亮灭、橡木门开关、TNT 引爆
+// world.setBlock 经 notifyRedstone 触发局部重算；消费端：红石灯亮灭、橡木门开关、TNT 引爆、活塞推收
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, type BlockId } from './blocks';
+import { cleanupOrphanHeads, isExtended, isPistonId, retract, tryExtend } from './pistons';
 import { igniteTnt } from './tnt';
 import type { World } from './world';
 
@@ -22,11 +23,11 @@ const TNT = () => BLOCK_BY_KEY.tnt.id;
 
 const isSourceId = (id: BlockId): boolean => id === TORCH() || id === LEVER_ON() || id === RS_BLOCK();
 
-/** 元件（消费端）：红石灯/门/TNT */
+/** 元件（消费端）：红石灯/门/TNT/活塞 */
 function isConsumerId(id: BlockId): boolean {
   const def = BLOCKS[id];
   if (!def) return false;
-  return id === LAMP() || id === LAMP_LIT() || id === TNT() || def.shape === 'door';
+  return id === LAMP() || id === LAMP_LIT() || id === TNT() || def.shape === 'door' || isPistonId(id) || def.key === 'piston_head';
 }
 
 const DIRS = [
@@ -100,6 +101,13 @@ function recompute(world: World, cx: number, cy: number, cz: number): void {
             world.setBlock(x, y, z, AIR);
             igniteTnt(x, y, z);
           });
+        } else if (isPistonId(id)) {
+          // 活塞：供能推出、断能收回（粘性拉回）
+          if (on && !isExtended(world, x, y, z)) reacts.push(() => tryExtend(world, x, y, z));
+          else if (!on && isExtended(world, x, y, z)) reacts.push(() => retract(world, x, y, z));
+        } else if (BLOCKS[id]?.key === 'piston_head') {
+          // 孤儿活塞头：背向无活塞自动消失
+          reacts.push(() => cleanupOrphanHeads(world, x, y, z));
         } else {
           const def = BLOCKS[id];
           if (def?.shape === 'door') {

@@ -18,9 +18,13 @@ const CATS: { key: BlockCat | 'all'; name: string }[] = [
 ];
 
 /** 可选进热键栏的方块（固体 + 水系 + 花草十字 + 基础款藤蔓；基岩类也可见——创造模式本就可以放；
- * 双格植物顶段/竹顶段等联动变体不单独列出，避免放出悬空半段） */
+ * 双格植物顶段/竹顶段等联动变体不单独列出，避免放出悬空半段；活塞朝向变体只列基础 n 款） */
 const PICKABLE: BlockId[] = BLOCKS.filter(
-  (d) => !d.plantTop && d.key !== 'bamboo_top' && (d.solid || d.fluid || d.shape === 'cross' || (d.shape === 'panel' && d.facing === 0)),
+  (d) =>
+    !d.plantTop &&
+    d.key !== 'bamboo_top' &&
+    !(d.dropBlock !== undefined && d.key.startsWith('piston_')) &&
+    (d.solid || d.fluid || d.shape === 'cross' || (d.shape === 'panel' && d.facing === 0)),
 ).map((d) => d.id);
 
 /** 创造模式选块界面（E 键/热键栏下方按钮）：搜索 + 分类网格，点击放入当前热键栏格 */

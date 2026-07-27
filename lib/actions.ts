@@ -12,6 +12,7 @@ import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
 import { clearBrokenPortals, tryIgnitePortal } from './portal';
+import { pistonIdFor } from './pistons';
 import { toggleLever } from './redstone';
 import { XP_ORE } from './xp';
 import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach } from './mobs';
@@ -426,6 +427,14 @@ export function tryPlace(): boolean {
     // 楼梯：按玩家视线朝向决定背向（顶半在远处）；点在方块底面则倒置（注册序：正立×4 → 倒置×4）
     const facing = Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 1 : 3) : dir.z > 0 ? 2 : 0;
     id = id + (fy === -1 ? 4 + facing : facing);
+  } else if (id === BLOCK_BY_KEY.piston_n.id || id === BLOCK_BY_KEY.piston_sticky_n.id) {
+    // 活塞：正面朝玩家（MC），按视线主轴定 6 向之一
+    const ax = Math.abs(dir.x);
+    const ay = Math.abs(dir.y);
+    const az = Math.abs(dir.z);
+    const sticky = id === BLOCK_BY_KEY.piston_sticky_n.id;
+    const facing = ay >= ax && ay >= az ? (dir.y > 0 ? 5 : 4) : ax >= az ? (dir.x > 0 ? 3 : 1) : dir.z > 0 ? 0 : 2;
+    id = pistonIdFor(sticky, facing);
   } else if (id === BLOCK_BY_KEY.torch.id && (fx !== 0 || fz !== 0) && hitDef?.opaque) {
     // 火把点在方块侧面：转墙上火把（朝向 = 墙面外法线）
     const wallKey = fx === 1 ? 'torch_wall_e' : fx === -1 ? 'torch_wall_w' : fz === 1 ? 'torch_wall_s' : 'torch_wall_n';

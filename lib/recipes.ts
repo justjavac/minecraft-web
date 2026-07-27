@@ -129,6 +129,9 @@ export const RECIPES: Recipe[] = [
   { id: 'glistering_melon', name: '闪烁的西瓜片', out: { kind: 'material', material: 'glistering_melon', count: 1 }, cost: [{ item: K('melon'), count: 1 }, { item: 'material:gold_ingot', count: 1 }], needsTable: false },
   // TNT：火药 ×5 + 沙子 ×4（MC 配方）
   { id: 'tnt', name: 'TNT', out: { kind: 'block', id: KID('tnt'), count: 1 }, cost: [{ item: 'material:gunpowder', count: 5 }, { item: K('sand'), count: 4 }], needsTable: true },
+  // 活塞：圆石×3 + 木板×3 + 铁锭×1 + 红石×1（MC）；粘性活塞：活塞 + 黏液块（替代黏液球）
+  { id: 'piston', name: '活塞', out: { kind: 'block', id: KID('piston_n'), count: 1 }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: PLANKS_ITEM, count: 3 }, { item: 'material:iron_ingot', count: 1 }, { item: 'material:redstone', count: 1 }], needsTable: true },
+  { id: 'piston_sticky', name: '粘性活塞', out: { kind: 'block', id: KID('piston_sticky_n'), count: 1 }, cost: [{ item: K('piston_n'), count: 1 }, { item: K('slime_block'), count: 1 }], needsTable: false },
   // —— 附魔（配方与 MC 一致） ——
   { id: 'paper', name: '纸 ×3', out: { kind: 'material', material: 'paper', count: 3 }, cost: [{ item: K('sugar_cane'), count: 3 }], needsTable: false },
   { id: 'book', name: '书', out: { kind: 'material', material: 'book', count: 1 }, cost: [{ item: 'material:paper', count: 3 }, { item: 'material:leather', count: 1 }], needsTable: false },
