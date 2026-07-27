@@ -31,7 +31,7 @@ const TILE_TINTS: Record<string, string> = {
   short_grass: GRASS_TINT,
   fern: GRASS_TINT,
   oak_leaves: FOLIAGE_TINT,
-  birch_leaves: FOLIAGE_TINT,
+  birch_leaves: '#80a755', // MC 白桦叶固定色（不随群系变）
   jungle_leaves: FOLIAGE_TINT,
   acacia_leaves: FOLIAGE_TINT,
   dark_oak_leaves: FOLIAGE_TINT,

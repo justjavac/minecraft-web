@@ -1,6 +1,8 @@
-// chunk 网格化：隐藏面剔除 + 逐顶点环境光遮蔽（AO）+ atlas UV，输出纯数据（不依赖 three，可单测）
+// chunk 网格化：隐藏面剔除 + 逐顶点环境光遮蔽（AO）+ atlas UV + 群系草色顶点色，输出纯数据（不依赖 three，可单测）
 
 import { AIR, ATLAS_COLS, ATLAS_ROWS, BLOCKS, isWaterId, WATER, WATER_FLOW_1, type BlockDef } from './blocks';
+import { FOLIAGE_TINT_KEYS, FOLIAGE_TINT_RATIO, GRASS_TINT_KEYS, GRASS_TINT_RATIO } from './biomes';
+import { BIOME_LIST, biomeIndex } from './noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, type Chunk, type World } from './world';
 
 export interface GeometryData {
@@ -86,7 +88,7 @@ class GeometryBuilder {
   private colors: number[] = [];
   private indices: number[] = [];
 
-  addFace(x: number, y: number, z: number, face: Face, tile: number, ao: readonly number[], topY = 1, light = 0, sky = 1): void {
+  addFace(x: number, y: number, z: number, face: Face, tile: number, ao: readonly number[], topY = 1, light = 0, sky = 1, tint?: readonly [number, number, number]): void {
     const ndx = this.positions.length / 3;
     const col = tile % ATLAS_COLS;
     const row = Math.floor(tile / ATLAS_COLS);
@@ -106,7 +108,8 @@ class GeometryBuilder {
         this.uvs.push(u, v);
       }
       const b = Math.max(AO_CURVE[ao[i]] * sky, light);
-      this.colors.push(b, b, b);
+      if (tint) this.colors.push(b * tint[0], b * tint[1], b * tint[2]);
+      else this.colors.push(b, b, b);
     }
     // AO 各向异性修正：按两条对角线的亮度选择翻转三角剖分
     if (ao[0] + ao[3] < ao[1] + ao[2]) {
@@ -212,7 +215,7 @@ class GeometryBuilder {
   }
 
   /** 花草十字面片（双面成对发射以兼容 FrontSide 材质，朝上法线满亮度；可偏移/缩放用于墙上火把） */
-  addCross(x: number, y: number, z: number, tile: number, light = 0.04, ox = 0, oz = 0, scale = 1): void {
+  addCross(x: number, y: number, z: number, tile: number, light = 0.04, ox = 0, oz = 0, scale = 1, tint?: readonly [number, number, number]): void {
     const col = tile % ATLAS_COLS;
     const row = Math.floor(tile / ATLAS_COLS);
     const lo = 0.5 - 0.4 * scale;
@@ -229,7 +232,8 @@ class GeometryBuilder {
           this.positions.push(x + px, y + py, z + pz);
           this.normals.push(0, 1, 0);
           this.uvs.push((col + u) / ATLAS_COLS, 1 - (row + 1 - (py as number)) / ATLAS_ROWS);
-          this.colors.push(light, light, light);
+          if (tint) this.colors.push(light * tint[0], light * tint[1], light * tint[2]);
+          else this.colors.push(light, light, light);
         }
         if (flip) this.indices.push(ndx, ndx + 2, ndx + 1, ndx, ndx + 3, ndx + 2);
         else this.indices.push(ndx, ndx + 1, ndx + 2, ndx + 2, ndx + 1, ndx + 3);
@@ -243,6 +247,13 @@ const aoScratch = [0, 0, 0, 0];
 /** 不透明查找表（id → 1/0）：替代热路径上的 BLOCKS[id]?.opaque 属性链访问 */
 const OPAQUE = new Uint8Array(BLOCKS.length);
 for (const d of BLOCKS) OPAQUE[d.id] = d.opaque ? 1 : 0;
+
+/** 群系顶点色种类表（id → 0 无 / 1 草色 / 2 叶色） */
+const TINT_KIND = new Uint8Array(BLOCKS.length);
+for (const d of BLOCKS) {
+  if (GRASS_TINT_KEYS.has(d.key)) TINT_KIND[d.id] = 1;
+  else if (FOLIAGE_TINT_KEYS.has(d.key)) TINT_KIND[d.id] = 2;
+}
 
 /** 水面高度表（源 0.875，流水 1-7 逐级变浅） */
 const WATER_TOP = [0.875, 0.766, 0.656, 0.547, 0.437, 0.328, 0.219, 0.109];
@@ -265,7 +276,7 @@ const gidx = (x: number, y: number, z: number): number => ((y + 1) * GW + (z + C
  * 纯数据网格化：输入 3×3 邻居 chunk 的方块数据（datas[9]，索引 (gz+1)*3+(gx+1)，可为 null），
  * 输出几何。与 World/Chunk 解耦，主线程与 Web Worker 共用
  */
-export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null)[], lights: (Uint8Array | null)[], skys: (Uint8Array | null)[]): { solid: GeometryData; water: GeometryData } {
+export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null)[], lights: (Uint8Array | null)[], skys: (Uint8Array | null)[], biomes?: Uint8Array | null): { solid: GeometryData; water: GeometryData } {
   const solid = new GeometryBuilder();
   const water = new GeometryBuilder();
 
@@ -294,6 +305,14 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
   const idAt = (x: number, y: number, z: number): number => idGrid[gidx(x, y, z)];
   const baseX = cx * CHUNK_SIZE;
   const baseZ = cz * CHUNK_SIZE;
+  /** 群系顶点色（biomes 为中心 chunk 16×16 群系索引；草方块只染顶面） */
+  const tintFor = (id: number, x: number, z: number, dirY: number): readonly [number, number, number] | null => {
+    const kind = TINT_KIND[id];
+    if (kind === 0) return null;
+    if (kind === 1 && BLOCKS[id].key === 'grass' && dirY !== 1) return null;
+    const biome = BIOME_LIST[biomes ? biomes[z * CHUNK_SIZE + x] : 0] ?? 'plains';
+    return kind === 1 ? GRASS_TINT_RATIO[biome] : FOLIAGE_TINT_RATIO[biome];
+  };
   for (let y = 0; y < WORLD_HEIGHT; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
       for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -311,7 +330,17 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
           const ox = f === 1 ? 0.25 : f === 3 ? -0.25 : 0;
           const oz = f === 2 ? 0.25 : f === 0 ? -0.25 : 0;
           const wall = f !== undefined;
-          solid.addCross(wx, y, wz, def.side, Math.max(ltGrid[gidx(x, y, z)] / 15, skGrid[gidx(x, y, z)] / 15, 0.04), ox, oz, wall ? 0.75 : 1);
+          solid.addCross(wx, y, wz, def.side, Math.max(ltGrid[gidx(x, y, z)] / 15, skGrid[gidx(x, y, z)] / 15, 0.04), ox, oz, wall ? 0.75 : 1, tintFor(id, x, z, 1) ?? undefined);
+          continue;
+        }
+        if (def.shape === 'panel') {
+          // 藤蔓：贴墙薄片（box3 即薄片盒；附着面贴到不透明墙时剔除）
+          const [x0, y0, z0, x1, y1, z1] = def.box3!;
+          const f = def.facing ?? 0;
+          const [ax, az] = f === 0 ? [0, -1] : f === 1 ? [1, 0] : f === 2 ? [0, 1] : [-1, 0];
+          solid.addBox(wx, y, wz, x0, y0, z0, x1, y1, z1, def, FULL_AO,
+            (dir) => dir[0] === ax && dir[2] === az && isOpaque(x + ax, y, z + az),
+            (dir) => [ltGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15, skGrid[gidx(x + dir[0], y + dir[1], z + dir[2])] / 15]);
           continue;
         }
         if (def.shape === 'slab') {
@@ -423,7 +452,7 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
           // 水面按水位下沉；上方还有水则满格
           const level = id === WATER ? 0 : id - WATER_FLOW_1 + 1;
           const topY = isWaterId(id) ? (isWaterId(idGrid[gidx(x, y + 1, z)]) ? 1 : WATER_TOP[level]) : 1;
-          (isWaterId(id) ? water : solid).addFace(wx, y, wz, face, isWaterId(id) ? WATER_UV_TILE : tile, aoScratch, topY, ltGrid[gidx(bx, by, bz)] / 15, skGrid[gidx(bx, by, bz)] / 15);
+          (isWaterId(id) ? water : solid).addFace(wx, y, wz, face, isWaterId(id) ? WATER_UV_TILE : tile, aoScratch, topY, ltGrid[gidx(bx, by, bz)] / 15, skGrid[gidx(bx, by, bz)] / 15, tintFor(id, x, z, face.dir[1]) ?? undefined);
         }
       }
     }
@@ -443,7 +472,18 @@ export function buildChunkGeometry(world: World, chunk: Chunk): { solid: Geometr
       skys.push(c?.sky ?? null);
     }
   }
-  return buildFromGrid(chunk.cx, chunk.cz, datas, lights, skys);
+  return buildFromGrid(chunk.cx, chunk.cz, datas, lights, skys, chunkBiomes(world, chunk.cx, chunk.cz));
+}
+
+/** 中心 chunk 16×16 列的群系索引（群系顶点色用） */
+export function chunkBiomes(world: World, cx: number, cz: number): Uint8Array {
+  const biomes = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
+  for (let z = 0; z < CHUNK_SIZE; z++) {
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      biomes[z * CHUNK_SIZE + x] = biomeIndex(world.terrain.biomeAt(cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z));
+    }
+  }
+  return biomes;
 }
 
 const FULL_AO = [3, 3, 3, 3];

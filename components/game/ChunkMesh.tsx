@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { buildChunkGeometry, type GeometryData } from '@/lib/mesher';
+import { buildChunkGeometry, chunkBiomes, type GeometryData } from '@/lib/mesher';
 import { getMesherPool } from '@/lib/mesherPool';
 import type { Chunk, World } from '@/lib/world';
 import type { AtlasMaterials } from '@/lib/textures';
@@ -83,7 +83,7 @@ export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materi
     const pool = getMesherPool();
     if (pool) {
       pool
-        .build(key, version, chunk.cx, chunk.cz, datas, lights, skys)
+        .build(key, version, chunk.cx, chunk.cz, datas, lights, skys, chunkBiomes(world, chunk.cx, chunk.cz))
         .then(({ solid, water, version: v }) => {
           if (cancelled) return;
           if (v !== version) return; // 过期结果

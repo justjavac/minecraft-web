@@ -13,6 +13,8 @@ export interface MeshRequest {
   lights: (Uint8Array | null)[];
   /** 与 datas 同布局的 3×3 天空光数组（可为 null） */
   skys: (Uint8Array | null)[];
+  /** 中心 chunk 16×16 群系索引（群系顶点色；可为 null 退化为平原色） */
+  biomes?: Uint8Array | null;
 }
 
 export interface MeshResponse {
@@ -28,8 +30,8 @@ const ctx = self as unknown as {
 };
 
 ctx.onmessage = (e) => {
-  const { key, version, cx, cz, datas, lights, skys } = e.data;
-  const { solid, water } = buildFromGrid(cx, cz, datas, lights, skys);
+  const { key, version, cx, cz, datas, lights, skys, biomes } = e.data;
+  const { solid, water } = buildFromGrid(cx, cz, datas, lights, skys, biomes);
   const response: MeshResponse = { key, version, solid, water };
   ctx.postMessage(response, [
     solid.positions.buffer,

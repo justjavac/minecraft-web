@@ -27,6 +27,16 @@ export type Biome =
   | 'river'
   | 'basin';
 
+/** 群系稳定枚举（网格化/存档按索引传递） */
+export const BIOME_LIST: Biome[] = [
+  'plains', 'forest', 'birch_forest', 'dark_forest', 'taiga', 'snowy',
+  'desert', 'savanna', 'jungle', 'swamp', 'badlands', 'mountains',
+  'mushroom_fields', 'ocean', 'river', 'basin',
+];
+
+/** 群系 → 稳定索引（BIOME_LIST 下标） */
+export const biomeIndex = (b: Biome): number => BIOME_LIST.indexOf(b);
+
 /** 树木种类（对应 blocks 中的 <type>_log / <type>_leaves；橡木为 log/leaves） */
 export type TreeKind = 'oak' | 'birch' | 'spruce' | 'jungle' | 'acacia' | 'dark_oak' | 'cherry';
 
