@@ -63,7 +63,7 @@ describe('羊', () => {
   });
 
   it('剪刀剪毛：掉 1-3 同色毛 + 羊变剪毛态；剪过不再掉', () => {
-    const w = setup([{ kind: 'tool', tool: 'shears', durability: 238 }, ...emptySlots().slice(1)]);
+    setup([{ kind: 'tool', tool: 'shears', durability: 238 }, ...emptySlots().slice(1)]);
     mobs.push(mkMob('sheep', 6, 40, 6, { woolColor: 'brown' }));
     cameraAt(4.5, 41, 6, [1, -0.2, 0]);
     expect(tryPlace()).toBe(false);
