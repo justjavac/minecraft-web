@@ -24,8 +24,8 @@ export const ATLAS_COLS = 8;
 export const TILE_PX = 32;
 /** canvas 绘制图标（工作台/熔炉/装备/食物）的 atlas 起始格号；pack 贴图格数须小于它 */
 export const ICON_TILE_START = 448;
-/** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧） */
-export const ICON_TILE_COUNT = 17;
+/** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧、17 凋灵骷髅头） */
+export const ICON_TILE_COUNT = 18;
 /** atlas 总行数（pack 格 + 图标格） */
 export const ATLAS_ROWS = Math.ceil((ICON_TILE_START + ICON_TILE_COUNT) / ATLAS_COLS);
 
@@ -563,6 +563,12 @@ add('shroomlight', '菌光体', 'shroomlight', { cat: 'utility', digTime: 1, lig
 add('basalt', '玄武岩', { side: 'basalt_side', top: 'basalt_top' }, { cat: 'stone', tool: 'pickaxe', needsPick: true });
 add('blackstone', '黑石', { side: 'blackstone', top: 'blackstone_top' }, { cat: 'stone', tool: 'pickaxe', needsPick: true });
 add('soul_soil', '灵魂土', 'soul_soil', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
+// 凋灵骷髅头：召唤凋灵的材料（凋灵骷髅稀有掉落；贴图为 canvas 绘制的头骨图标格）
+defs.push({
+  id: defs.length, key: 'wither_skeleton_skull', name: '凋灵骷髅头',
+  top: ICON_TILE_START + 17, side: ICON_TILE_START + 17, bottom: ICON_TILE_START + 17,
+  opaque: false, solid: true, digTime: 0.2, cat: 'utility', shape: 'slab', box3: [0.25, 0, 0.25, 0.75, 0.5, 0.75], ...GRASS_SND,
+});
 // 小菌类与菌索（十字植被）
 for (const [k, cn] of [['warped_fungus', '诡异菌'], ['crimson_fungus', '绯红菌'], ['warped_roots', '诡异菌索'], ['crimson_roots', '绯红菌索']] as const) {
   add(k, cn, k, { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });

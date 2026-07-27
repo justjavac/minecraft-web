@@ -47,6 +47,9 @@ const enderLegGeo = new BoxGeometry(0.18, 1.2, 0.18);
 const enderBodyGeo = new BoxGeometry(0.42, 1.1, 0.26);
 const enderArmGeo = new BoxGeometry(0.12, 1.4, 0.12);
 const enderEyeGeo = new BoxGeometry(0.08, 0.06, 0.02);
+const witherRibGeo = new BoxGeometry(0.7, 0.16, 0.3);
+const witherHeadGeo = new BoxGeometry(0.44, 0.44, 0.44);
+const witherSideHeadGeo = new BoxGeometry(0.34, 0.34, 0.34);
 
 type MobMats = Record<string, Material>;
 
@@ -82,6 +85,7 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     collar: l('#c03030'),
     enderman: l('#141414'),
     enderEyes: l('#b050e0'),
+    witherBody: l('#242028'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -222,6 +226,14 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, headGeo, mats.enderman, 0, 2.55, 0);
       addPart(g, enderEyeGeo, mats.enderEyes, -0.09, 2.6, 0.22);
       addPart(g, enderEyeGeo, mats.enderEyes, 0.09, 2.6, 0.22);
+      break;
+    case 'wither':
+      // 凋灵 Boss：三头骨 + 炭黑骨架体（MC 标志造型）
+      addPart(g, witherRibGeo, mats.witherBody, 0, 1.0, 0);
+      addPart(g, witherRibGeo, mats.witherBody, 0, 1.35, 0);
+      addPart(g, witherHeadGeo, mats.witherBody, 0, 1.8, 0);
+      addPart(g, witherSideHeadGeo, mats.witherBody, -0.42, 1.55, 0);
+      addPart(g, witherSideHeadGeo, mats.witherBody, 0.42, 1.55, 0);
       break;
     case 'ghast':
       // 恶魂：雪白巨体 + 下垂触手（MC 下界空中巨怪）

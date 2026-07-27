@@ -2,7 +2,7 @@
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, GRASS, isWaterId } from './blocks';
 import type { Biome } from './noise';
-import { dayFactorAt, pearlTeleport, survivalStats, worldClock } from './game';
+import { dayFactorAt, bossState, pearlTeleport, survivalStats, worldClock } from './game';
 import { useGameStore } from './store';
 import { XP_MOB } from './xp';
 import { explodeAt } from './explosion';
@@ -13,7 +13,7 @@ import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither';
 
 export interface MobDef {
   name: string;
@@ -55,6 +55,9 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   },
   // 末影人：高个传送怪——对视/受击激怒，被追/受伤即瞬移（MC 标志）；水触即伤
   enderman: { name: '末影人', hp: 40, speed: 3.2, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.6, attackCd: 1, drops: [{ material: 'ender_pearl', count: [0, 1] }],
+  },
+  // 凋灵：Boss——悬浮弹幕（凋灵骷髅弹带凋零 DOT），半血以下免疫箭矢（MC）；击杀掉下界之星
+  wither: { name: '凋灵', hp: 300, speed: 2.2, hostile: true, burnsAtDay: false, damage: 8, attackRange: 30, attackCd: 2, drops: [{ material: 'nether_star', count: [1, 1] }],
   },
 };
 
@@ -100,6 +103,8 @@ export interface Mob {
   tamed?: boolean;
   /** 末影人：传送计时（被追/受伤触发瞬移） */
   teleportTimer?: number;
+  /** 凋灵：破坏方块计时与弹幕计时 */
+  smashTimer?: number;
   /** 村庄锚点（村民不远离村庄；生成时写入） */
   homeX?: number;
   homeZ?: number;
@@ -116,8 +121,8 @@ export interface Arrow {
   age: number;
   /** 玩家发射（命中生物而非玩家；缺省为骷髅射向玩家的箭） */
   fromPlayer?: boolean;
-  /** 烈焰人火球（更大更亮，命中伤害 4）或恶魂爆裂火球（命中/撞墙爆炸）或末影珍珠（落点传送） */
-  kind?: 'fireball' | 'ghast' | 'pearl';
+  /** 烈焰人火球（更大更亮，命中伤害 4）或恶魂爆裂火球（命中/撞墙爆炸）或凋灵骷髅弹（爆炸 + 凋零 DOT）或末影珍珠（落点传送） */
+  kind?: 'fireball' | 'ghast' | 'pearl' | 'wither_skull';
 }
 
 export const mobs: Mob[] = [];
@@ -229,6 +234,13 @@ function makeMob(type: MobType, x: number, y: number, z: number): Mob {
   };
   if (type === 'sheep') mob.woolColor = pickWoolColor();
   return mob;
+}
+
+/** 生成凋灵 Boss（lib/wither.ts 召唤用；全程激怒并悬浮） */
+export function makeWither(x: number, y: number, z: number): Mob {
+  const m = makeMob('wither', x, y, z);
+  m.aggroTimer = Number.MAX_SAFE_INTEGER; // Boss 全程激怒
+  return m;
 }
 
 /** 在玩家周围环形区域找地表生成（夜晚敌对、白天被动且只在草地上；村庄附近生成村民；蘑菇岛只出蘑菇牛且夜晚不刷怪） */
@@ -387,7 +399,7 @@ export function checkEndermanStare(
   return false;
 }
 
-function spawnArrow(m: Mob, target: { x: number; y: number; z: number }, kind?: 'fireball' | 'ghast'): void {
+function spawnArrow(m: Mob, target: { x: number; y: number; z: number }, kind?: 'fireball' | 'ghast' | 'wither_skull'): void {
   const ox = m.x;
   const oy = m.y + 1.5;
   const oz = m.z;
@@ -472,6 +484,11 @@ function tickArrows(
     if (BLOCKS[world.getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z))]?.solid) {
       // 恶魂爆裂火球：撞墙即爆（MC）
       if (a.kind === 'ghast') explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 10, hurtRadius: 3 });
+      // 凋灵骷髅弹：撞墙即爆 + 爆圈玩家中凋零 DOT（MC 凋灵弹幕）
+      if (a.kind === 'wither_skull') {
+        explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 8, hurtRadius: 3 });
+        if (Math.hypot(playerPos.x - a.x, playerPos.y - a.y, playerPos.z - a.z) < 3.5) survivalStats.wither = 5;
+      }
       // 末影珍珠：落点传送玩家 + 2 点伤害（MC）
       if (a.kind === 'pearl') {
         pearlTeleport.pending = { x: Math.floor(a.x) + 0.5, y: Math.ceil(a.y) + 0.01, z: Math.floor(a.z) + 0.5 };
@@ -493,21 +510,26 @@ function tickArrows(
         if (a.kind === 'pearl') {
           pearlTeleport.pending = { x: Math.floor(a.x) + 0.5, y: Math.ceil(a.y) + 0.01, z: Math.floor(a.z) + 0.5 };
           onAttackPlayer(2);
+        } else if (hitMob.type === 'wither' && hitMob.hp < MOB_DEFS.wither.hp / 2) {
+          // 凋灵半血以下免疫箭矢（MC 规则：弹开不掉血）
         } else {
-          damageMob(hitMob, 9, { x: a.x - a.vx, z: a.z - a.vz });
+          damageMob(hitMob, 9, { x: a.x - a.vx, z: a.z - a.vz }, 0, world);
         }
         arrows.splice(i, 1);
         continue;
       }
     } else if (
-      // 骷髅的箭/烈焰人的火球/恶魂的爆裂球：命中玩家（AABB 粗略判定；爆裂球命中即爆）
+      // 骷髅的箭/烈焰人的火球/恶魂的爆裂球/凋灵骷髅弹：命中玩家（AABB 粗略判定）
       Math.abs(playerPos.x - a.x) < 0.5 &&
       a.y > playerPos.y &&
       a.y < playerPos.y + 1.8 &&
       Math.abs(playerPos.z - a.z) < 0.5
     ) {
       if (a.kind === 'ghast') explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 10, hurtRadius: 3 });
-      else onAttackPlayer(a.kind === 'fireball' ? 4 : 3);
+      else if (a.kind === 'wither_skull') {
+        explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 8, hurtRadius: 3 });
+        survivalStats.wither = 5;
+      } else onAttackPlayer(a.kind === 'fireball' ? 4 : 3);
       arrows.splice(i, 1);
       continue;
     }
@@ -532,6 +554,17 @@ export function tickMobs(
   }
 
   tickArrows(world, dt, playerPos, onAttackPlayer);
+
+  // Boss 血条状态：凋灵存活且在 48 格内（无则清空）
+  const boss = mobs.find((m) => m.type === 'wither' && Math.hypot(m.x - playerPos.x, m.z - playerPos.z) < 48);
+  if (boss) {
+    bossState.name = '凋灵';
+    bossState.hp = Math.max(0, boss.hp);
+    bossState.max = MOB_DEFS.wither.hp;
+  } else if (bossState.name) {
+    bossState.name = '';
+    bossState.hp = 0;
+  }
 
   for (let i = mobs.length - 1; i >= 0; i--) {
     const m = mobs[i];
@@ -585,7 +618,36 @@ export function tickMobs(
       }
     } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0)) && (m.type !== 'enderman' || (m.aggroTimer ?? 0) > 0)) {
       // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼/末影人未被激怒时中立）
-      if (m.type === 'enderman') {
+      if (m.type === 'wither') {
+        // 凋灵 Boss：悬浮追踪 + 每 2s 凋灵骷髅弹幕 + 每 4s 粉碎周围方块（MC）
+        if (dist > 0.01 && dist < CHASE_RANGE * 2) {
+          mx = (dx / dist) * def.speed;
+          mz = (dz / dist) * def.speed;
+        }
+        m.arrowCd -= dt;
+        if (dist < def.attackRange && m.arrowCd <= 0) {
+          m.arrowCd = def.attackCd;
+          spawnArrow(m, playerPos, 'wither_skull');
+        }
+        // 破坏周围 3×3×3 方块（防爆除外；MC 凋灵破阵）
+        m.smashTimer = (m.smashTimer ?? 4) - dt;
+        if (m.smashTimer <= 0) {
+          m.smashTimer = 4;
+          const bx = Math.floor(m.x);
+          const by = Math.floor(m.y);
+          const bz = Math.floor(m.z);
+          for (let sx = -1; sx <= 1; sx++) {
+            for (let sy = -1; sy <= 1; sy++) {
+              for (let sz = -1; sz <= 1; sz++) {
+                const id = world.getBlock(bx + sx, by + sy, bz + sz);
+                if (id !== AIR && !BLOCKS[id]?.unbreakable && BLOCKS[id]?.pickTier !== 3 && !isWaterId(id) && !BLOCKS[id]?.lava) {
+                  world.setBlock(bx + sx, by + sy, bz + sz, AIR);
+                }
+              }
+            }
+          }
+        }
+      } else if (m.type === 'enderman') {
         // 末影人：高速追击 + 近身/受击瞬移闪避 + 定期瞬移逼近（MC）
         if (dist < 4) {
           // 近身即瞬移闪避（MC）
@@ -791,10 +853,10 @@ export function tickMobs(
     // 被 1 格障碍挡住时跳起
     if ((hitX || hitZ) && m.onGround) m.velY = 8.5;
 
-    if (m.type === 'blaze' || m.type === 'ghast') {
-      // 悬浮：相位起伏，不受重力（恶魂起伏更慢）
-      m.bob = (m.bob ?? Math.random() * 6) + dt * (m.type === 'ghast' ? 0.8 : 2);
-      m.y += Math.sin(m.bob) * (m.type === 'ghast' ? 0.3 : 0.5) * dt;
+    if (m.type === 'blaze' || m.type === 'ghast' || m.type === 'wither') {
+      // 悬浮：相位起伏，不受重力（恶魂/凋灵起伏更慢）
+      m.bob = (m.bob ?? Math.random() * 6) + dt * (m.type === 'blaze' ? 2 : 0.8);
+      m.y += Math.sin(m.bob) * (m.type === 'blaze' ? 0.5 : 0.3) * dt;
       m.velY = 0;
     } else {
       m.velY = Math.max(m.velY - GRAVITY * dt, -50);
@@ -891,6 +953,10 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   // 羊：掉同色羊毛 ×1（剪过毛的不掉，MC）
   if (mob.type === 'sheep' && !mob.sheared) {
     spawnBlockDrop(woolBlockId(mob.woolColor ?? 'white'), mob.x, mob.y + 0.3, mob.z, 1 + (lootBonus > 0 ? Math.floor(Math.random() * lootBonus) : 0));
+  }
+  // 凋灵骷髅：3% 掉头骨（召唤凋灵的材料，MC 稀有掉落）
+  if (mob.type === 'wither_skeleton' && Math.random() < 0.03) {
+    spawnBlockDrop(BLOCK_BY_KEY.wither_skeleton_skull.id, mob.x, mob.y + 0.3, mob.z, 1);
   }
   useGameStore.getState().addXp(XP_MOB[mob.type]);
   const i = mobs.indexOf(mob);

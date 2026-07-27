@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { BLOCKS } from '@/lib/blocks';
-import { debugInfo, survivalStats } from '@/lib/game';
+import { bossState, debugInfo, survivalStats } from '@/lib/game';
 import { clearMobs } from '@/lib/mobs';
 import { MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
 import { effects } from '@/lib/effects';
@@ -290,6 +290,26 @@ function PauseOverlay() {
   );
 }
 
+/** Boss 血条（凋灵在附近时置顶显示，MC 紫色条） */
+function BossBar() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(t);
+  }, []);
+  if (!bossState.name) return null;
+  return (
+    <div className="absolute left-1/2 top-2 w-96 -translate-x-1/2">
+      <div className="mb-1 text-center text-sm font-bold text-white" style={{ textShadow: '1px 1px 0 #000' }}>
+        {bossState.name}
+      </div>
+      <div className="h-2 rounded bg-black/60">
+        <div className="h-full rounded bg-purple-600 transition-[width]" style={{ width: `${(bossState.hp / bossState.max) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /** DOM 覆盖层：准星、热键栏、血条、暂停/死亡遮罩 */
 export function Hud() {
   const selectedSlot = useGameStore((s) => s.selectedSlot);
@@ -330,6 +350,9 @@ export function Hud() {
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl font-light text-white mix-blend-difference">
         +
       </div>
+
+      {/* Boss 血条 */}
+      <BossBar />
 
       <Notice />
 

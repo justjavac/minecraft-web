@@ -60,7 +60,7 @@ export interface WorldMeta extends SaveExtras {
   updatedAt: number;
 }
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 

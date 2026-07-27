@@ -176,6 +176,18 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
     ctx.fillStyle = '#b8b8b8';
     ctx.fillRect(dx + 7, dy + 5, 2, 1);
   },
+  // 凋灵骷髅头：黑底三脸（每脸双目，MC 凋灵骷髅标志）
+  [ICON_TILE_START + 17]: (ctx, dx, dy) => {
+    ctx.fillStyle = '#161616';
+    ctx.fillRect(dx, dy, 16, 16);
+    ctx.fillStyle = '#3a3a3a';
+    for (const fx of [2, 6, 10]) {
+      ctx.fillRect(dx + fx, dy + 5, 2, 2); // 左眼
+      ctx.fillRect(dx + fx + 2, dy + 5, 2, 2); // 右眼
+      ctx.fillRect(dx + fx + 1, dy + 8, 2, 3); // 鼻
+      ctx.fillRect(dx + fx, dy + 12, 4, 1); // 颌
+    }
+  },
 };
 
 /** atlas 画布的 dataURL（HUD 图标裁剪用），build 完成后可用 */

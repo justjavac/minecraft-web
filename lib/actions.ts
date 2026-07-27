@@ -12,6 +12,7 @@ import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
 import { clearBrokenPortals, tryIgnitePortal } from './portal';
+import { trySummonWither } from './wither';
 import { pistonIdFor } from './pistons';
 import { cycleRepeaterDelay, isComparatorId, isRepeaterId, toggleComparatorMode, toggleLever } from './redstone';
 import { XP_ORE } from './xp';
@@ -504,6 +505,8 @@ export function tryPlace(): boolean {
   // 校验全部通过：扣减并放置
   if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;
   world.setBlock(px, py, pz, id);
+  // 凋灵骷髅头放下：检测 T 形召唤（MC 凋灵仪式）
+  if (id === BLOCK_BY_KEY.wither_skeleton_skull.id) trySummonWither(world, px, py, pz, (d) => s.damagePlayer(d));
   playSound(BLOCKS[id]?.placeSound ?? 'place');
   lastPlace = now;
   return true;

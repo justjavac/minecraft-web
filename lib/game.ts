@@ -23,6 +23,9 @@ export const teleportState: { pending: { x: number; y: number; z: number } | nul
 /** 末影珍珠落点传送：mobs 命中写入，Player 下帧消费（瞬移 + 清空） */
 export const pearlTeleport: { pending: { x: number; y: number; z: number } | null } = { pending: null };
 
+/** Boss 血条状态（凋灵存活且在玩家附近时由 tickMobs 刷新，Hud 显示；无 Boss 时 name 为空） */
+export const bossState = { name: '', hp: 0, max: 300 };
+
 /** 当前相机，Player 挂载时写入，供触屏按钮执行挖/放 */
 export const cameraRef: { current: Camera | null } = { current: null };
 

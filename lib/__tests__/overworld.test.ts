@@ -255,7 +255,7 @@ describe('树形库（与树苗生长共用）', () => {
 });
 
 describe('存档版本', () => {
-  it('SAVE_VERSION=6（世界高度 128 后不兼容旧档，自动清库重置）', () => {
-    expect(SAVE_VERSION).toBe(6);
+  it('SAVE_VERSION=7（凋灵头骨方块加入后 id 表变化，旧档自动清库重置）', () => {
+    expect(SAVE_VERSION).toBe(7);
   });
 });

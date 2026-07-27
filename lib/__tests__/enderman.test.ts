@@ -124,7 +124,8 @@ describe('末影珍珠', () => {
     for (let i = 0; i < 80 && pearlTeleport.pending === null; i++) tickMobs(w, 0.1, { x: 8.5, y: 40, z: 8.5 }, (d) => (dmg += d));
     expect(pearlTeleport.pending).not.toBeNull();
     expect(dmg).toBe(2); // MC 珍珠摔落伤害
-    expect(useGameStore.getState().hotbarSlots[0]?.kind === 'material' ? useGameStore.getState().hotbarSlots[0]!.count : 0).toBe(1);
+    const slot0 = useGameStore.getState().hotbarSlots[0];
+    expect(slot0?.kind === 'material' && slot0.count).toBe(1);
   });
 
   it('末影人掉末影珍珠（defs）', () => {
