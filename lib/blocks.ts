@@ -750,6 +750,8 @@ defs.push({
   opaque: false, solid: false, unbreakable: true, digTime: 1, cat: 'utility', light: 15,
   shape: 'slab', box3: [0, 0, 0, 1, 0.75, 1], ...GLASS_SND,
 });
+// 末地石：末地主岛主体（MC：镐挖、高抗爆）
+add('end_stone', '末地石', 'end_stone', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 9, ...STONE_SND });
 
 /** 以方块 id 为下标 */
 export const BLOCKS: BlockDef[] = defs;

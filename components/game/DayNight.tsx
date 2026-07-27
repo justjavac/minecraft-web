@@ -137,6 +137,9 @@ export function DayNight() {
     sky.lerp(SKY_DUSK, duskFactor);
     sky.multiplyScalar(dim);
     if (weather.flash > 0) sky.lerp(SKY_FLASH, weather.flash * 0.75);
+    // 末地：天空恒黑、光照恒暗（MC 末地无昼夜）
+    const isEnd = useGameStore.getState().dimension === 'end';
+    if (isEnd) sky.setRGB(0.012, 0.006, 0.024);
     atmosphere.r = sky.r;
     atmosphere.g = sky.g;
     atmosphere.b = sky.b;
@@ -161,7 +164,7 @@ export function DayNight() {
     sunDir.set(Math.cos(a), elevation, 0.25).normalize();
     const dir = dirRef.current;
     if (dir) {
-      dir.intensity = (0.15 + dayFactor * 0.95) * dim + weather.flash * 2.2;
+      dir.intensity = (isEnd ? 0.32 : (0.15 + dayFactor * 0.95) * dim) + weather.flash * 2.2;
       dir.position.set(
         camera.position.x + sunDir.x * 120,
         camera.position.y + sunDir.y * 120,

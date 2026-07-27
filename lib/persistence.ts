@@ -42,7 +42,7 @@ export interface SaveExtras {
   /** 世界模式：创造 / 生存 */
   mode?: WorldMode;
   /** 当前维度（主世界 / 下界） */
-  dimension?: 'overworld' | 'nether';
+  dimension?: 'overworld' | 'nether' | 'end';
   /** 生存数值快照（仅生存模式） */
   survival?: SurvivalSnapshot;
   /** 世界内熔炉状态（"x,y,z" → 状态） */

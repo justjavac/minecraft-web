@@ -48,8 +48,8 @@ export const biomeIndex = (b: Biome): number => BIOME_LIST.indexOf(b);
 export type TreeKind = 'oak' | 'birch' | 'spruce' | 'jungle' | 'acacia' | 'dark_oak' | 'cherry';
 
 export interface Terrain {
-  /** 维度（缺省主世界；nether 走 lib/nether.ts 的生成器） */
-  kind?: 'overworld' | 'nether';
+  /** 维度（缺省主世界；nether 走 lib/nether.ts、end 走 lib/end.ts 的生成器） */
+  kind?: 'overworld' | 'nether' | 'end';
   /** 世界列高度（地表方块的 y 坐标），-1 表示虚空 */
   heightAt(x: number, z: number): number;
   /** 该列的群系（确定性） */

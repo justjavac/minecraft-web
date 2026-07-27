@@ -9,6 +9,7 @@ import { breakBlock, tryPlace } from '@/lib/actions';
 import { isFarmlandId, isWheatCropId } from '@/lib/crops';
 import { cameraRef, debugInfo, digState, getActiveWorld, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput } from '@/lib/game';
 import { otherDimension } from '@/lib/dimension';
+import { END_SPAWN } from '@/lib/end';
 import { isPortalId } from '@/lib/portal';
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
@@ -104,6 +105,7 @@ export function Player() {
   const survivalMem = useRef<SurvivalMem>({ fallDist: 0, air: 15, regenTick: 0, witherTick: 0, regenPotionTick: 0 });
   /** 岩浆灼烧累计（满 1 点扣 1 血） */
   const lavaAcc = useRef(0);
+  const voidAcc = useRef(0);
   const attackCd = useRef(0);
   /** 创造模式即时破坏的上次时间戳（200ms 冷却，防止按住左键每帧破一块） */
   const lastCreativeBreak = useRef(0);
@@ -422,6 +424,17 @@ export function Player() {
     } else {
       lavaAcc.current = 0;
     }
+    // 虚空伤害：掉出世界底部持续掉血（MC y<-64；本世界 y<-16，2 点/秒——末地掉岛即此结局）
+    if (p.y < -16 && gs.worldMode === 'survival' && !gs.dead) {
+      voidAcc.current += dt * 2;
+      const vd = Math.floor(voidAcc.current);
+      if (vd > 0) {
+        voidAcc.current -= vd;
+        gs.damagePlayer(vd);
+      }
+    } else {
+      voidAcc.current = 0;
+    }
     // 药水效果计时（创造模式也递减，MC 一致）
     tickEffects(dt);
     // 信标：校验金字塔并给范围内玩家刷新所选效果（MC）
@@ -474,6 +487,12 @@ export function Player() {
     {
       const feet = world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
       const eye = world.getBlock(Math.floor(p.x), Math.floor(p.y) + 1, Math.floor(p.z));
+      // 末地传送门：接触即传送（MC 即时，无读秒）；落点固定末地出生平台
+      if (feet === BLOCK_BY_KEY.end_portal.id || eye === BLOCK_BY_KEY.end_portal.id) {
+        teleportState.pending = { ...END_SPAWN };
+        gs.setDimension('end');
+        return;
+      }
       if (isPortalId(feet) || isPortalId(eye)) {
         portalAcc.current += dt;
         if (portalAcc.current >= 3) {

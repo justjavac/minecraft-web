@@ -248,6 +248,8 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
   const night = isNight();
   // 下界：只刷僵尸猪灵（下界岩上 2-3 只成群；不被激怒不攻击）
   if (world.terrain.kind === 'nether') return trySpawnNether(world, px, pz);
+  // 末地：末影人成群（末地石表面；MC 末地主岛遍布末影人）
+  if (world.terrain.kind === 'end') return trySpawnEnd(world, px, pz);
   const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
   const passiveCount = mobs.length - hostileCount;
   if (night && hostileCount >= MAX_HOSTILE) return false;
@@ -346,6 +348,31 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
       if (aabbFree(world, bx + 0.5, sy + 2, bz + 0.5, 1.2, 2.5)) mobs.push(makeMob(type, bx + 0.5, sy + 2, bz + 0.5));
     } else {
       mobs.push(makeMob(type, bx + 0.5, sy, bz + 0.5));
+    }
+    return true;
+  }
+  return false;
+}
+
+/** 末地刷怪：末影人 1-3 只成群（末地石表面；MC 末地主岛遍布末影人，无昼夜限制） */
+function trySpawnEnd(world: World, px: number, pz: number): boolean {
+  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
+  if (hostileCount >= MAX_HOSTILE * 2) return false; // 末地密度更高（MC 末影人之岛）
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const ang = Math.random() * Math.PI * 2;
+    const r = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+    const bx = Math.floor(px + Math.cos(ang) * r);
+    const bz = Math.floor(pz + Math.sin(ang) * r);
+    if (!world.chunks.has(`${bx >> 4},${bz >> 4}`)) continue;
+    let y = WORLD_HEIGHT - 8;
+    while (y > 1 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
+    if (y <= 1) continue;
+    if (BLOCKS[world.getBlock(bx, y, bz)]?.key !== 'end_stone') continue;
+    const sy = y + 1;
+    if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
+    const pack = 1 + Math.floor(Math.random() * 3); // 1-3 只
+    for (let i = 0; i < pack; i++) {
+      mobs.push(makeMob('enderman', bx + 0.5 + (Math.random() - 0.5) * 2, sy, bz + 0.5 + (Math.random() - 0.5) * 2));
     }
     return true;
   }

@@ -8,6 +8,7 @@ import { notifyBlockSet } from './saplings';
 import { notifyRedstone } from './redstone';
 import { createTerrain, hash2, hashString, mulberry32, SEA_LEVEL, type Biome, type Terrain } from './noise';
 import { generateNetherChunk } from './nether';
+import { generateEndChunk } from './end';
 import { applyOres } from './oregen';
 import { applyGeodes } from './geodes';
 import { cascadeLight } from './lights';
@@ -474,6 +475,7 @@ export class World {
       chunk.lightDirty = true;
     } else {
       if (this.terrain.kind === 'nether') generateNetherChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
+      else if (this.terrain.kind === 'end') generateEndChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
       else generateChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
       cascadeLight(this, chunk);
     }

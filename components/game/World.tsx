@@ -17,6 +17,7 @@ import {
 } from '@/lib/persistence';
 import { playerPosition, setActiveWorld, debugInfo, teleportState, worldClock } from '@/lib/game';
 import { findLanding, ensurePortal, type Dimension } from '@/lib/dimension';
+import { createEndTerrain } from '@/lib/end';
 import { createNetherTerrain } from '@/lib/nether';
 import { clearFurnaces, furnaces, tickFurnaces, type FurnaceState } from '@/lib/furnace';
 import { brews, clearBrews, tickBrewing, type BrewState } from '@/lib/brewing';
@@ -34,14 +35,18 @@ import { emptySlots, type Slot } from '@/lib/slots';
 import { MAX_HEALTH, MAX_HUNGER, useGameStore } from '@/lib/store';
 import { ChunkMesh } from './ChunkMesh';
 
-/** 下界 chunk 在 IndexedDB 中的键前缀（与主世界存档隔离） */
-const dimPrefix = (d: Dimension): string => (d === 'nether' ? 'n:' : '');
+/** 非主世界 chunk 在 IndexedDB 中的键前缀（与主世界存档隔离） */
+const dimPrefix = (d: Dimension): string => (d === 'nether' ? 'n:' : d === 'end' ? 'e:' : '');
 
-/** 创建某维度的世界实例（下界用下界地形与独立种子） */
+/** 创建某维度的世界实例（下界/末地用各自地形与独立种子） */
 function makeDimWorld(d: Dimension, seedStr: string, saved?: Map<string, Uint16Array>): World {
   if (d === 'nether') {
     const nseed = `${seedStr}:nether`;
     return new World(nseed, saved, createNetherTerrain(nseed));
+  }
+  if (d === 'end') {
+    const eseed = `${seedStr}:end`;
+    return new World(eseed, saved, createEndTerrain(eseed));
   }
   return new World(seedStr, saved);
 }
@@ -49,7 +54,7 @@ function makeDimWorld(d: Dimension, seedStr: string, saved?: Map<string, Uint16A
 /** 读取某维度存档：附近立即加载，其余后台惰性补齐 */
 async function loadDimWorld(d: Dimension, seedStr: string, center: { x: number; z: number }): Promise<World> {
   const prefix = dimPrefix(d);
-  const all = (await listChunkKeys()).filter((k) => (prefix ? k.startsWith(prefix) : !k.startsWith('n:')));
+  const all = (await listChunkKeys()).filter((k) => (prefix ? k.startsWith(prefix) : !k.startsWith('n:') && !k.startsWith('e:')));
   const radius = useGameStore.getState().settings.renderDistance + 2;
   const ccx = Math.floor(center.x / 16);
   const ccz = Math.floor(center.z / 16);
@@ -184,12 +189,16 @@ export function WorldRenderer() {
           for (const [k, v] of ds.brews) brews.set(k, v);
           useGameStore.getState().setSpawnPoint(ds.player);
         }
-        // 跨维度传送：落点扫描 + 无门造门 + 传送坐标落定
+        // 跨维度传送：落点扫描 + 无门造门 + 传送坐标落定（末地落固定出生平台，不造下界门）
         if (teleportState.pending) {
           const tp = teleportState.pending;
-          const landing = findLanding(w, Math.floor(tp.x), Math.floor(tp.z), dimension);
-          ensurePortal(w, Math.floor(landing.x), Math.floor(landing.y), Math.floor(landing.z));
-          useGameStore.getState().setSpawnPoint(landing);
+          if (dimension === 'end') {
+            useGameStore.getState().setSpawnPoint({ x: tp.x, y: tp.y, z: tp.z }); // tp 即 END_SPAWN
+          } else {
+            const landing = findLanding(w, Math.floor(tp.x), Math.floor(tp.z), dimension);
+            ensurePortal(w, Math.floor(landing.x), Math.floor(landing.y), Math.floor(landing.z));
+            useGameStore.getState().setSpawnPoint(landing);
+          }
           teleportState.pending = null;
         }
         w.onChunkRemoved = (c) => {

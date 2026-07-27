@@ -182,7 +182,7 @@ function SurvivalBars() {
   );
 }
 
-/** 死亡遮罩：重生回出生点并清空怪物（物品已掉落在死亡点） */
+/** 死亡遮罩：重生回出生点并清空怪物（物品已掉落在死亡点）；末地死亡回主世界（MC 规则） */
 function DeathOverlay() {
   const respawn = () => {
     const s = useGameStore.getState();
@@ -192,6 +192,7 @@ function DeathOverlay() {
     s.setDead(false);
     survivalStats.exhaustion = 0;
     clearMobs();
+    if (s.dimension === 'end') s.setDimension('overworld'); // MC：末地死亡回主世界重生点
   };
   return (
     <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-black/70">

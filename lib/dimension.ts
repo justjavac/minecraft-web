@@ -6,13 +6,15 @@ import { SEA_LEVEL } from './noise';
 import { isPortalId, tryIgnitePortal } from './portal';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type Dimension = 'overworld' | 'nether';
+export type Dimension = 'overworld' | 'nether' | 'end';
 
+/** 下界门的对侧维度（仅主世界 ↔ 下界互跳用；末地门/返回门走固定目标，不经此函数） */
 export const otherDimension = (d: Dimension): Dimension => (d === 'overworld' ? 'nether' : 'overworld');
 
-/** 跨维度坐标映射（下界 1 格 = 主世界 8 格，MC 一致） */
+/** 跨维度坐标映射（下界 1 格 = 主世界 8 格，MC 一致；末地 1:1） */
 export function mapCoords(pos: { x: number; y: number; z: number }, to: Dimension): { x: number; y: number; z: number } {
   if (to === 'nether') return { x: pos.x / 8, y: pos.y, z: pos.z / 8 };
+  if (to === 'end') return { ...pos };
   return { x: pos.x * 8, y: pos.y, z: pos.z * 8 };
 }
 
