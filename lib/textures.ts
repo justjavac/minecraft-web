@@ -188,6 +188,19 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
       ctx.fillRect(dx + fx, dy + 12, 4, 1); // 颌
     }
   },
+  // 末地传送门：黑底星空（MC 为程序生成纹理，此处固定星点图案）
+  [ICON_TILE_START + 18]: (ctx, dx, dy) => {
+    ctx.fillStyle = '#05060f';
+    ctx.fillRect(dx, dy, 16, 16);
+    const stars: [number, number, string][] = [
+      [2, 3, '#c8d4ff'], [7, 1, '#ffffff'], [12, 4, '#8fa2e8'], [4, 8, '#ffffff'],
+      [10, 10, '#c8d4ff'], [14, 13, '#8fa2e8'], [1, 12, '#c8d4ff'], [8, 14, '#ffffff'], [13, 8, '#e8ecff'],
+    ];
+    for (const [sx, sy, c] of stars) {
+      ctx.fillStyle = c;
+      ctx.fillRect(dx + sx, dy + sy, 1, 1);
+    }
+  },
 };
 
 /** atlas 画布的 dataURL（HUD 图标裁剪用），build 完成后可用 */

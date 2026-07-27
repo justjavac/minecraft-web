@@ -12,6 +12,7 @@ import { applyOres } from './oregen';
 import { applyGeodes } from './geodes';
 import { cascadeLight } from './lights';
 import { applyStructures } from './structures';
+import { applyStronghold } from './stronghold';
 import { HUGE_MUSHROOM_MAX_H, TREE_MAX_H, writeHugeMushroom, writeTree } from './trees';
 
 export const CHUNK_SIZE = 16;
@@ -271,6 +272,8 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
   }
   // 村庄结构（确定性，跨 chunk 一致）
   applyStructures(seedHash, terrain, cx, cz, data);
+  // 要塞（地下石砖结构 + 末地门房间；同样确定性，仅与要塞范围相交的 chunk 有写入）
+  applyStronghold(seedHash, cx, cz, data);
 
   // 植被：按群系撒花草/仙人掌/甘蔗/蘑菇/睡莲/瓜果（只有支撑且上方为空才放）
   for (let x = 0; x < CHUNK_SIZE; x++) {

@@ -121,8 +121,8 @@ export interface Arrow {
   age: number;
   /** 玩家发射（命中生物而非玩家；缺省为骷髅射向玩家的箭） */
   fromPlayer?: boolean;
-  /** 烈焰人火球（更大更亮，命中伤害 4）或恶魂爆裂火球（命中/撞墙爆炸）或凋灵骷髅弹（爆炸 + 凋零 DOT）或末影珍珠（落点传送） */
-  kind?: 'fireball' | 'ghast' | 'pearl' | 'wither_skull';
+  /** 烈焰人火球（更大更亮，命中伤害 4）或恶魂爆裂火球（命中/撞墙爆炸）或凋灵骷髅弹（爆炸 + 凋零 DOT）或末影珍珠（落点传送）或末影之眼（飞向要塞后悬停碎裂/掉落） */
+  kind?: 'fireball' | 'ghast' | 'pearl' | 'wither_skull' | 'eye';
 }
 
 export const mobs: Mob[] = [];
@@ -450,6 +450,23 @@ export function fireEnderPearl(origin: { x: number; y: number; z: number }, dir:
   });
 }
 
+/** 玩家投掷末影之眼：朝最近要塞水平方向直飞，悬停后 20% 碎裂 / 80% 原地掉落（MC 规则） */
+export function fireEyeOfEnder(origin: { x: number; y: number; z: number }, targetX: number, targetZ: number): void {
+  const dx = targetX - origin.x;
+  const dz = targetZ - origin.z;
+  const d = Math.max(Math.hypot(dx, dz), 0.01);
+  arrows.push({
+    id: nextArrowId++,
+    x: origin.x, y: origin.y, z: origin.z,
+    vx: (dx / d) * 9,
+    vy: 3.5, // 先升后平（MC 之眼先窜高）
+    vz: (dz / d) * 9,
+    age: 0,
+    fromPlayer: true,
+    kind: 'eye',
+  });
+}
+
 /** 苦力怕爆炸：委托共享爆炸逻辑（防爆方块除外，MC 一致） */
 function explode(
   world: World,
@@ -469,6 +486,22 @@ function tickArrows(
   for (let i = arrows.length - 1; i >= 0; i--) {
     const a = arrows[i];
     a.age += dt;
+    // 末影之眼：无重力直飞 0.8s，随后减速悬停缓升；1.5s 到期 20% 碎裂 / 80% 原地掉落（MC）
+    if (a.kind === 'eye') {
+      if (a.age > 0.8) {
+        a.vx *= Math.max(0, 1 - dt * 4);
+        a.vz *= Math.max(0, 1 - dt * 4);
+        a.vy = 1.2;
+      }
+      a.x += a.vx * dt;
+      a.y += a.vy * dt;
+      a.z += a.vz * dt;
+      if (a.age >= 1.5) {
+        arrows.splice(i, 1);
+        if (Math.random() >= 0.2) spawnMaterialDrop('eye_of_ender', a.x, a.y, a.z);
+      }
+      continue;
+    }
     if (!a.kind || a.kind === 'pearl') a.vy -= 4 * dt; // 箭与珍珠的重力（较轻，保证射程内能命中）；火球类无重力（MC）
     const nx = a.x + a.vx * dt;
     const ny = a.y + a.vy * dt;

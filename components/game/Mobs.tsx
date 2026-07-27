@@ -91,6 +91,7 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     robe: l('#7a5230'),
     villagerSkin: l('#b58a6a'),
     arrow: l('#a8a8a8'),
+    enderEye: l('#2fae5f'), // 末影之眼（绿）
     // 村民职业袍色（交易界面同色）
     ...Object.fromEntries(Object.entries(PROFESSION_INFO).map(([p, info]) => [`robe_${p}`, l(info.robe)])),
     // 羊毛色（羊模型用，MC 分布六色）
@@ -373,9 +374,9 @@ export function Mobs() {
         seenArrows.add(a.id);
         let mesh = arrowMeshMap.current.get(a.id);
         if (!mesh) {
-          // 烈焰人火球：橙色大球；恶魂爆裂球：淡紫大球；箭：灰色小条
-          const isBall = a.kind === 'fireball' || a.kind === 'ghast';
-          mesh = new Mesh(isBall ? fireballGeo : arrowGeo, a.kind === 'ghast' ? mobMats.ghastTear : a.kind === 'fireball' ? mobMats.blaze : mobMats.arrow);
+          // 烈焰人火球：橙色大球；恶魂爆裂球：淡紫大球；末影之眼：绿色小球；箭：灰色小条
+          const isBall = a.kind === 'fireball' || a.kind === 'ghast' || a.kind === 'eye';
+          mesh = new Mesh(isBall ? fireballGeo : arrowGeo, a.kind === 'ghast' ? mobMats.ghastTear : a.kind === 'fireball' ? mobMats.blaze : a.kind === 'eye' ? mobMats.enderEye : mobMats.arrow);
           group.add(mesh);
           arrowMeshMap.current.set(a.id, mesh);
         }

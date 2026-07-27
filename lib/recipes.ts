@@ -119,6 +119,8 @@ export const RECIPES: Recipe[] = [
   { id: 'glowstone', name: '荧石', out: { kind: 'block', id: KID('glowstone'), count: 1 }, cost: [{ item: 'material:glowstone_dust', count: 4 }], needsTable: false },
   // 烈焰粉：1 烈焰棒 → 2 烈焰粉（MC）
   { id: 'blaze_powder', name: '烈焰粉 ×2', out: { kind: 'material', material: 'blaze_powder', count: 2 }, cost: [{ item: 'material:blaze_rod', count: 1 }], needsTable: false },
+  // 末影之眼：末影珍珠 + 烈焰粉（MC 无序合成）——投掷定位要塞、嵌末地门框架
+  { id: 'eye_of_ender', name: '末影之眼', out: { kind: 'material', material: 'eye_of_ender', count: 1 }, cost: [{ item: 'material:ender_pearl', count: 1 }, { item: 'material:blaze_powder', count: 1 }], needsTable: false },
   // 下界砖块：4 下界岩（MC：2×2 下界岩合下界砖块的前身——此处按 4 合 1 简化）
   { id: 'nether_bricks', name: '下界砖块', out: { kind: 'block', id: KID('nether_bricks'), count: 1 }, cost: [{ item: K('netherrack'), count: 4 }], needsTable: false },
   // —— 酿造（配方与 MC 一致） ——

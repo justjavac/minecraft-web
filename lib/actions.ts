@@ -17,7 +17,8 @@ import { trySummonWither } from './wither';
 import { pistonIdFor } from './pistons';
 import { cycleRepeaterDelay, isComparatorId, isRepeaterId, toggleComparatorMode, toggleLever } from './redstone';
 import { XP_ORE } from './xp';
-import { BREED_FOOD, feedMob, fireEnderPearl, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
+import { BREED_FOOD, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
+import { fillPortalFrame, nearestStronghold } from './stronghold';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
 import { useGameStore, MAX_HEALTH } from './store';
@@ -197,6 +198,23 @@ export function tryPlace(): boolean {
         return false;
       }
     }
+    // 手持末影之眼右键：投掷，朝最近要塞方向直飞（MC 定位要塞）；瞄准空门框架时除外（走下方嵌眼）
+    if (held?.kind === 'material' && held.material === 'eye_of_ender') {
+      camera.getWorldDirection(dir);
+      const aim = raycastBlock(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
+      const aimFrame = aim !== null && world.getBlock(aim.block[0], aim.block[1], aim.block[2]) === BLOCK_BY_KEY.end_portal_frame.id;
+      if (!aimFrame && s.consumeMaterial('eye_of_ender', 1)) {
+        const spot = nearestStronghold(world.seedHash, playerPosition.x, playerPosition.z);
+        fireEyeOfEnder(
+          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
+          spot.x,
+          spot.z,
+        );
+        playSound('place');
+        lastPlace = now;
+        return false;
+      }
+    }
     // 右键村民：打开交易界面（MC；不看手持物，优先于繁殖判定）
     camera.getWorldDirection(dir);
     const mobForTrade = mobInReach(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
@@ -359,6 +377,20 @@ export function tryPlace(): boolean {
     if (res.ok) playSound('place');
     s.setNotice(res.notice);
     lastPlace = now;
+    return false;
+  }
+  // 末地门框架：手持末影之眼右击嵌入；12 框全嵌眼则激活末地传送门（MC）
+  if (hitId === BLOCK_BY_KEY.end_portal_frame.id) {
+    const heldEye = s.hotbarSlots[s.selectedSlot];
+    if (heldEye?.kind === 'material' && heldEye.material === 'eye_of_ender') {
+      const r = fillPortalFrame(world, bx, by, bz);
+      if (r !== 'invalid') {
+        if (s.worldMode === 'survival') s.consumeMaterial('eye_of_ender', 1);
+        s.setNotice(r === 'activated' ? '末地传送门激活！' : '末影之眼已嵌入框架');
+        playSound('place');
+        lastPlace = now;
+      }
+    }
     return false;
   }
   // 箱子/木桶：右键打开容器界面

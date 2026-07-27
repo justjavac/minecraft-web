@@ -25,7 +25,7 @@ export const TILE_PX = 32;
 /** canvas 绘制图标（工作台/熔炉/装备/食物）的 atlas 起始格号；pack 贴图格数须小于它 */
 export const ICON_TILE_START = 448;
 /** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧、17 凋灵骷髅头） */
-export const ICON_TILE_COUNT = 18;
+export const ICON_TILE_COUNT = 19;
 /** atlas 总行数（pack 格 + 图标格） */
 export const ATLAS_ROWS = Math.ceil((ICON_TILE_START + ICON_TILE_COUNT) / ATLAS_COLS);
 
@@ -733,6 +733,22 @@ defs.push({
   id: defs.length, key: 'chest', name: '箱子',
   top: tileOf('oak_planks'), bottom: tileOf('oak_planks'), side: ICON_TILE_START + 16,
   opaque: true, solid: true, tool: 'axe', digTime: 3, cat: 'utility', ...WOOD_SND,
+});
+
+// ——— 末地门（要塞生成，lib/stronghold.ts；生存不可破坏，MC） ———
+// 框架：MC 高 13/16，右击填入末影之眼切换为嵌眼态
+add('end_portal_frame', '末地门框架', { top: 'end_portal_frame_top', side: 'end_portal_frame_side', bottom: 'end_stone' }, {
+  cat: 'utility', unbreakable: true, digTime: 1, shape: 'slab', box3: [0, 0, 0, 1, 0.8125, 1], opaque: false, ...STONE_SND,
+});
+add('end_portal_frame_eye', '末地门框架（嵌眼）', { top: 'end_portal_frame_eye', side: 'end_portal_frame_side', bottom: 'end_stone' }, {
+  cat: 'utility', unbreakable: true, digTime: 1, shape: 'slab', box3: [0, 0, 0, 1, 0.8125, 1], opaque: false, ...STONE_SND,
+});
+// 末地传送门：12 框架全嵌眼后生成；黑色星空面为 canvas 图标格（MC 为程序生成纹理）
+defs.push({
+  id: defs.length, key: 'end_portal', name: '末地传送门',
+  top: ICON_TILE_START + 18, side: ICON_TILE_START + 18, bottom: ICON_TILE_START + 18,
+  opaque: false, solid: false, unbreakable: true, digTime: 1, cat: 'utility', light: 15,
+  shape: 'slab', box3: [0, 0, 0, 1, 0.75, 1], ...GLASS_SND,
 });
 
 /** 以方块 id 为下标 */
