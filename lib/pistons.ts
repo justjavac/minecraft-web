@@ -4,8 +4,6 @@
 import { AIR, BLOCK_BY_KEY, BLOCKS, isWaterId, isLavaId, type BlockId } from './blocks';
 import type { World } from './world';
 
-const PISTON = () => BLOCK_BY_KEY.piston_n.id;
-const STICKY = () => BLOCK_BY_KEY.piston_sticky_n.id;
 const HEAD = () => BLOCK_BY_KEY.piston_head.id;
 
 const pistonKey = (id: BlockId): string => BLOCKS[id]?.key ?? '';

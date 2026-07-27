@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AIR, BLOCK_BY_KEY, STONE } from '../blocks';
 import { VOID_TERRAIN } from '../noise';
-import { cleanupOrphanHeads, isExtended, isPistonId, pistonIdFor, retract, tryExtend } from '../pistons';
+import { cleanupOrphanHeads, isExtended, isPistonId, pistonIdFor, tryExtend } from '../pistons';
 import { clearRedstone, toggleLever } from '../redstone';
 import { RECIPES } from '../recipes';
 import { World } from '../world';
