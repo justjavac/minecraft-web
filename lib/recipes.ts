@@ -114,6 +114,8 @@ export const RECIPES: Recipe[] = [
   { id: 'redstone_block', name: '红石块', out: { kind: 'block', id: KID('redstone_block'), count: 1 }, cost: [{ item: 'material:redstone', count: 9 }], needsTable: false },
   { id: 'redstone_from_block', name: '红石 ×9', out: { kind: 'material', material: 'redstone', count: 9 }, cost: [{ item: K('redstone_block'), count: 1 }], needsTable: false },
   { id: 'redstone_lamp', name: '红石灯', out: { kind: 'block', id: KID('redstone_lamp'), count: 1 }, cost: [{ item: 'material:redstone', count: 4 }, { item: K('sea_lantern'), count: 1 }], needsTable: true },
+  // 打火石：铁锭 + 燧石（MC）
+  { id: 'flint_and_steel', name: '打火石', out: { kind: 'material', material: 'flint_and_steel', count: 1 }, cost: [{ item: 'material:iron_ingot', count: 1 }, { item: 'material:flint', count: 1 }], needsTable: false },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_pickaxe', name: '石镐', out: { kind: 'tool', tool: 'stone_pickaxe' }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'wooden_axe', name: '木斧', out: { kind: 'tool', tool: 'wooden_axe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },

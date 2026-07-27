@@ -9,6 +9,7 @@ import { setGrowthDropHandler } from './growth';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
+import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { toggleLever } from './redstone';
 import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach } from './mobs';
 import { playSound } from './sound';
@@ -71,6 +72,8 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
       cy++;
     }
   }
+  // 传送门联动：邻近门块的框若已不完整，整片门熄灭
+  clearBrokenPortals(world, x, y, z);
   // 耕地被破坏：上面的作物一律清掉（创造模式也清，否则留浮空作物）；种子掉落物只在生存模式产生
   if (isFarmlandId(oldId) && isWheatCropId(world.getBlock(x, y + 1, z))) {
     world.setBlock(x, y + 1, z, AIR);
@@ -104,6 +107,10 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
     } else if (oldId === BLOCK_BY_KEY.short_grass.id || oldId === BLOCK_BY_KEY.fern.id || oldId === BLOCK_BY_KEY.tall_grass.id || oldId === BLOCK_BY_KEY.large_fern.id) {
       // 草丛/蕨/高草丛/大型蕨：25% 掉小麦种子（MC 种草得种子的途径）
       if (Math.random() < 0.25) spawnMaterialDrop('wheat_seeds', x + 0.5, y + 0.4, z + 0.5, 1);
+    } else if (oldId === BLOCK_BY_KEY.gravel.id) {
+      // MC：砂砾 10% 掉燧石，否则掉砂砾自身
+      if (Math.random() < 0.1) spawnMaterialDrop('flint', x + 0.5, y + 0.4, z + 0.5, 1);
+      else spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
     } else if (tierOk) {
       spawnBlockDrop(def.dropBlock ?? oldId, x + 0.5, y + 0.4, z + 0.5);
     }
@@ -292,6 +299,14 @@ export function tryPlace(): boolean {
   const px = bx + fx;
   const py = by + fy;
   const pz = bz + fz;
+  // 打火石：右键黑曜石框内侧，点燃下界传送门
+  if (heldSlot?.kind === 'material' && heldSlot.material === 'flint_and_steel' && hitId === BLOCK_BY_KEY.obsidian.id) {
+    if (tryIgnitePortal(world, px, py, pz)) {
+      playSound('place');
+      lastPlace = now;
+      return true;
+    }
+  }
   if (py < 0 || py >= WORLD_HEIGHT) return false; // 世界高度外不可放置（先检查再扣物品）
   if (intersectsPlayer(px, py, pz)) return false;
   let id: BlockId | null;

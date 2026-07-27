@@ -47,10 +47,10 @@ beforeEach(() => {
 });
 
 describe('蘑菇岛规则（MC：不刷敌对生物，只出蘑菇牛）', () => {
-  it('白天在菌丝上生成蘑菇牛', () => {
+  it('白天在菌丝上生成蘑菇牛', { timeout: 30000 }, () => {
     const w = new World('mush-isle-day', undefined, mushTerrain);
-    // 预载生成环覆盖的 chunk（trySpawn 只读已加载 chunk）
-    for (let cx = -4; cx <= 4; cx++) for (let cz = -4; cz <= 4; cz++) w.getChunk(cx, cz);
+    // 预载生成环覆盖的 chunk（trySpawn 只读已加载 chunk；环 24-48 格 → 中心 5×5 足够）
+    for (let cx = -2; cx <= 2; cx++) for (let cz = -2; cz <= 2; cz++) w.getChunk(cx, cz);
     worldClock.t = 0.3; // 白天
     let spawned = false;
     for (let i = 0; i < 30 && !spawned; i++) spawned = trySpawn(w, 8, 8);

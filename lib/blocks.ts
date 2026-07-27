@@ -562,6 +562,14 @@ add('redstone_block', '红石块', 'redstone_block', { cat: 'ore', tool: 'pickax
 // 红石灯：供能点亮（发光 15），断能熄灭
 const lampOff = add('redstone_lamp', '红石灯', 'redstone_lamp', { cat: 'utility', digTime: 0.45, ...GLASS_SND });
 add('redstone_lamp_lit', '红石灯（亮）', 'redstone_lamp_on', { cat: 'utility', digTime: 0.45, light: 15, dropBlock: lampOff.id, ...GLASS_SND });
+
+// ——— 下界传送门（打火石点燃黑曜石框；lib/portal.ts；面板朝向随门框轴向，不可破坏） ———
+const portalNs = add('nether_portal_ns', '下界传送门', 'nether_portal', {
+  cat: 'utility', shape: 'panel', facing: 0, box3: [0, 0, 0.4375, 1, 1, 0.5625], opaque: false, solid: false, unbreakable: true, digTime: 1, light: 11, ...GLASS_SND,
+});
+add('nether_portal_we', '下界传送门', 'nether_portal', {
+  cat: 'utility', shape: 'panel', facing: 1, box3: [0.4375, 0, 0, 0.5625, 1, 1], opaque: false, solid: false, unbreakable: true, digTime: 1, light: 11, dropBlock: portalNs.id, ...GLASS_SND,
+});
 // 树苗（可生长，wood 见 lib/saplings.ts；红树在原版叫"红树胎生苗"）
 const SAPLINGS: [key: string, tex: string, cn: string, wood: string][] = [
   ['oak_sapling', 'oak_sapling', '橡树树苗', 'oak'],
