@@ -550,6 +550,23 @@ add('soul_sand', '灵魂沙', 'soul_sand', {
 // 荧石：发光 15，挖掉掉荧石粉 2-4（MC）
 add('glowstone', '荧石', 'glowstone', { cat: 'utility', digTime: 1.5, light: 15, drop: { material: 'glowstone_dust', count: [2, 4] }, ...GLASS_SND });
 add('nether_quartz_ore', '下界石英矿石', 'nether_quartz_ore', { cat: 'ore', tool: 'pickaxe', pickTier: 0, drop: { material: 'quartz', count: [1, 1] }, digTime: 15 });
+// ——— 下界群系（诡异/绯红森林、灵魂沙谷、玄武岩三角洲） ———
+add('warped_nylium', '诡异菌岩', { side: 'warped_nylium_side', top: 'warped_nylium', bottom: 'netherrack' }, { cat: 'earth', tool: 'pickaxe', needsPick: true, digTime: 2 });
+add('crimson_nylium', '绯红菌岩', { side: 'crimson_nylium_side', top: 'crimson_nylium', bottom: 'netherrack' }, { cat: 'earth', tool: 'pickaxe', needsPick: true, digTime: 2 });
+add('warped_stem', '诡异菌柄', { side: 'warped_stem', top: 'warped_stem_top' }, { cat: 'wood', tool: 'axe', digTime: 3, ...WOOD_SND });
+add('crimson_stem', '绯红菌柄', { side: 'crimson_stem', top: 'crimson_stem_top' }, { cat: 'wood', tool: 'axe', digTime: 3, ...WOOD_SND });
+add('warped_wart_block', '诡异疣块', 'warped_wart_block', { cat: 'wood', tool: 'axe', digTime: 1.5, ...GRASS_SND });
+add('nether_wart_block', '下界疣块', 'nether_wart_block', { cat: 'wood', tool: 'axe', digTime: 1.5, ...GRASS_SND });
+// 菌光体：发光 15（巨型菌类树树冠内照明，MC）
+add('shroomlight', '菌光体', 'shroomlight', { cat: 'utility', digTime: 1, light: 15, ...GRASS_SND });
+// 玄武岩（柱状节理）与黑石（三角洲主体）
+add('basalt', '玄武岩', { side: 'basalt_side', top: 'basalt_top' }, { cat: 'stone', tool: 'pickaxe', needsPick: true });
+add('blackstone', '黑石', { side: 'blackstone', top: 'blackstone_top' }, { cat: 'stone', tool: 'pickaxe', needsPick: true });
+add('soul_soil', '灵魂土', 'soul_soil', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
+// 小菌类与菌索（十字植被）
+for (const [k, cn] of [['warped_fungus', '诡异菌'], ['crimson_fungus', '绯红菌'], ['warped_roots', '诡异菌索'], ['crimson_roots', '绯红菌索']] as const) {
+  add(k, cn, k, { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
+}
 // 下界砖块（堡垒主体）；地狱疣：堡垒花园作物（种在灵魂沙上，挖掉掉 1-2 个）
 add('nether_bricks', '下界砖块', 'nether_bricks', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 10 });
 add('nether_wart', '地狱疣', 'nether_wart_stage2', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, drop: { material: 'nether_wart', count: [1, 2] }, ...GRASS_SND });

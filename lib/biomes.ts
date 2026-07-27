@@ -81,6 +81,10 @@ export const BIOME_SURFACE: Record<Biome, BiomeSurface> = {
   },
   // 下界（生成器在 lib/nether.ts，此表仅供外部查询兜底）
   nether: { top: K('netherrack'), filler: K('netherrack'), underwater: [K('soul_sand'), K('gravel')] },
+  warped_forest: { top: K('warped_nylium'), filler: K('netherrack'), underwater: [K('soul_sand'), K('gravel')] },
+  crimson_forest: { top: K('crimson_nylium'), filler: K('netherrack'), underwater: [K('soul_sand'), K('gravel')] },
+  soul_sand_valley: { top: K('soul_sand'), filler: K('soul_soil'), underwater: [K('soul_sand'), K('soul_soil')] },
+  basalt_deltas: { top: K('blackstone'), filler: K('blackstone'), underwater: [K('basalt'), K('blackstone')] },
 };
 
 /** 恶地陶瓦分层色带（world.ts 按 y + 列偏移取色，复刻 MC 侵蚀恶地的彩色地层） */
@@ -122,6 +126,10 @@ export const BIOME_TINT_HEX: Record<Biome, number> = {
   river: 0x8eb971,
   basin: 0x91bd59,
   nether: 0xbfb755,
+  warped_forest: 0x3fae9e,
+  crimson_forest: 0xbfb755,
+  soul_sand_valley: 0xbfb755,
+  basalt_deltas: 0xbfb755,
 };
 
 const BASE_GRASS: readonly [number, number, number] = [0x91 / 255, 0xbd / 255, 0x59 / 255];

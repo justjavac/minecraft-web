@@ -27,13 +27,18 @@ export type Biome =
   | 'ocean'
   | 'river'
   | 'basin'
-  | 'nether';
+  | 'nether'
+  | 'warped_forest'
+  | 'crimson_forest'
+  | 'soul_sand_valley'
+  | 'basalt_deltas';
 
 /** 群系稳定枚举（网格化/存档按索引传递；只能追加不能重排） */
 export const BIOME_LIST: Biome[] = [
   'plains', 'forest', 'birch_forest', 'dark_forest', 'taiga', 'snowy',
   'desert', 'savanna', 'jungle', 'swamp', 'badlands', 'mountains',
   'mushroom_fields', 'ocean', 'river', 'basin', 'ice_spikes', 'nether',
+  'warped_forest', 'crimson_forest', 'soul_sand_valley', 'basalt_deltas',
 ];
 
 /** 群系 → 稳定索引（BIOME_LIST 下标） */

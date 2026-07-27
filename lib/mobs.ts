@@ -287,12 +287,14 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
     if (y <= 32) continue; // 岩浆海面上方
     const ground = world.getBlock(bx, y, bz);
     const gk = BLOCKS[ground]?.key;
-    if (gk !== 'netherrack' && gk !== 'soul_sand' && gk !== 'nether_bricks') continue;
+    // 可生成地表（MC：下界岩/灵魂沙土/菌岩/黑石/玄武岩/下界砖）
+    if (gk !== 'netherrack' && gk !== 'soul_sand' && gk !== 'nether_bricks' && gk !== 'blackstone' && gk !== 'basalt' && gk !== 'warped_nylium' && gk !== 'crimson_nylium' && gk !== 'soul_soil') continue;
     if (isWaterId(ground) || BLOCKS[ground]?.lava) continue;
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
-    // 堡垒附近（48 格）：凋灵骷髅/烈焰人为主；远处猪灵成群、少量烈焰人与恶魂（MC 分布）
+    // 堡垒附近（48 格）：凋灵骷髅/烈焰人为主；灵魂沙谷恶魂成群（MC）；远处猪灵成群、少量烈焰人与恶魂
     const roll = Math.random();
+    const biome = world.terrain.biomeAt(bx, bz);
     const type: MobType = fortressNear(world.seedHash, world.terrain, bx, bz, 48)
       ? roll < 0.5
         ? 'wither_skeleton'
@@ -301,11 +303,17 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
           : roll < 0.9
             ? 'zombified_piglin'
             : 'ghast'
-      : roll < 0.7
-        ? 'zombified_piglin'
-        : roll < 0.88
-          ? 'blaze'
-          : 'ghast';
+      : biome === 'soul_sand_valley'
+        ? roll < 0.5
+          ? 'ghast'
+          : roll < 0.75
+            ? 'zombified_piglin'
+            : 'blaze'
+        : roll < 0.7
+          ? 'zombified_piglin'
+          : roll < 0.88
+            ? 'blaze'
+            : 'ghast';
     if (type === 'zombified_piglin') {
       const pack = 2 + Math.floor(Math.random() * 2); // 2-3 只
       for (let i = 0; i < pack; i++) {

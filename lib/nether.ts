@@ -1,10 +1,12 @@
 // 下界维度：地形（下界岩丘陵 + 密集洞穴 + 岩浆海）与 chunk 生成器
 // 顶层基岩天花板（y≈122-127 参差）+ 萤石簇 + 下界石英矿 + 灵魂沙/沙砾斑块
+// 群系变体：下界荒地（默认）/诡异森林/绯红森林/灵魂沙谷（化石）/玄武岩三角洲（柱海）
 
 import { AIR, BLOCK_BY_KEY, LAVA } from './blocks';
+import { BIOME_SURFACE } from './biomes';
 import { applyNetherStructures } from './netherstructures';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
-import { hash2, hashString, mulberry32, type Terrain } from './noise';
+import { hash2, hashString, mulberry32, type Biome, type Terrain } from './noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
 
 export const LAVA_SEA = 31; // 岩浆海平面（MC 一致）
@@ -19,12 +21,29 @@ export function createNetherTerrain(seed: string): Terrain {
   const nCaveA = createNoise3D(mulberry32(sh ^ 0x5c1e7a));
   const nCaveB = createNoise3D(mulberry32(sh ^ 0x9d3f2b));
   const nCheese = createNoise3D(mulberry32(sh ^ 0x1a8c4d));
+  // 下界群系场（三角洲柱海也用它加高加糙）
+  const nNetherBio = createNoise2D(mulberry32(sh ^ 0x3f8c2a));
+  const nDelta = createNoise2D(mulberry32(sh ^ 0x6d4b1e));
+
+  function netherBiomeAt(x: number, z: number): Biome {
+    const v = nNetherBio(x * 0.0018, z * 0.0018);
+    if (v > 0.42) return 'warped_forest';
+    if (v > 0.05) return 'crimson_forest';
+    if (v > -0.42) return 'nether';
+    if (v > -0.55) return 'soul_sand_valley';
+    return 'basalt_deltas';
+  }
 
   function heightAt(x: number, z: number): number {
     const hills = nHill(x * 0.012, z * 0.012);
     const detail = nHill(x * 0.05 + 400, z * 0.05 + 400);
+    let h = 45 + hills * 22 + detail * 6;
+    // 玄武岩三角洲：更高更糙（MC 柱海乱石滩）
+    if (netherBiomeAt(x, z) === 'basalt_deltas') {
+      h += 8 + (1 - Math.abs(nDelta(x * 0.03, z * 0.03))) * 18;
+    }
     // 洞穴世界的"地表"即顶板：约 23-73 起伏，谷地浸入 y31 岩浆海（约两成覆盖面）
-    return Math.max(8, Math.min(110, Math.floor(45 + hills * 22 + detail * 6)));
+    return Math.max(8, Math.min(110, Math.floor(h)));
   }
 
   function caveAt(x: number, y: number, z: number): boolean {
@@ -40,7 +59,7 @@ export function createNetherTerrain(seed: string): Terrain {
   return {
     kind: 'nether',
     heightAt,
-    biomeAt: () => 'nether',
+    biomeAt: netherBiomeAt,
     treeAt: () => null,
     caveAt,
     snowlineAt: () => Infinity,
@@ -57,19 +76,27 @@ export function generateNetherChunk(terrain: Terrain, cx: number, cz: number, da
   const glow = K('glowstone');
   const bedrock = K('bedrock');
 
-  // 地形填充：下界岩 + 灵魂沙/沙砾斑块表层
+  // 地形填充：下界岩 + 群系表层（菌岩/灵魂沙土/黑石）+ 灵魂沙/沙砾斑块
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
       const wx = cx * CHUNK_SIZE + x;
       const wz = cz * CHUNK_SIZE + z;
       const h = terrain.heightAt(wx, wz);
       const top = Math.min(h, WORLD_HEIGHT - 1);
+      const biome = terrain.biomeAt(wx, wz);
+      const surf = BIOME_SURFACE[biome];
       const patch = hash2(seedHash ^ 0x61ab3f, wx, wz);
       for (let y = 0; y <= top; y++) {
         let id = netherrack;
-        if (y >= top - 2) {
-          // 表层斑块：灵魂沙 / 沙砾（MC 下界地表特征）
-          if (patch < 0.12) id = soulSand;
+        if (biome === 'basalt_deltas') {
+          id = K('blackstone');
+        } else if (biome === 'soul_sand_valley') {
+          // 灵魂沙谷：灵魂沙为主，间灵魂土
+          if (y >= top - 2) id = patch < 0.55 ? soulSand : K('soul_soil');
+        } else if (y >= top - 2) {
+          // 森林：顶三层菌岩；荒地：顶三层下界岩 + 斑块
+          if (biome === 'warped_forest' || biome === 'crimson_forest') id = surf.top;
+          else if (patch < 0.12) id = soulSand;
           else if (patch < 0.2) id = gravel;
         }
         data[localIndex(x, y, z)] = id;
@@ -142,6 +169,9 @@ export function generateNetherChunk(terrain: Terrain, cx: number, cz: number, da
   }
   // 下界堡垒（桥廊 + 塔楼 + 地狱疣园 + 宝箱）
   applyNetherStructures(seedHash, terrain, cx, cz, data);
+
+  // 群系标志物：巨型菌类树（诡异/绯红森林）、骨块化石（灵魂沙谷）、玄武岩柱（三角洲）
+  applyNetherFeatures(seedHash, terrain, cx, cz, data);
 }
 
 /** 下界石英矿脉（石头团簇式随机游走；下界岩宿主） */
@@ -178,6 +208,71 @@ function applyNetherOres(seedHash: number, cx: number, cz: number, data: Uint16A
       x += Math.floor(rand() * 3) - 1;
       y = Math.max(6, Math.min(118, y + Math.floor(rand() * 3) - 1));
       z += Math.floor(rand() * 3) - 1;
+    }
+  }
+}
+
+/** 群系标志物：巨型菌类树/小菌与菌索（森林）、化石（灵魂沙谷）、玄武岩柱（三角洲） */
+function applyNetherFeatures(seedHash: number, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
+  const put = (lx: number, y: number, lz: number, id: number, onlyAir: boolean) => {
+    if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+    const i = localIndex(lx, y, lz);
+    if (onlyAir && data[i] !== AIR) return;
+    data[i] = id;
+  };
+  for (let tx = -3; tx < CHUNK_SIZE + 3; tx++) {
+    for (let tz = -3; tz < CHUNK_SIZE + 3; tz++) {
+      const wx = cx * CHUNK_SIZE + tx;
+      const wz = cz * CHUNK_SIZE + tz;
+      const biome = terrain.biomeAt(wx, wz);
+      const h = terrain.heightAt(wx, wz);
+      if (h <= LAVA_SEA + 1 || h + 16 >= WORLD_HEIGHT) continue;
+      const r0 = hash2(seedHash ^ 0x77a1f3, wx, wz);
+      if (biome === 'warped_forest' || biome === 'crimson_forest') {
+        // 巨型菌类树：菌柄 6-10 高 + 疣块华盖 + 菌光体内嵌（MC 巨型菌）
+        if (r0 < 0.012) {
+          const warped = biome === 'warped_forest';
+          const stem = K(warped ? 'warped_stem' : 'crimson_stem');
+          const wart = K(warped ? 'warped_wart_block' : 'nether_wart_block');
+          const H = 6 + Math.floor(hash2(seedHash ^ 0x77a2e4, wx, wz) * 5);
+          for (let y = h + 1; y <= h + H; y++) put(tx, y, tz, stem, false);
+          // 华盖：顶部两层 5×5 去角 + 顶 3×3，内嵌菌光体
+          for (const ly of [h + H - 1, h + H]) {
+            for (let dx = -2; dx <= 2; dx++) {
+              for (let dz = -2; dz <= 2; dz++) {
+                if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+                put(tx + dx, ly, tz + dz, wart, true);
+              }
+            }
+          }
+          for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) put(tx + dx, h + H + 1, tz + dz, wart, true);
+          const shroom = K('shroomlight');
+          if (hash2(seedHash ^ 0x77a3d5, wx, wz) < 0.6) put(tx + 1, h + H - 1, tz, shroom, true);
+          if (hash2(seedHash ^ 0x77a4c6, wx, wz) < 0.4) put(tx - 1, h + H, tz + 1, shroom, true);
+        } else if (r0 < 0.06) {
+          // 小菌与菌索（地表植被）
+          const warped = biome === 'warped_forest';
+          const pick = hash2(seedHash ^ 0x77a5b7, wx, wz);
+          const veg = pick < 0.4 ? K(warped ? 'warped_fungus' : 'crimson_fungus') : pick < 0.7 ? K(warped ? 'warped_roots' : 'crimson_roots') : K(warped ? 'crimson_roots' : 'warped_roots');
+          if (data[localIndex(tx, h + 1, tz)] === AIR) put(tx, h + 1, tz, veg, true);
+        }
+      } else if (biome === 'soul_sand_valley') {
+        // 化石：骨块肋拱（5 格弯肋，MC 灵魂沙谷化石）
+        if (r0 < 0.004) {
+          const bone = K('bone_block');
+          for (let i = 0; i < 5; i++) {
+            const dy = i < 3 ? i : 2;
+            put(tx + i, h + 1 + dy, tz, bone, false);
+            put(tx + i, h + 5 - dy, tz, bone, false);
+          }
+        }
+      } else if (biome === 'basalt_deltas') {
+        // 玄武岩柱：3-12 高细柱群（MC 三角洲柱海）
+        if (r0 < 0.05) {
+          const H = 3 + Math.floor(hash2(seedHash ^ 0x77a6c8, wx, wz) * 10);
+          for (let y = h + 1; y <= h + H && y < WORLD_HEIGHT - 1; y++) put(tx, y, tz, K('basalt'), false);
+        }
+      }
     }
   }
 }

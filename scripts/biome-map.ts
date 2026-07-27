@@ -26,6 +26,10 @@ const COLORS: Record<Biome, [number, number, number]> = {
   river: [63, 127, 212],
   basin: [138, 158, 80],
   nether: [140, 60, 50],
+  warped_forest: [40, 150, 140],
+  crimson_forest: [150, 40, 70],
+  soul_sand_valley: [110, 85, 65],
+  basalt_deltas: [70, 70, 78],
 };
 
 const S = 512;
