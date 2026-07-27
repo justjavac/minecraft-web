@@ -20,6 +20,7 @@ export const XP_MOB: Record<MobType, number> = {
   wither: 50,
   ender_dragon: 500, // MC 首杀 12000 的简化：约升 16 级
   shulker: 5,
+  slime: 4, // 大 4 / 中 2 / 小 1（分裂特判按档给；此处为大档）
   pig: 2,
   cow: 2,
   chicken: 2,

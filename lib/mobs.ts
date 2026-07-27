@@ -16,7 +16,7 @@ import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon' | 'shulker';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon' | 'shulker' | 'slime';
 
 export interface MobDef {
   name: string;
@@ -70,6 +70,8 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   ender_dragon: { name: '末影龙', hp: 200, speed: 0, hostile: true, burnsAtDay: false, damage: 8, attackRange: 2.5, attackCd: 1, drops: [] },
   // 潜影贝：末地城守卫——固着不动，玩家 12 格内开壳射追踪弹（命中漂浮，MC）
   shulker: { name: '潜影贝', hp: 30, speed: 0, hostile: true, burnsAtDay: false, damage: 4, attackRange: 12, attackCd: 2.5, drops: [{ material: 'shulker_shell', count: [0, 1] }] },
+  // 史莱姆：三档体型（slimeSize 4/2/1），蹦跳前进；杀死大/中分裂 2-4 只小一档（MC），最小档掉黏液球
+  slime: { name: '史莱姆', hp: 16, speed: 2.2, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.4, attackCd: 1, drops: [{ material: 'slime_ball', count: [0, 2] }] },
 };
 
 export interface Mob {
@@ -118,6 +120,11 @@ export interface Mob {
   smashTimer?: number;
   /** 猪灵：端详金锭剩余秒（以物易物中，静止不攻击） */
   barterTimer?: number;
+  /** 史莱姆：体型档（4 大 / 2 中 / 1 小，MC）与蹦跳冲量 */
+  slimeSize?: 4 | 2 | 1;
+  hopX?: number;
+  hopZ?: number;
+  hopTimer?: number;
   /** 末影龙：三态飞行状态机（盘旋/俯冲/栖息）与目标点 */
   dragonPhase?: 'circle' | 'strafe' | 'perch';
   dragonAngle?: number;
@@ -188,6 +195,7 @@ function exposedToSky(world: World, m: Mob): boolean {
 function pickSpawnType(night: boolean, biome?: Biome): MobType {
   const r = Math.random();
   if (night) {
+    if (biome === 'swamp' && r < 0.4) return 'slime'; // 沼泽夜晚史莱姆成群（MC 沼泽刷怪规则）
     if (r < 0.37) return 'zombie';
     if (r < 0.62) return 'skeleton';
     if (r < 0.82) return 'spider';
@@ -272,6 +280,14 @@ export function makeEnderDragon(x: number, y: number, z: number): Mob {
   return m;
 }
 
+/** 史莱姆：按体型档生成（MC hp：大 16 / 中 4 / 小 1；生成时为大或中） */
+export function makeSlime(x: number, y: number, z: number, size: 4 | 2 | 1): Mob {
+  const m = makeMob('slime', x, y, z);
+  m.slimeSize = size;
+  m.hp = size === 4 ? 16 : size === 2 ? 4 : 1;
+  return m;
+}
+
 /** 玩家是否穿任一金装备（MC：猪灵不主动攻击穿金甲的玩家；蛮兵不吃这套） */
 export function wearsGoldArmor(): boolean {
   const a = useGameStore.getState().armorSlots;
@@ -345,7 +361,7 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     }
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
-    const mob = makeMob(wantType, bx + 0.5, sy, bz + 0.5);
+    const mob = wantType === 'slime' ? makeSlime(bx + 0.5, sy, bz + 0.5, Math.random() < 0.6 ? 4 : 2) : makeMob(wantType, bx + 0.5, sy, bz + 0.5); // 史莱姆生成大/中档（MC）
     if (mob.type === 'villager' && village) {
       mob.homeX = village.x;
       mob.homeZ = village.z;
@@ -876,7 +892,35 @@ export function tickMobs(
       }
     } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0)) && (m.type !== 'enderman' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'piglin' || ((m.aggroTimer ?? 0) > 0 || !wearsGoldArmor()))) {
       // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼/末影人未被激怒时中立）
-      if (m.type === 'shulker') {
+      if (m.type === 'slime') {
+        // 史莱姆：蹦跳前进（MC 标志移动）——着地蓄力，起跳带冲量，滞空惯性
+        if (m.onGround) {
+          m.hopTimer = (m.hopTimer ?? 0.5) - dt;
+          mx = 0;
+          mz = 0;
+          if (m.hopTimer <= 0) {
+            m.hopTimer = 0.6 + Math.random() * 0.3;
+            m.velY = 6.5;
+            if (dist < CHASE_RANGE && dist > 0.01) {
+              m.hopX = (dx / dist) * def.speed * 2;
+              m.hopZ = (dz / dist) * def.speed * 2;
+            } else {
+              m.hopX = Math.cos(m.wanderDir) * def.speed;
+              m.hopZ = Math.sin(m.wanderDir) * def.speed;
+            }
+          }
+        } else {
+          mx = m.hopX ?? 0;
+          mz = m.hopZ ?? 0;
+        }
+        // 近战伤害按体型（MC：大 4 / 中 2 / 小 0——小史莱姆不伤人）
+        m.attackCd -= dt;
+        const slimeDmg = m.slimeSize === 1 ? 0 : def.damage * ((m.slimeSize ?? 4) / 4);
+        if (slimeDmg > 0 && dist < def.attackRange && m.attackCd <= 0) {
+          m.attackCd = def.attackCd;
+          onAttackPlayer(slimeDmg);
+        }
+      } else if (m.type === 'shulker') {
         // 潜影贝：固着不动，12 格内开壳射追踪弹（MC；命中漂浮）
         m.arrowCd -= dt;
         if (dist < def.attackRange && m.arrowCd <= 0) {
@@ -1222,6 +1266,18 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
     }
     return false;
   }
+  // 史莱姆：大/中击杀分裂 2-4 只小一档（MC 标志特性）——分裂替代普通掉落（黏液球只由最小档掉）
+  if (mob.type === 'slime' && (mob.slimeSize ?? 4) > 1 && world) {
+    const nextSize = ((mob.slimeSize ?? 4) / 2) as 2 | 1;
+    const n = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      mobs.push(makeSlime(mob.x + (Math.random() - 0.5) * 1.6, mob.y + 0.1, mob.z + (Math.random() - 0.5) * 1.6, nextSize));
+    }
+    const i2 = mobs.indexOf(mob);
+    if (i2 >= 0) mobs.splice(i2, 1);
+    useGameStore.getState().addXp((mob.slimeSize ?? 4) === 4 ? 4 : 2); // MC：大 4 / 中 2
+    return true;
+  }
   // 击杀掉落（数量在区间内随机；抢夺附魔每件 +0~lvl）与杀怪经验（MC）
   for (const drop of MOB_DEFS[mob.type].drops) {
     const count = drop.count[0] + Math.floor(Math.random() * (drop.count[1] - drop.count[0] + 1)) + (lootBonus > 0 ? Math.floor(Math.random() * (lootBonus + 1)) : 0);
@@ -1237,7 +1293,7 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   }
   // 末影龙：击杀结算（龙蛋 + 返回门激活，lib/endfight.ts）
   if (mob.type === 'ender_dragon' && world) dragonDeathHandler?.(world);
-  useGameStore.getState().addXp(XP_MOB[mob.type]);
+  useGameStore.getState().addXp(mob.type === 'slime' ? 1 : XP_MOB[mob.type]); // 小史莱姆 1（MC）
   const i = mobs.indexOf(mob);
   if (i >= 0) mobs.splice(i, 1);
   return true;

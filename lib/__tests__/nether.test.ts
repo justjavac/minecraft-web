@@ -145,6 +145,10 @@ describe('僵尸猪灵', () => {
   it('未被激怒不攻击（贴脸也保持中立）；受伤则群体仇恨并反击', async () => {
     const { mobs, clearMobs, damageMob, tickMobs } = await import('../mobs');
     clearMobs();
+    // 穿金靴：新生成的猪灵（piglin）被金甲豁免，避免干扰本用例的中立判定（只测僵尸猪灵）
+    const { useGameStore } = await import('../store');
+    const { emptyArmorSlots } = await import('../armor');
+    useGameStore.setState({ worldMode: 'survival', armorSlots: { ...emptyArmorSlots(), boots: { durability: 91, material: 'gold' } } });
     const w = netherWorld();
     preload(w);
     const player = { x: 8.5, y: 48, z: 8.5 }; // 与猪灵落点同高（中立期猪灵会自然落地）

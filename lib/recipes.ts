@@ -137,6 +137,9 @@ export const RECIPES: Recipe[] = [
   // 活塞：圆石×3 + 木板×3 + 铁锭×1 + 红石×1（MC）；粘性活塞：活塞 + 黏液块（替代黏液球）
   { id: 'piston', name: '活塞', out: { kind: 'block', id: KID('piston_n'), count: 1 }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: PLANKS_ITEM, count: 3 }, { item: 'material:iron_ingot', count: 1 }, { item: 'material:redstone', count: 1 }], needsTable: true },
   { id: 'piston_sticky', name: '粘性活塞', out: { kind: 'block', id: KID('piston_sticky_n'), count: 1 }, cost: [{ item: K('piston_n'), count: 1 }, { item: K('slime_block'), count: 1 }], needsTable: false },
+  // 黏液块：9 黏液球（MC 3×3）；反向 1 块拆 9 球（MC）
+  { id: 'slime_block', name: '黏液块', out: { kind: 'block', id: KID('slime_block'), count: 1 }, cost: [{ item: 'material:slime_ball', count: 9 }], needsTable: true },
+  { id: 'slime_ball_from_block', name: '黏液球 ×9', out: { kind: 'material', material: 'slime_ball', count: 9 }, cost: [{ item: K('slime_block'), count: 1 }], needsTable: false },
   // 红石中继器：红石火把×2 + 红石×1 + 石头×3（MC 配方）
   { id: 'repeater', name: '红石中继器', out: { kind: 'block', id: KID('repeater_n'), count: 1 }, cost: [{ item: K('redstone_torch'), count: 2 }, { item: 'material:redstone', count: 1 }, { item: K('stone'), count: 3 }], needsTable: true },
   // 红石比较器：红石火把×3 + 下界石英×1 + 石头×3（MC 配方）

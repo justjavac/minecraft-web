@@ -49,6 +49,7 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   chorus_fruit: { name: '紫颂果', tile: tileIcon('item/chorus_fruit') },
   elytra: { name: '鞘翅', tile: tileIcon('item/elytra') },
   shulker_shell: { name: '潜影壳', tile: tileIcon('item/shulker_shell') },
+  slime_ball: { name: '黏液球', tile: tileIcon('item/slime_ball') },
   nether_star: { name: '下界之星', tile: tileIcon('item/nether_star') },
   regeneration: { name: '再生药水', tile: tileIcon('item/potion') },
   paper: { name: '纸', tile: tileIcon('item/paper') },

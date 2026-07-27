@@ -62,6 +62,9 @@ const dragonWingGeo = new BoxGeometry(3.2, 0.12, 1.7);
 const dragonEyeBandGeo = new BoxGeometry(0.9, 0.15, 0.15);
 const shulkerBaseGeo = new BoxGeometry(0.9, 0.55, 0.9);
 const shulkerLidGeo = new BoxGeometry(0.8, 0.35, 0.8);
+const slimeBodyGeo = new BoxGeometry(1.2, 1.2, 1.2);
+const slimeEyeGeo = new BoxGeometry(0.14, 0.14, 0.04);
+const slimeMouthGeo = new BoxGeometry(0.32, 0.09, 0.04);
 
 type MobMats = Record<string, Material>;
 
@@ -108,6 +111,8 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     shulkerShell: l('#8a6a9a'),
     shulkerTop: l('#a585b5'),
     shulkerBullet: l('#c9a0e8'),
+    slimeOuter: l('#7ecb6a'),
+    slimeDark: l('#2a5a28'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -286,6 +291,13 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, shulkerBaseGeo, mats.shulkerShell, 0, 0.3, 0);
       addPart(g, shulkerLidGeo, mats.shulkerTop, 0.04, 0.72, 0.04);
       break;
+    case 'slime':
+      // 史莱姆：绿方块 + 双眼与嘴（MC 标志造型；体型由 slimeSize 缩放）
+      addPart(g, slimeBodyGeo, mats.slimeOuter, 0, 0.7, 0);
+      addPart(g, slimeEyeGeo, mats.slimeDark, -0.2, 0.85, 0.62);
+      addPart(g, slimeEyeGeo, mats.slimeDark, 0.2, 0.85, 0.62);
+      addPart(g, slimeMouthGeo, mats.slimeDark, 0, 0.5, 0.62);
+      break;
     case 'ender_dragon': {
       // 末影龙 Boss：黑紫长躯 + 双翼展开 + 紫眼（MC 标志造型）；部件以体心为原点
       addPart(g, dragonBodyGeo, mats.dragonBody, 0, 0, 0);
@@ -420,9 +432,11 @@ export function Mobs() {
       mesh.rotation.y = def && m.wanderMoving
         ? Math.atan2(Math.cos(m.wanderDir), Math.sin(m.wanderDir))
         : Math.atan2(playerPosition.x - m.x, playerPosition.z - m.z);
-      // 苦力怕引爆时闪烁膨胀；幼体体型 0.55
+      // 苦力怕引爆时闪烁膨胀；幼体体型 0.55；史莱姆按体型档缩放（大 1.4 / 中 0.7 / 小 0.35）
       if (m.type === 'creeper' && m.ignite >= 0) {
         mesh.scale.setScalar(1 + 0.08 * Math.sin(performance.now() / 50));
+      } else if (m.type === 'slime') {
+        mesh.scale.setScalar((m.slimeSize ?? 4) * 0.35);
       } else {
         mesh.scale.setScalar(m.baby ? 0.55 : 1);
       }
