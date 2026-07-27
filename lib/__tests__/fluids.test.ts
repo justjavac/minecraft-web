@@ -1,12 +1,15 @@
 // 流体传播：水位识别 + 下流水柱 + 落地扩散
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { AIR, BLOCK_BY_KEY, STONE, WATER, WATER_FLOW_1 } from '../blocks';
-import { tickFluids, waterLevel } from '../fluids';
+import { clearFluids, tickFluids, waterLevel } from '../fluids';
 import { VOID_TERRAIN } from '../noise';
 import { World } from '../world';
 
 const FLOW = (n: number) => WATER_FLOW_1 + n - 1;
+
+// 流体队列是模块全局的：测试间必须清空，否则上一个测试的残留 key 会耗尽本测试的 tick budget
+beforeEach(() => clearFluids());
 
 describe('流体传播', () => {
   it('waterLevel 识别源/流水/非水', () => {

@@ -8,6 +8,7 @@ import {
   DoubleSide,
   MeshBasicMaterial,
   NearestFilter,
+  Object3D,
   RepeatWrapping,
   Vector3,
   type AmbientLight,
@@ -97,6 +98,8 @@ export function DayNight() {
   const cloudRef = useRef<Mesh>(null);
   const dirRef = useRef<DirectionalLight>(null);
   const ambRef = useRef<AmbientLight>(null);
+  /** 平行光目标：每帧跟随相机，使光照方向只由 sunDir 决定（默认 target 固定在原点，方向会随玩家位置漂移） */
+  const [lightTarget] = useState(() => new Object3D());
   const sunTex = useMemo(() => makeBodyTexture('#f5d76e', '#eec845', 32), []);
   const moonTex = useMemo(() => makeBodyTexture('#dfe3ee', '#b9c0d4', 32), []);
   const cloudTex = useMemo(() => makeCloudTexture(), []);
@@ -119,7 +122,7 @@ export function DayNight() {
     tickWaterTexture(performance.now());
     // 昼夜时钟在 game.ts 共享（0=日出 0.25=正午 0.5=日落 0.75=午夜），随存档持久化；暂停时冻结
     if (!useGameStore.getState().paused) {
-      worldClock.t = (worldClock.t + delta / CYCLE_SECONDS) % 1;
+      worldClock.t = (worldClock.t + dt / CYCLE_SECONDS) % 1;
       tickWeather(weather, delta);
     }
     const t = worldClock.t;
@@ -164,6 +167,10 @@ export function DayNight() {
         camera.position.y + sunDir.y * 120,
         camera.position.z + sunDir.z * 120,
       );
+      // target 跟随相机：光源与目标同步平移，光照方向只由 sunDir 决定
+      lightTarget.position.copy(camera.position);
+      lightTarget.updateMatrixWorld();
+      dir.target = lightTarget;
     }
     const amb = ambRef.current;
     if (amb) amb.intensity = (0.35 + dayFactor * 0.45) * (0.55 + 0.45 * dim) + weather.flash * 0.7;
@@ -205,6 +212,7 @@ export function DayNight() {
     <>
       <ambientLight ref={ambRef} intensity={0.8} />
       <directionalLight ref={dirRef} position={[80, 120, 60]} intensity={1.0} />
+      <primitive object={lightTarget} />
       {mats && (
         <>
           <sprite ref={sunRef} material={mats.sun as unknown as SpriteMaterial} scale={[BODY_SIZE, BODY_SIZE, 1]} />

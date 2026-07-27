@@ -80,11 +80,19 @@ export function CrackOverlay() {
 
   useEffect(() => {
     // 纹理在 effect 中创建、cleanup 成对释放（StrictMode 安全，见 ChunkMesh 注释）
+    let cancelled = false;
     const tex = createCrackTexture();
+    let mat: Material | null = null;
     void getAtlasMaterials(kind).then((mats) => {
-      setMaterial(mats.basic({ map: tex, transparent: true, depthWrite: false }));
+      if (cancelled) return; // 已卸载：不再 setState，材质也不创建
+      mat = mats.basic({ map: tex, transparent: true, depthWrite: false });
+      setMaterial(mat);
     });
-    return () => tex.dispose();
+    return () => {
+      cancelled = true;
+      mat?.dispose(); // 材质与纹理成对释放
+      tex.dispose();
+    };
   }, [kind]);
 
   useFrame(() => {

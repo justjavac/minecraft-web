@@ -217,12 +217,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       screen: 'playing', mode: 'new', seed, paused: false, flying: false, worldReady: false, loadError: null,
       hasLocked: false, spawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION,
-      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null,
+      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, storageOpen: null,
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, loadError: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null, storageOpen: null }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, storageOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
@@ -233,7 +233,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     }),
   setPickerOpen: (pickerOpen) => {
     if (pickerOpen && typeof document !== 'undefined') document.exitPointerLock();
-    set({ pickerOpen });
+    // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
+    set(pickerOpen ? { pickerOpen, craftingOpen: false, furnaceOpen: null, storageOpen: null } : { pickerOpen });
   },
   toggleFly: () => set((s) => ({ flying: s.worldMode === 'creative' ? !s.flying : false })),
   setPaused: (paused) => set({ paused }),
@@ -295,7 +296,16 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         mainSlots = emptyBackpack();
         armorSlots = emptyArmorSlots();
       }
-      return { health, dead: health <= 0 || s.dead, lastDamageAt: now, hotbarSlots, mainSlots, armorSlots };
+      return {
+        health,
+        dead: health <= 0 || s.dead,
+        lastDamageAt: now,
+        hotbarSlots,
+        mainSlots,
+        armorSlots,
+        // 死亡时关掉所有打开的界面（仅受伤未死不动）
+        ...(died ? { craftingOpen: false, furnaceOpen: null, storageOpen: null, pickerOpen: false } : {}),
+      };
     });
     return true;
   },
@@ -311,15 +321,22 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     }),
   setCraftingOpen: (craftingOpen, withTable) => {
     if (craftingOpen && typeof document !== 'undefined') document.exitPointerLock(); // 打开界面先解锁指针，否则无法操作
-    set((s) => ({ craftingOpen, craftingTable: craftingOpen ? (withTable ?? s.craftingTable) : s.craftingTable }));
+    // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
+    set((s) => ({
+      craftingOpen,
+      craftingTable: craftingOpen ? (withTable ?? s.craftingTable) : s.craftingTable,
+      ...(craftingOpen ? { furnaceOpen: null, storageOpen: null, pickerOpen: false } : {}),
+    }));
   },
   setFurnaceOpen: (furnaceOpen) => {
     if (furnaceOpen && typeof document !== 'undefined') document.exitPointerLock();
-    set({ furnaceOpen });
+    // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
+    set(furnaceOpen ? { furnaceOpen, craftingOpen: false, storageOpen: null, pickerOpen: false } : { furnaceOpen });
   },
   setStorageOpen: (storageOpen) => {
     if (storageOpen && typeof document !== 'undefined') document.exitPointerLock();
-    set({ storageOpen });
+    // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
+    set(storageOpen ? { storageOpen, craftingOpen: false, furnaceOpen: null, pickerOpen: false } : { storageOpen });
   },
   storagePut: (area, slotIndex) => {
     const s = get();
@@ -348,6 +365,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (!slot || slot.kind !== 'material') return false;
     const food = FOODS[slot.material];
     if (!food) return false;
+    if (s.hunger >= MAX_HUNGER) return false; // MC：满饥饿不能进食
     const hunger = Math.min(MAX_HUNGER, s.hunger + food.hunger);
     // MC：饱和度不超过饥饿值（本游戏饥饿 20 / 饱和 5）
     const saturation = Math.min(MAX_SATURATION, s.saturation + food.saturation, hunger / 4);

@@ -217,6 +217,8 @@ export function cascadeLight(world: World, start: Chunk): void {
     const before = borderSign(c);
     recomputeLight(world, c);
     recomputeSky(world, c);
+    // 顶点色烘焙了光照：重算后必须重网格化，否则跨 chunk 光照接缝滞留
+    world.dirtyChunks.add(chunkKey(c.cx, c.cz));
     if (borderSign(c) === before) continue;
     for (const [dx, dz] of NEIGHBORS) {
       const key = chunkKey(c.cx + dx, c.cz + dz);

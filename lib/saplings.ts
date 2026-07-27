@@ -1,7 +1,9 @@
 // 树苗生长与树叶凋零：树苗计时成树（MC 随机刻观感），原木断供的树叶逐级枯萎并概率掉树苗
 
 import { AIR, BLOCKS, BLOCK_BY_KEY, isWaterId, type BlockId } from './blocks';
-import type { World } from './world';
+import { mulberry32, type TreeKind } from './noise';
+import { TREE_MAX_H, writeTree } from './trees';
+import { WORLD_HEIGHT, type World } from './world';
 
 /** 原木（含去皮）判定：叶子的供养来源 */
 export function isLogId(id: BlockId): boolean {
@@ -27,18 +29,6 @@ const LEAF_TO_SAPLING: Record<string, string> = {
   cherry_leaves: 'cherry_sapling',
 };
 
-/** 树苗 wood key → [log, leaves] 方块 key */
-const WOOD_PARTS: Record<string, [string, string]> = {
-  oak: ['log', 'leaves'],
-  spruce: ['spruce_log', 'spruce_leaves'],
-  birch: ['birch_log', 'birch_leaves'],
-  jungle: ['jungle_log', 'jungle_leaves'],
-  acacia: ['acacia_log', 'acacia_leaves'],
-  dark_oak: ['dark_oak_log', 'dark_oak_leaves'],
-  mangrove: ['mangrove_log', 'mangrove_leaves'],
-  cherry: ['cherry_log', 'cherry_leaves'],
-};
-
 // ——— 树苗追踪与生长 ———
 
 const saplings = new Set<string>();
@@ -55,7 +45,7 @@ export function notifyBlockSet(world: World, x: number, y: number, z: number, ol
       for (let dy = -5; dy <= 5; dy++) {
         for (let dz = -5; dz <= 5; dz++) {
           if (isLeavesId(world.getBlock(x + dx, y + dy, z + dz))) {
-            leafQueue.push({ x: x + dx, y: y + dy, z: z + dz });
+            leafQueue.add(key(x + dx, y + dy, z + dz));
           }
         }
       }
@@ -63,22 +53,20 @@ export function notifyBlockSet(world: World, x: number, y: number, z: number, ol
   }
 }
 
-/** 树苗长成一棵树（与世界生成同形：4 高干 + 两层叶 + 顶叶） */
+/** 树苗长成一棵树（与世界生成同形，共用 lib/trees.ts 树形库；y 为树苗格，地表即 y-1） */
 function growTree(world: World, x: number, y: number, z: number, wood: string): void {
-  const [logKey, leavesKey] = WOOD_PARTS[wood];
-  const log = BLOCK_BY_KEY[logKey].id;
-  const leaves = BLOCK_BY_KEY[leavesKey].id;
-  for (let dy = 0; dy < 4; dy++) world.setBlock(x, y + dy, z, log);
-  for (const ly of [y + 2, y + 3]) {
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dz = -1; dz <= 1; dz++) {
-        if (dx === 0 && dz === 0) continue;
-        const id = world.getBlock(x + dx, ly, z + dz);
-        if (id === AIR || isWaterId(id)) world.setBlock(x + dx, ly, z + dz, leaves);
-      }
-    }
-  }
-  world.setBlock(x, y + 4, z, leaves);
+  const kind = wood as TreeKind;
+  if (y + TREE_MAX_H[kind] >= WORLD_HEIGHT) return; // 顶到世界放不下，保留树苗
+  const rand = mulberry32((Math.imul(x, 374761393) ^ Math.imul(y, 2246822519) ^ Math.imul(z, 668265263)) | 0);
+  const put = (px: number, py: number, pz: number, id: BlockId, onlyAir: boolean) => {
+    const cur = world.getBlock(px, py, pz);
+    // 树干替换空气/水/树叶/十字花草（含树苗自身），树叶只占空气/水，其他占用（箱子、屋顶等）跳过
+    const ok = onlyAir
+      ? cur === AIR || isWaterId(cur)
+      : cur === AIR || isWaterId(cur) || isLeavesId(cur) || BLOCKS[cur]?.shape === 'cross';
+    if (ok) world.setBlock(px, py, pz, id);
+  };
+  writeTree(put, kind, x, y - 1, z, rand);
 }
 
 let growAcc = 0;
@@ -90,12 +78,8 @@ function rand(): number {
 
 // ——— 树叶凋零队列 ———
 
-interface LeafCheck {
-  x: number;
-  y: number;
-  z: number;
-}
-const leafQueue: LeafCheck[] = [];
+// Set 去重（key 格式同 saplings）：同一树叶被多根原木扫到只入队一次
+const leafQueue = new Set<string>();
 
 function hasLogWithin(world: World, x: number, y: number, z: number, r: number): boolean {
   for (let dx = -r; dx <= r; dx++) {
@@ -128,21 +112,23 @@ export function tickSaplings(world: World, dt: number): void {
   }
 
   let budget = 64;
-  while (budget-- > 0 && leafQueue.length > 0) {
-    const c = leafQueue.shift()!;
-    const id = world.getBlock(c.x, c.y, c.z);
+  while (budget-- > 0 && leafQueue.size > 0) {
+    const k = leafQueue.values().next().value!;
+    leafQueue.delete(k);
+    const [x, y, z] = k.split(',').map(Number);
+    const id = world.getBlock(x, y, z);
     if (!isLeavesId(id)) continue;
-    if (hasLogWithin(world, c.x, c.y, c.z, 4)) continue;
-    world.setBlock(c.x, c.y, c.z, AIR);
+    if (hasLogWithin(world, x, y, z, 4)) continue;
+    world.setBlock(x, y, z, AIR);
     // MC 约 5%：枯萎时掉对应树苗（掉在原地，由调用方转掉落物）
     if (rand() < 0.05) {
       const saplingKey = LEAF_TO_SAPLING[BLOCKS[id].key];
-      if (saplingKey) onSaplingDrop?.(BLOCK_BY_KEY[saplingKey].id, c.x + 0.5, c.y + 0.3, c.z + 0.5);
+      if (saplingKey) onSaplingDrop?.(BLOCK_BY_KEY[saplingKey].id, x + 0.5, y + 0.3, z + 0.5);
     }
     // 级联：邻居树叶继续检查（浮空树叶由内向外逐级消失）
     for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
-      if (isLeavesId(world.getBlock(c.x + dx, c.y + dy, c.z + dz))) {
-        leafQueue.push({ x: c.x + dx, y: c.y + dy, z: c.z + dz });
+      if (isLeavesId(world.getBlock(x + dx, y + dy, z + dz))) {
+        leafQueue.add(key(x + dx, y + dy, z + dz));
       }
     }
   }
@@ -152,4 +138,10 @@ export function tickSaplings(world: World, dt: number): void {
 let onSaplingDrop: ((id: BlockId, x: number, y: number, z: number) => void) | null = null;
 export function setSaplingDropHandler(fn: typeof onSaplingDrop): void {
   onSaplingDrop = fn;
+}
+
+/** 清空树苗登记与凋零队列（切换世界时调用） */
+export function clearSaplings(): void {
+  saplings.clear();
+  leafQueue.clear();
 }

@@ -27,7 +27,7 @@ describe('createTerrain', () => {
     for (let i = 0; i < 2000; i++) {
       const h = t.heightAt(i * 3 - 3000, i * 5 - 2000);
       expect(h).toBeGreaterThanOrEqual(0);
-      expect(h).toBeLessThan(WORLD_HEIGHT - 10);
+      expect(h).toBeLessThanOrEqual(WORLD_HEIGHT - 10);
     }
   });
 

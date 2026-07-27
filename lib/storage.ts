@@ -82,6 +82,7 @@ export function takeFromStorage(slots: Slot[], storage: Slot[], index: number): 
     slot.kind === 'block'
       ? addStackToSlots(slots, { kind: 'block', id: slot.id }, slot.count)
       : addStackToSlots(slots, { kind: 'material', material: slot.material }, slot.count);
+  if (out.leftover === slot.count) return slots; // 一个都没移动：原样返回，保持 store 的身份检测有效
   storage[index] = out.leftover > 0 ? { ...slot, count: out.leftover } : null;
   return out.slots;
 }

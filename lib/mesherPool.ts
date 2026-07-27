@@ -49,6 +49,14 @@ class MesherPool {
     });
   }
 
+  /** 取消排队中的请求（chunk 卸载时调用，省掉必然被丢弃的计算） */
+  cancel(key: string): void {
+    const pending = this.byKey.get(key);
+    if (!pending) return;
+    this.byKey.delete(key);
+    pending.resolve({ key, version: pending.version, solid: EMPTY, water: EMPTY });
+  }
+
   private pump(): void {
     while (this.idle.length > 0 && this.queue.length > 0) {
       const { req, pending } = this.queue.shift()!;
@@ -67,7 +75,8 @@ class MesherPool {
     if (pending) {
       // 若在等待期间又有更新版本，返回空结果让调用方丢弃
       const stale = r !== null && this.byKey.get(pending.key) !== pending;
-      this.byKey.delete(pending.key);
+      // 只在自己仍是注册者时删除——等待期间同 key 的新请求已重新注册，误删会让新请求被 pump 永久跳过
+      if (this.byKey.get(pending.key) === pending) this.byKey.delete(pending.key);
       pending.resolve(stale || r === null ? { key: pending.key, version: pending.version, solid: EMPTY, water: EMPTY } : r);
     }
     this.pump();

@@ -1,5 +1,6 @@
 // 点燃的 TNT 实体：重力下落 + 闪烁引信（MC 4 秒）+ 到期爆炸
 
+import { BLOCKS } from './blocks';
 import { explodeAt } from './explosion';
 import type { World } from './world';
 
@@ -26,7 +27,7 @@ export function clearTnt(): void {
   primedTnt.length = 0;
 }
 
-/** 每帧推进：重力 + 引信；返回爆炸时伤害玩家的回调入参 */
+/** 每帧推进：重力 + 碰撞（落方块顶面停住，不穿透）+ 引信 */
 export function tickTnt(
   world: World,
   dt: number,
@@ -36,8 +37,20 @@ export function tickTnt(
   for (let i = primedTnt.length - 1; i >= 0; i--) {
     const t = primedTnt[i];
     t.fuse -= dt;
-    t.vy -= 12 * dt; // 实体重力（比玩家轻，缓落）
-    t.y = Math.max(0, t.y + t.vy * dt);
+    t.vy = Math.max(t.vy - 12 * dt, -40); // 实体重力（比玩家轻，缓落）
+    const nextY = t.y + t.vy * dt;
+    if (t.vy < 0) {
+      // 下落：找本格与途经格的实心阻挡，停在顶面上（实体高 0.98）
+      const floorY = Math.floor(nextY - 0.02);
+      if (BLOCKS[world.getBlock(Math.floor(t.x), floorY, Math.floor(t.z))]?.solid) {
+        t.y = floorY + 1.02;
+        t.vy = 0;
+      } else {
+        t.y = Math.max(0, nextY);
+      }
+    } else {
+      t.y = nextY;
+    }
     if (t.fuse <= 0) {
       primedTnt.splice(i, 1);
       explodeAt(world, t.x, t.y, t.z, playerPos, onAttackPlayer, {

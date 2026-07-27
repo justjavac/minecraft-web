@@ -1,8 +1,12 @@
 // 爆炸共享逻辑：TNT 与苦力怕共用（破块带防爆规则 + 距离伤害 + 粒子 + 音效）
 
-import { AIR, BLOCKS, tileOf } from './blocks';
+import { AIR, BLOCKS, BLOCK_BY_KEY, FURNACE, isLavaId, isWaterId, tileOf } from './blocks';
+import { dropFurnaceContents } from './furnace';
 import { breakParticles } from './game';
 import { boom, playSound } from './sound';
+import { dropStorageContents } from './storage';
+import { useGameStore } from './store';
+import { igniteTnt } from './tnt';
 import type { World } from './world';
 
 export interface ExplodeOptions {
@@ -39,9 +43,20 @@ export function explodeAt(
       for (let bz = cz - R; bz <= cz + R; bz++) {
         const id = world.getBlock(bx, by, bz);
         if (id === AIR || blastProof(id)) continue;
+        if (isWaterId(id) || isLavaId(id)) continue; // 流体免疫爆炸（MC 一致）
         const d = Math.hypot(bx + 0.5 - x, by + 0.5 - y, bz + 0.5 - z);
         if (d <= R + 0.5 && Math.random() < 1 - d / (R + 2)) {
+          const key = `${bx},${by},${bz}`;
+          // 容器/熔炉被炸：内容物先掉落并清状态，否则原地重建会复活内容/幽灵烧炼
+          if (id === BLOCK_BY_KEY.chest.id || id === BLOCK_BY_KEY.barrel.id) dropStorageContents(key, bx, by, bz);
+          else if (id === FURNACE) dropFurnaceContents(key, bx, by, bz);
+          // 正在查看被炸的容器/熔炉：顺便关闭界面
+          const s = useGameStore.getState();
+          if (s.storageOpen === key) s.setStorageOpen(null);
+          if (s.furnaceOpen === key) s.setFurnaceOpen(null);
           world.setBlock(bx, by, bz, AIR);
+          // TNT 被波及：转为点燃实体连锁引爆（MC 一致）
+          if (id === BLOCK_BY_KEY.tnt.id) igniteTnt(bx, by, bz);
         }
       }
     }

@@ -11,7 +11,7 @@ import { cameraRef, debugInfo, digState, getActiveWorld, playerPosition, surviva
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
 import { damageMob, mobInReach } from '@/lib/mobs';
-import { SEA_LEVEL } from '@/lib/noise';
+import { SEA_LEVEL, type Biome } from '@/lib/noise';
 import { aabbFree, collideAxis, type Aabb } from '@/lib/physics';
 import { playSound } from '@/lib/sound';
 import { useGameStore } from '@/lib/store';
@@ -30,13 +30,39 @@ const REACH = 6; // 挖掘/放置距离
 const LOOK_SENSITIVITY = 0.0045; // 触屏视角灵敏度（弧度/像素）
 const SPAWN = { x: 8.5, z: 8.5 };
 
+/** 出生点避让：海洋/河流/蘑菇岛/山地（含雪顶）不适合出生（MC 出生点在平缓陆地） */
+const BAD_SPAWN: Biome[] = ['ocean', 'river', 'mushroom_fields', 'mountains'];
+const spawnCache = new WeakMap<World, { x: number; z: number }>();
+
+/** 螺旋外扩找最近的平缓陆地列（8 格步进；结果按世界缓存，出生/重生一致） */
+function resolveSpawnXZ(world: World): { x: number; z: number } {
+  const hit = spawnCache.get(world);
+  if (hit) return hit;
+  let s = { x: Math.floor(SPAWN.x), z: Math.floor(SPAWN.z) };
+  outer: for (let r = 0; r <= 48; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const bx = Math.floor(SPAWN.x) + dx * 8;
+        const bz = Math.floor(SPAWN.z) + dz * 8;
+        const h = world.terrain.heightAt(bx, bz);
+        if (h <= SEA_LEVEL || h > 85) continue;
+        if (BAD_SPAWN.includes(world.terrain.biomeAt(bx, bz))) continue;
+        s = { x: bx, z: bz };
+        break outer;
+      }
+    }
+  }
+  spawnCache.set(world, s);
+  return s;
+}
+
 /**
- * 出生点脚部高度：从地表向上找到能容纳玩家的连续 2 格非实心方块。
+ * 出生点：避开不宜居群系后，从地表向上找到能容纳玩家的连续 2 格非实心方块。
  * heightAt 不含树木/玩家放置的方块，直接用它可能卡进树干。
  */
-function findSpawnY(world: World): number {
-  const bx = Math.floor(SPAWN.x);
-  const bz = Math.floor(SPAWN.z);
+function findSpawn(world: World): { x: number; y: number; z: number } {
+  const { x: bx, z: bz } = resolveSpawnXZ(world);
   let y = Math.max(world.terrain.heightAt(bx, bz), SEA_LEVEL) + 1;
   while (
     y < WORLD_HEIGHT - 2 &&
@@ -44,7 +70,7 @@ function findSpawnY(world: World): number {
   ) {
     y++;
   }
-  return y;
+  return { x: bx + 0.5, y, z: bz + 0.5 };
 }
 
 export function Player() {
@@ -75,6 +101,8 @@ export function Player() {
   /** 岩浆灼烧累计（满 1 点扣 1 血） */
   const lavaAcc = useRef(0);
   const attackCd = useRef(0);
+  /** 创造模式即时破坏的上次时间戳（200ms 冷却，防止按住左键每帧破一块） */
+  const lastCreativeBreak = useRef(0);
   const wasDead = useRef(false);
 
   // 相机共享给触屏挖/放动作（lib/actions.ts）
@@ -88,11 +116,14 @@ export function Player() {
   // 键盘：移动键状态 + F 飞行 + F3 调试 + 数字键选槽
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      // 输入框聚焦时不劫持按键（选块搜索框等），否则 e/f/数字会触发关界面/飞行/切槽
+      if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       keys.current[e.code] = true;
       if (e.repeat) return;
       if (e.code === 'KeyF') useGameStore.getState().toggleFly();
       if (e.code === 'KeyE') {
         const s = useGameStore.getState();
+        if (s.dead) return; // 死亡后不响应交互键
         if (s.worldMode === 'survival') {
           // MC 的背包键：切换随身 2×2 合成界面
           if (s.craftingOpen) s.setCraftingOpen(false);
@@ -213,7 +244,7 @@ export function Player() {
       const sp = useGameStore.getState().spawnPoint;
       pos.current = sp
         ? { x: sp.x, y: sp.y, z: sp.z }
-        : { x: SPAWN.x, y: findSpawnY(world), z: SPAWN.z };
+        : findSpawn(world);
       prevStep.current = { x: pos.current.x, z: pos.current.z };
       // 预生成出生点附近 chunk，保证落地有碰撞体
       const scx = Math.floor(pos.current.x / 16);
@@ -229,9 +260,10 @@ export function Player() {
     // 重生传送（dead → alive 边沿）：回出生点并重置生存状态
     if (wasDead.current && !gs.dead) {
       const sp = gs.spawnPoint;
-      p.x = sp?.x ?? SPAWN.x;
-      p.z = sp?.z ?? SPAWN.z;
-      p.y = sp?.y ?? findSpawnY(world);
+      const fb = findSpawn(world);
+      p.x = sp?.x ?? fb.x;
+      p.z = sp?.z ?? fb.z;
+      p.y = sp?.y ?? fb.y;
       velY.current = 0;
       resetSurvivalMem(survivalMem.current);
       survivalStats.exhaustion = 0;
@@ -398,9 +430,10 @@ export function Player() {
     // 掉出世界 → 回出生点
     if (p.y < -20) {
       const sp = useGameStore.getState().spawnPoint;
-      p.x = sp?.x ?? SPAWN.x;
-      p.z = sp?.z ?? SPAWN.z;
-      p.y = sp?.y ?? findSpawnY(world);
+      const fb = findSpawn(world);
+      p.x = sp?.x ?? fb.x;
+      p.z = sp?.z ?? fb.z;
+      p.y = sp?.y ?? fb.y;
       velY.current = 0;
       survivalMem.current.fallDist = 0; // 重置坠落累计，避免传送后按累计落差结算摔伤
       survivalMem.current.air = 15;
@@ -460,8 +493,12 @@ export function Player() {
             digState.target = null;
             digState.progress = 0;
           } else if (gs.worldMode === 'creative') {
-            // 创造模式：即时破坏（MC 一致），无挖掘计时
-            breakBlock(world, bx, by, bz);
+            // 创造模式：即时破坏（MC 一致），无挖掘计时；200ms 冷却避免按住左键 60 块/秒（触屏连点同路径生效）
+            const now = performance.now();
+            if (now - lastCreativeBreak.current >= 200) {
+              lastCreativeBreak.current = now;
+              breakBlock(world, bx, by, bz);
+            }
             digState.target = null;
             digState.progress = 0;
           } else {

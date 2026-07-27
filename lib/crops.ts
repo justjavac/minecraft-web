@@ -21,6 +21,9 @@ const crops = new Set<string>();
 const farmlands = new Set<string>();
 const key = (x: number, y: number, z: number): string => `${x},${y},${z}`;
 
+/** 每 tick 最多处理的耕地数（湿润检查每块要扫 9×9×2，限量避免大农场卡顿） */
+const FARMLAND_BATCH = 64;
+
 /** world.setBlock 钩子：登记/注销作物与耕地（生成过程直接写 data 不走这里） */
 export function notifyCropBlockSet(x: number, y: number, z: number, newId: BlockId): void {
   const k = key(x, y, z);
@@ -58,9 +61,17 @@ function lightAt(world: World, x: number, y: number, z: number, day: boolean): n
   return Math.max(c.light[i], day ? c.sky[i] : 0);
 }
 
+/** 清空作物/耕地登记（切换世界时调用） */
+export function clearCrops(): void {
+  crops.clear();
+  farmlands.clear();
+}
+
 /**
  * 每 ~2s 调用：
- * - 耕地：4 格内有水变湿润（作物 2 倍速），干旱且空着的缓慢退化回泥土
+ * - 耕地：4 格内有水变湿润（作物 2 倍速），干旱且空着的缓慢退化回泥土；
+ *   每 tick 限量处理 FARMLAND_BATCH 块（大农场分摊到多个 tick，避免主线程卡顿），
+ *   处理完仍有效的重新加到 Set 尾部，天然形成轮转游标
  * - 作物：光照 ≥9 才生长（白天靠天光，夜里靠火把），下方耕地没了则消失
  */
 export function tickCrops(world: World, dt: number): void {
@@ -71,21 +82,28 @@ export function tickCrops(world: World, dt: number): void {
   const moistId = BLOCK_BY_KEY.farmland_moist.id;
   const dirtId = BLOCK_BY_KEY.dirt.id;
 
-  for (const k of [...farmlands]) {
+  const batch: string[] = [];
+  for (const k of farmlands) {
+    if (batch.length >= FARMLAND_BATCH) break;
+    batch.push(k);
+  }
+  for (const k of batch) {
+    farmlands.delete(k);
     const [x, y, z] = k.split(',').map(Number);
-    if (!world.chunks.has(`${x >> 4},${z >> 4}`)) continue; // 未加载的不管
-    const id = world.getBlock(x, y, z);
-    if (!isFarmlandId(id)) {
-      farmlands.delete(k);
+    if (!world.chunks.has(`${x >> 4},${z >> 4}`)) {
+      farmlands.add(k); // 未加载的保留登记（移到队尾），本轮不算湿润
       continue;
     }
+    const id = world.getBlock(x, y, z);
+    if (!isFarmlandId(id)) continue; // 已除名（delete 后不重新加入）
     const moist = hasWaterNear(world, x, y, z);
     if (moist && id === dryId) world.setBlock(x, y, z, moistId);
     else if (!moist && id === moistId) world.setBlock(x, y, z, dryId);
     if (!moist && !isWheatCropId(world.getBlock(x, y + 1, z)) && rand() < 1 / 30) {
-      world.setBlock(x, y, z, dirtId);
-      farmlands.delete(k);
+      world.setBlock(x, y, z, dirtId); // setBlock 钩子会把 k 从 farmlands 移除
+      continue;
     }
+    farmlands.add(k); // 仍是耕地：重新入队尾（setBlock 湿润互换也会 add，幂等）
   }
 
   const day = dayFactorAt(worldClock.t) > 0.4;

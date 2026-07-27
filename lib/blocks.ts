@@ -306,6 +306,7 @@ const ORES: [key: string, cn: string, tier: 0 | 1 | 2 | 3, material: string, cou
   ['copper_ore', '铜矿石', 1, 'raw_copper', [2, 5]],
   ['gold_ore', '金矿石', 1, 'raw_gold', [1, 1]],
   ['lapis_ore', '青金石矿石', 1, 'lapis', [4, 8]],
+  ['redstone_ore', '红石矿石', 2, 'redstone', [4, 5]],
   ['diamond_ore', '钻石矿石', 2, 'diamond', [1, 1]],
   ['emerald_ore', '绿宝石矿石', 1, 'emerald', [1, 1]],
 ];
@@ -468,6 +469,26 @@ const PLANTS: [key: string, cn: string][] = [
 for (const [k, cn] of PLANTS) {
   add(k, cn, k, { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
 }
+
+// ——— 群系标志性植被/方块 ———
+// 仙人掌：实体近满格（碰撞收 1/16 边），沙漠生成；挖掉即掉自身
+add('cactus', '仙人掌', { side: 'cactus_side', top: 'cactus_top', bottom: 'cactus_bottom' }, {
+  cat: 'earth', box3: [0.0625, 0, 0.0625, 0.9375, 0.9375, 0.9375], digTime: 0.6, ...GRASS_SND,
+});
+// 甘蔗：十字面片，水边生成
+add('sugar_cane', '甘蔗', 'sugar_cane', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
+// 睡莲：薄板浮于水面（可站立），沼泽生成
+add('lily_pad', '睡莲', 'lily_pad', {
+  cat: 'earth', shape: 'slab', box3: [0, 0, 0, 1, 0.09375, 1], opaque: false, digTime: 0.05, ...GRASS_SND,
+});
+// 枯灌木/小蘑菇：十字面片（恶地沙漠 / 黑森林蘑菇岛）
+for (const [k, cn] of [['dead_bush', '枯灌木'], ['red_mushroom', '红色蘑菇'], ['brown_mushroom', '棕色蘑菇']] as const) {
+  add(k, cn, k, { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, ...GRASS_SND });
+}
+// 巨蘑菇部件（蘑菇岛；伞盖全肤，不做内侧贴图区分）
+add('mushroom_stem', '蘑菇柄', 'mushroom_stem', { cat: 'earth', tool: 'axe', digTime: 0.3, ...GRASS_SND });
+add('red_mushroom_block', '红色蘑菇方块', 'red_mushroom_block', { cat: 'earth', tool: 'axe', digTime: 0.3, ...GRASS_SND });
+add('brown_mushroom_block', '棕色蘑菇方块', 'brown_mushroom_block', { cat: 'earth', tool: 'axe', digTime: 0.3, ...GRASS_SND });
 // 树苗（可生长，wood 见 lib/saplings.ts；红树在原版叫"红树胎生苗"）
 const SAPLINGS: [key: string, tex: string, cn: string, wood: string][] = [
   ['oak_sapling', 'oak_sapling', '橡树树苗', 'oak'],

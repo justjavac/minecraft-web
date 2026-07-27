@@ -42,6 +42,8 @@ export interface SaveExtras {
   survival?: SurvivalSnapshot;
   /** 世界内熔炉状态（"x,y,z" → 状态） */
   furnaces?: Record<string, FurnaceState>;
+  /** 世界内容器（箱子/木桶）内容（"x,y,z" → 27 格） */
+  storages?: Record<string, Slot[]>;
 }
 
 export interface WorldMeta extends SaveExtras {
@@ -51,7 +53,7 @@ export interface WorldMeta extends SaveExtras {
   updatedAt: number;
 }
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -117,17 +119,22 @@ export async function saveChunk(key: string, data: Uint16Array): Promise<void> {
 
 /** 把世界里所有被修改过的 chunk 写入 IndexedDB 并清除标记；同时更新 meta（位置/时刻/模式/生存数值） */
 export async function saveModifiedChunks(world: World, extras: SaveExtras = {}): Promise<void> {
-  const d = await db();
-  if (world.modifiedChunks.size > 0) {
-    const tx = d.transaction('chunks', 'readwrite');
-    for (const key of world.modifiedChunks) {
-      const chunk = world.chunks.get(key);
-      if (chunk) void tx.store.put(chunk.data, key);
+  try {
+    const d = await db();
+    if (world.modifiedChunks.size > 0) {
+      const tx = d.transaction('chunks', 'readwrite');
+      for (const key of world.modifiedChunks) {
+        const chunk = world.chunks.get(key);
+        if (chunk) void tx.store.put(chunk.data, key);
+      }
+      await tx.done;
+      // 事务提交成功后再清标记，失败则保留待下轮重试
+      world.modifiedChunks.clear();
     }
-    world.modifiedChunks.clear();
-    await tx.done;
+    await saveWorldMeta(worldMeta(world.seed, extras));
+  } catch (err) {
+    console.warn('存档写入失败', err);
   }
-  await saveWorldMeta(worldMeta(world.seed, extras));
 }
 
 export async function clearWorldStore(): Promise<void> {

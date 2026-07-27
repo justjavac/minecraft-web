@@ -139,12 +139,12 @@ describe('村庄农田', () => {
     const seed = 'vf-village';
     const terrain = createTerrain(seed);
     const seedHash = hashString(seed);
-    // 扫描区域找第一个平原村庄
+    // 扫描区域找第一个村庄（任意群系类型）
     let spot: { x: number; z: number; rx: number; rz: number } | null = null;
-    for (let rx = 0; rx < 16 && !spot; rx++) {
-      for (let rz = 0; rz < 16 && !spot; rz++) {
+    for (let rx = -16; rx < 16 && !spot; rx++) {
+      for (let rz = -16; rz < 16 && !spot; rz++) {
         const s = structureAt(seedHash, terrain, rx, rz);
-        if (s?.kind === 'village') spot = { x: s.x, z: s.z, rx, rz };
+        if (s?.kind.endsWith('village')) spot = { x: s.x, z: s.z, rx, rz };
       }
     }
     expect(spot).not.toBeNull();

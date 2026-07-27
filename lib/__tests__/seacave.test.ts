@@ -8,10 +8,11 @@ import { World } from '../world';
 describe('海底洞穴灌水', () => {
   it('水下洞腔灌满水（洞口开在海床上的柱洞）', () => {
     const terrain = {
-      heightAt: () => 18, // 海床低于海平面 22
+      heightAt: () => 18, // 海床低于海平面 40
       biomeAt: () => 'ocean' as const,
       treeAt: () => null,
       caveAt: (_x: number, y: number) => y >= 8 && y <= 18, // 直通海床面的开放洞
+      snowlineAt: () => Infinity,
     };
     const w = new World('flood-test', undefined, terrain);
     // 洞口到洞底全部是水（灌水也会挡住岩浆填充）
@@ -25,12 +26,13 @@ describe('海底洞穴灌水', () => {
     expect(w.getBlock(8, SEA_LEVEL, 8)).toBe(WATER);
   });
 
-  it('陆地洞穴保持空气（山地 y=40 的洞）', () => {
+  it('陆地洞穴保持空气（山地 y=60 的洞）', () => {
     const terrain = {
-      heightAt: () => 40,
+      heightAt: () => 60,
       biomeAt: () => 'plains' as const,
       treeAt: () => null,
       caveAt: (_x: number, y: number) => y >= 20 && y <= 30,
+      snowlineAt: () => Infinity,
     };
     const w = new World('dry-cave', undefined, terrain);
     expect(w.getBlock(8, 25, 8)).toBe(AIR);

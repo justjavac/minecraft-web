@@ -30,12 +30,14 @@ beforeEach(() => {
 });
 
 describe('矿石定义', () => {
-  it('7 种矿石都有 pickTier 与材料掉落', () => {
-    for (const k of ['coal_ore', 'iron_ore', 'copper_ore', 'gold_ore', 'lapis_ore', 'diamond_ore', 'emerald_ore']) {
+  it('8 种矿石都有 pickTier 与材料掉落', () => {
+    for (const k of ['coal_ore', 'iron_ore', 'copper_ore', 'gold_ore', 'lapis_ore', 'redstone_ore', 'diamond_ore', 'emerald_ore']) {
       const def = BLOCK_BY_KEY[k];
       expect(def.pickTier, k).not.toBeUndefined();
       expect(def.drop, k).toBeDefined();
       expect(def.drop!.count[0]).toBeGreaterThanOrEqual(1);
+      // 每种矿石都有深层变体（深层红石矿等同效）
+      expect(BLOCK_BY_KEY[`deepslate_${k}`], `deepslate_${k}`).toBeDefined();
     }
     expect(BLOCK_BY_KEY.coal_ore.pickTier).toBe(0);
     expect(BLOCK_BY_KEY.iron_ore.pickTier).toBe(1);

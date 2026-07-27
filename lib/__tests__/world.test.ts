@@ -18,9 +18,9 @@ describe('World 方块读写', () => {
   it('y 越界读写安全', () => {
     const w = voidWorld();
     w.setBlock(0, -1, 0, STONE);
-    w.setBlock(0, 64, 0, STONE);
+    w.setBlock(0, 200, 0, STONE);
     expect(w.getBlock(0, -1, 0)).toBe(AIR);
-    expect(w.getBlock(0, 64, 0)).toBe(AIR);
+    expect(w.getBlock(0, 200, 0)).toBe(AIR);
   });
 
   it('修改标记脏 chunk 与待存档 chunk', () => {
@@ -114,11 +114,11 @@ describe('地形生成', () => {
   });
 
   it('默认地形生成非空且幂等', () => {
-    const data = new Uint16Array(16 * 16 * 64);
+    const data = new Uint16Array(CHUNK_VOLUME);
     generateChunk((new World('fill-test')).terrain, 0, 0, data);
     expect(data.some((v) => v !== AIR)).toBe(true);
     expect(Array.from(data)).toContain(STONE); // 任何地形列底部都有石头
-    const again = new Uint16Array(16 * 16 * 64);
+    const again = new Uint16Array(CHUNK_VOLUME);
     generateChunk((new World('fill-test')).terrain, 0, 0, again);
     expect(Buffer.from(data).equals(Buffer.from(again))).toBe(true);
   });

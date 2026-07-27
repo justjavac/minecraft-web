@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BLOCKS, type BlockCat, type BlockId } from '@/lib/blocks';
 import { useGameStore } from '@/lib/store';
 import { TileIcon } from './TileIcon';
@@ -38,6 +38,16 @@ export function BlockPicker() {
       return true;
     });
   }, [query, cat]);
+
+  // Esc 关闭（组件是纯 div 不是 Dialog，需自己监听；与底部提示文案一致）
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPickerOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, setPickerOpen]);
 
   if (!open) return null;
   return (

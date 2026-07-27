@@ -1,6 +1,6 @@
 // 生物系统：类型化怪物（敌对/被动）+ 骷髅箭 + 苦力怕爆炸。纯数据逻辑（不依赖 three，可单测）
 
-import { BLOCKS, GRASS, isWaterId } from './blocks';
+import { AIR, BLOCKS, GRASS, isWaterId } from './blocks';
 import { dayFactorAt, worldClock } from './game';
 import { explodeAt } from './explosion';
 import { spawnMaterialDrop } from './items';
@@ -114,6 +114,17 @@ export function isNight(): boolean {
   return dayFactorAt(worldClock.t) < 0.4;
 }
 
+/** 白天自燃判定：头顶露天（y+2 向上无遮挡）且头部不在水中（树荫/洞穴/水下不烧，MC 一致） */
+function exposedToSky(world: World, m: Mob): boolean {
+  const bx = Math.floor(m.x);
+  const bz = Math.floor(m.z);
+  if (isWaterId(world.getBlock(bx, Math.floor(m.y) + 1, bz))) return false;
+  for (let y = Math.floor(m.y) + 2; y < WORLD_HEIGHT; y++) {
+    if (world.getBlock(bx, y, bz) !== AIR) return false;
+  }
+  return true;
+}
+
 function pickSpawnType(night: boolean): MobType {
   const r = Math.random();
   if (night) {
@@ -175,6 +186,8 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     const r = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
     const bx = Math.floor(px + Math.cos(ang) * r);
     const bz = Math.floor(pz + Math.sin(ang) * r);
+    // 未加载的 chunk 不刷：读块会触发隐式全量生成（卡顿）
+    if (!world.chunks.has(`${bx >> 4},${bz >> 4}`)) continue;
     // 从世界顶向下找第一个实心方块作为地表
     let y = WORLD_HEIGHT - 1;
     while (y > 0 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
@@ -248,9 +261,17 @@ function tickArrows(
     const a = arrows[i];
     a.age += dt;
     a.vy -= 4 * dt; // 箭的重力（较轻，保证射程内能命中）
-    a.x += a.vx * dt;
-    a.y += a.vy * dt;
-    a.z += a.vz * dt;
+    const nx = a.x + a.vx * dt;
+    const ny = a.y + a.vy * dt;
+    const nz = a.z + a.vz * dt;
+    // 目标位置 chunk 未加载：直接移除（读块会触发隐式全量生成，卡顿）
+    if (!world.chunks.has(`${Math.floor(nx) >> 4},${Math.floor(nz) >> 4}`)) {
+      arrows.splice(i, 1);
+      continue;
+    }
+    a.x = nx;
+    a.y = ny;
+    a.z = nz;
     if (BLOCKS[world.getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z))]?.solid) {
       arrows.splice(i, 1);
       continue;
@@ -316,8 +337,8 @@ export function tickMobs(
     // 恋爱/繁殖冷却倒数
     if (m.loveTimer !== undefined && m.loveTimer > 0) m.loveTimer -= dt;
     if (m.breedCd !== undefined && m.breedCd > 0) m.breedCd -= dt;
-    // 白天自燃
-    if (!night && def.burnsAtDay) {
+    // 白天自燃（需露天且头部不在水中）
+    if (!night && def.burnsAtDay && exposedToSky(world, m)) {
       m.hp -= BURN_DAMAGE * dt;
       if (m.hp <= 0) {
         mobs.splice(i, 1);

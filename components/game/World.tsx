@@ -17,9 +17,10 @@ import {
 } from '@/lib/persistence';
 import { playerPosition, setActiveWorld, debugInfo, worldClock } from '@/lib/game';
 import { clearFurnaces, furnaces, tickFurnaces } from '@/lib/furnace';
-import { tickFluids } from '@/lib/fluids';
-import { tickCrops } from '@/lib/crops';
-import { tickSaplings } from '@/lib/saplings';
+import { clearStorages, storages } from '@/lib/storage';
+import { tickFluids, clearFluids } from '@/lib/fluids';
+import { tickCrops, clearCrops } from '@/lib/crops';
+import { tickSaplings, clearSaplings } from '@/lib/saplings';
 import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
@@ -39,6 +40,10 @@ function currentExtras(): SaveExtras {
         ? { health: s.health, hunger: s.hunger, saturation: s.saturation, slots: s.hotbarSlots, backpack: s.mainSlots, armor: s.armorSlots }
         : undefined,
     furnaces: furnaces.size > 0 ? Object.fromEntries(furnaces) : undefined,
+    storages:
+      storages.size > 0
+        ? Object.fromEntries([...storages].filter(([, slots]) => slots.some((s) => s !== null)))
+        : undefined,
   };
 }
 
@@ -84,6 +89,11 @@ export function WorldRenderer() {
           if (meta?.furnaces) {
             for (const [k, v] of Object.entries(meta.furnaces)) furnaces.set(k, v);
           }
+          // 恢复容器内容（箱子/木桶）
+          clearStorages();
+          if (meta?.storages) {
+            for (const [k, v] of Object.entries(meta.storages)) storages.set(k, v);
+          }
           const store = useGameStore.getState();
           if (meta?.player) store.setSpawnPoint(meta.player);
           store.setWorldMode(meta?.mode ?? 'creative');
@@ -97,6 +107,7 @@ export function WorldRenderer() {
           await clearWorldStore();
           worldClock.t = 0.3; // 新世界从上午开始
           w = new World(seed);
+          clearStorages(); // 清空上一个世界的容器残留
           await saveWorldMeta(worldMeta(seed, { mode: useGameStore.getState().worldMode }));
         }
         if (cancelled) return;
@@ -122,6 +133,10 @@ export function WorldRenderer() {
       const w = worldRef.current;
       if (w) void saveModifiedChunks(w, currentExtras());
       clearFurnaces();
+      clearStorages();
+      clearFluids();
+      clearSaplings();
+      clearCrops();
       worldRef.current = null;
       setActiveWorld(null);
     };
@@ -181,9 +196,8 @@ export function WorldRenderer() {
         console.error('世界 tick 失败（下帧重试）', err);
       }
     }
-    if (!useGameStore.getState().paused) {
-      tickFurnaces(Math.min(delta, 0.05));
-    }
+    // 熔炉烧炼不做暂停门控（与流体/作物一致）：打开熔炉界面会解锁指针，门控会让烧炼整个冻结
+    tickFurnaces(Math.min(delta, 0.05));
     debugInfo.chunks = w.chunks.size;
     debugInfo.dirty = w.dirtyChunks.size;
     if (drained > 0 || w.generation !== lastGeneration.current) {

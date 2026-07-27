@@ -1,4 +1,4 @@
-// 结构生成：区域级确定性（平原/森林/盆地村庄、沙漠村庄、哨塔、冰屋），跨 chunk 一致
+// 结构生成：区域级确定性（平原/热带草原/针叶林/沙漠村庄、哨塔、冰屋），跨 chunk 一致
 
 import { AIR, BLOCK_BY_KEY, COBBLE, DIRT, GLASS, LOG, PLANKS, WATER, WHEAT_CROP_0, type BlockId } from './blocks';
 import { hash2, SEA_LEVEL, type Terrain } from './noise';
@@ -6,7 +6,7 @@ import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
 
 const REGION = 64; // 结构区域边长（格）
 
-export type StructureKind = 'village' | 'desert_village' | 'watchtower' | 'igloo';
+export type StructureKind = 'village' | 'desert_village' | 'savanna_village' | 'taiga_village' | 'watchtower' | 'igloo';
 
 export interface StructureSpot {
   kind: StructureKind;
@@ -49,18 +49,29 @@ export function structureAt(seedHash: number, terrain: Terrain, rx: number, rz: 
   if (!flatEnough(terrain, x, z)) return null;
   const r = regionHash(seedHash, rx, rz, 1);
   switch (biome) {
+    // MC 村庄群系：平原 / 热带草原 / 针叶林 / 雪原 / 沙漠
     case 'plains':
-    case 'forest':
-    case 'basin':
       if (r < 0.1) return { kind: 'village', x, z };
       if (r < 0.13) return { kind: 'watchtower', x, z };
+      return null;
+    case 'savanna':
+      if (r < 0.1) return { kind: 'savanna_village', x, z };
+      return null;
+    case 'taiga':
+      if (r < 0.09) return { kind: 'taiga_village', x, z };
+      return null;
+    case 'snowy':
+      if (r < 0.06) return { kind: 'taiga_village', x, z }; // 雪原村庄用云杉材质
+      if (r < 0.1) return { kind: 'igloo', x, z };
       return null;
     case 'desert':
       if (r < 0.09) return { kind: 'desert_village', x, z };
       if (r < 0.12) return { kind: 'watchtower', x, z };
       return null;
-    case 'ice':
-      if (r < 0.08) return { kind: 'igloo', x, z };
+    case 'forest':
+    case 'birch_forest':
+    case 'basin':
+      if (r < 0.03) return { kind: 'watchtower', x, z };
       return null;
     default:
       return null;
@@ -80,7 +91,7 @@ export function villageCenterNear(seedHash: number, terrain: Terrain, x: number,
   for (let drx = -1; drx <= 1; drx++) {
     for (let drz = -1; drz <= 1; drz++) {
       const s = structureAt(seedHash, terrain, rx + drx, rz + drz);
-      if (s && (s.kind === 'village' || s.kind === 'desert_village') && Math.hypot(s.x - x, s.z - z) <= maxDist) {
+      if (s && s.kind.endsWith('village') && Math.hypot(s.x - x, s.z - z) <= maxDist) {
         return { x: s.x, z: s.z };
       }
     }
@@ -132,6 +143,31 @@ const DESERT_MATS: VillageMats = {
   wall: K('cut_sandstone'),
   roof: K('smooth_sandstone'),
   well: K('sandstone'),
+};
+// 热带草原村庄：金合欢木（MC 一致）
+const SAVANNA_MATS: VillageMats = {
+  floor: COBBLE,
+  pillar: K('acacia_log'),
+  wall: K('acacia_planks'),
+  roof: K('acacia_planks'),
+  well: COBBLE,
+};
+// 针叶林/雪原村庄：云杉木（MC 一致）
+const TAIGA_MATS: VillageMats = {
+  floor: COBBLE,
+  pillar: K('spruce_log'),
+  wall: K('spruce_planks'),
+  roof: K('spruce_planks'),
+  well: COBBLE,
+};
+
+const VILLAGE_MATS: Record<StructureKind, VillageMats> = {
+  village: PLAINS_MATS,
+  desert_village: DESERT_MATS,
+  savanna_village: SAVANNA_MATS,
+  taiga_village: TAIGA_MATS,
+  watchtower: PLAINS_MATS,
+  igloo: PLAINS_MATS,
 };
 
 function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
@@ -303,8 +339,8 @@ export function applyStructures(seedHash: number, terrain: Terrain, cx: number, 
     for (let drz = -1; drz <= 1; drz++) {
       const spot = structureAt(seedHash, terrain, rx + drx, rz + drz);
       if (!spot) continue;
-      if (spot.kind === 'village' || spot.kind === 'desert_village') {
-        const mats = spot.kind === 'desert_village' ? DESERT_MATS : PLAINS_MATS;
+      if (spot.kind.endsWith('village')) {
+        const mats = VILLAGE_MATS[spot.kind];
         const structures = villageStructures(seedHash, rx + drx, rz + drz, spot.x, spot.z);
         const well = structures[0];
         for (const s of structures) {

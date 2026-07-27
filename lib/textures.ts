@@ -37,6 +37,7 @@ const TILE_TINTS: Record<string, string> = {
   dark_oak_leaves: FOLIAGE_TINT,
   mangrove_leaves: FOLIAGE_TINT,
   spruce_leaves: SPRUCE_TINT,
+  lily_pad: FOLIAGE_TINT,
 };
 
 /** 填充 16×16 底色 + 确定性噪点 */

@@ -138,6 +138,8 @@ const arrowDir = new Vector3();
 /** 帧循环复用的去重集合（避免每帧分配） */
 const seenScratch = new Set<number>();
 const seenArrowsScratch = new Set<number>();
+/** 敌对生物类型（朝向玩家；其余朝移动方向）。模块级常量，避免每生物每帧分配数组字面量 */
+const HOSTILE_TYPES: readonly MobType[] = ['zombie', 'skeleton', 'spider', 'creeper'];
 
 /** 生物渲染与 AI 驱动（仅生存模式；网格按 id 复用） */
 export function Mobs() {
@@ -187,7 +189,7 @@ export function Mobs() {
         }
       mesh.position.set(m.x, m.y, m.z);
       // 朝向：敌对朝玩家，被动朝移动方向
-      const def = m.fleeTimer > 0 || !['zombie', 'skeleton', 'spider', 'creeper'].includes(m.type);
+      const def = m.fleeTimer > 0 || !HOSTILE_TYPES.includes(m.type);
       mesh.rotation.y = def && m.wanderMoving
         ? Math.atan2(Math.cos(m.wanderDir), Math.sin(m.wanderDir))
         : Math.atan2(playerPosition.x - m.x, playerPosition.z - m.z);

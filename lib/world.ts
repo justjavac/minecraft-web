@@ -1,23 +1,27 @@
 // 体素世界：chunk 存储、地形与结构生成、方块读写、脏标记
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, LAVA, STONE, WATER } from './blocks';
-import { BIOME_SURFACE } from './biomes';
+import { BADLANDS_BANDS, BIOME_SURFACE } from './biomes';
 import { enqueueFluid } from './fluids';
 import { notifyCropBlockSet } from './crops';
 import { notifyBlockSet } from './saplings';
-import { createTerrain, hash2, hashString, SEA_LEVEL, type Terrain } from './noise';
+import { createTerrain, hash2, hashString, mulberry32, SEA_LEVEL, type Biome, type Terrain } from './noise';
 import { applyOres } from './oregen';
 import { cascadeLight } from './lights';
 import { applyStructures } from './structures';
+import { HUGE_MUSHROOM_MAX_H, TREE_MAX_H, writeHugeMushroom, writeTree } from './trees';
 
 export const CHUNK_SIZE = 16;
-export const WORLD_HEIGHT = 64;
+export const WORLD_HEIGHT = 128;
 export const CHUNK_VOLUME = CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT;
 
 export const localIndex = (x: number, y: number, z: number): number =>
   (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
 
 export const chunkKey = (cx: number, cz: number): string => `${cx},${cz}`;
+
+/** 树形/巨蘑菇最大外扩格数（金合欢斜干 1 + 5×5 冠 2；巨蘑菇伞盖 2），跨 chunk 一致所需的环宽 */
+const TREE_RING = 3;
 
 export class Chunk {
   readonly data = new Uint16Array(CHUNK_VOLUME);
@@ -37,21 +41,74 @@ export class Chunk {
   ) {}
 }
 
-/** 用地形填充 chunk（确定性的；树木含 2 格边缘以跨 chunk 一致）；seedHash 用于村庄结构 */
+/** 用地形填充 chunk（确定性的；树木含 ±TREE_RING 格边缘以跨 chunk 一致）；seedHash 用于村庄结构 */
 export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash = 0): void {
+  // 列高度/群系缓存：同一列在地形填充、洞穴、灌水、树木、植被多轮中反复查询，每列只算一次。
+  // 缓存覆盖树木环 ±TREE_RING 共 (16+2·TREE_RING)² 列（chunk 内 16×16 是其中子集）
+  const RING = CHUNK_SIZE + TREE_RING * 2;
+  const hCache = new Int16Array(RING * RING).fill(-2); // -2 = 未算过（heightAt 只会返回 -1 或 ≥1）
+  const bCache: (Biome | undefined)[] = new Array(RING * RING);
+  const ringIndex = (wx: number, wz: number) => (wx - cx * CHUNK_SIZE + TREE_RING) * RING + (wz - cz * CHUNK_SIZE + TREE_RING);
+  const cachedHeightAt = (wx: number, wz: number): number => {
+    const i = ringIndex(wx, wz);
+    let h = hCache[i];
+    if (h === -2) {
+      h = terrain.heightAt(wx, wz);
+      hCache[i] = h;
+    }
+    return h;
+  };
+  const cachedBiomeAt = (wx: number, wz: number): Biome => {
+    const i = ringIndex(wx, wz);
+    return (bCache[i] ??= terrain.biomeAt(wx, wz));
+  };
+  const K = (key: string) => BLOCK_BY_KEY[key].id;
+  const SNOW_BLOCK = K('snow_block');
+  const GRASS = K('grass');
+  const DIRT = K('dirt');
+  const SAND = K('sand');
+  const GRAVEL = K('gravel');
+  const PODZOL = K('podzol');
+  const MYCELIUM = K('mycelium');
+  const RED_SAND = K('red_sand');
+
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
       const wx = cx * CHUNK_SIZE + x;
       const wz = cz * CHUNK_SIZE + z;
-      const h = terrain.heightAt(wx, wz);
+      const h = cachedHeightAt(wx, wz);
       if (h < 0) continue;
-      const surface = BIOME_SURFACE[terrain.biomeAt(wx, wz)];
+      const biome = cachedBiomeAt(wx, wz);
+      const surface = BIOME_SURFACE[biome];
       const top = Math.min(h, WORLD_HEIGHT - 1);
+      // 群系表层微调：山地按雪线分带（山麓草石 → 裸岩 → 积雪），针叶林灰化土斑块
+      let topBlock = surface.top;
+      let fillerBlock = surface.filler;
+      if (biome === 'mountains') {
+        const sl = terrain.snowlineAt(wx, wz);
+        if (top >= sl) {
+          topBlock = SNOW_BLOCK;
+          fillerBlock = STONE;
+        } else if (top >= sl - 6) {
+          topBlock = STONE;
+          fillerBlock = STONE;
+        } else {
+          topBlock = hash2(seedHash ^ 0x3f7a11, wx, wz) < 0.3 ? GRAVEL : GRASS;
+          fillerBlock = DIRT;
+        }
+      } else if (biome === 'taiga' && hash2(seedHash ^ 0x9d2b4c, wx, wz) < 0.35) {
+        topBlock = PODZOL;
+      }
       const beach = top <= SEA_LEVEL + 1;
+      // 恶地陶瓦地层：列级色带偏移（MC 侵蚀恶地的彩色地层）
+      const bandOff = biome === 'badlands' ? Math.floor(hash2(seedHash ^ 0x6b1e7a, wx, wz) * BADLANDS_BANDS.length * 3) : 0;
       for (let y = 0; y <= top; y++) {
         let id: number = STONE;
-        if (y === top) id = beach ? (surface.beach ?? surface.top) : surface.top;
-        else if (y >= top - 3) id = surface.filler;
+        if (y === top) id = beach ? (surface.beach ?? topBlock) : topBlock;
+        else if (y >= top - 3) id = fillerBlock;
+        else if (biome === 'badlands' && y >= top - 32) {
+          id = BADLANDS_BANDS[Math.abs(Math.floor((y + bandOff) / 3)) % BADLANDS_BANDS.length];
+        }
         data[localIndex(x, y, z)] = id;
       }
       // 水下地表：海床/河床换成群系的水下组成（顶两格，按列哈希取材质）
@@ -60,7 +117,7 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
         data[localIndex(x, top, z)] = pick;
         if (top - 1 >= 0) data[localIndex(x, top - 1, z)] = pick;
       }
-      // 水面：冰原封冻为冰，其余为水
+      // 水面：寒带封冻为冰，其余为水
       for (let y = top + 1; y <= SEA_LEVEL; y++) {
         data[localIndex(x, y, z)] = y === SEA_LEVEL && surface.waterTop ? surface.waterTop : WATER;
       }
@@ -73,10 +130,10 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
     for (let z = 0; z < CHUNK_SIZE; z++) {
       const wx = cx * CHUNK_SIZE + x;
       const wz = cz * CHUNK_SIZE + z;
-      const h = terrain.heightAt(wx, wz);
+      const h = cachedHeightAt(wx, wz);
       if (h < 0) continue;
       for (let y = 4; y <= h; y++) {
-        if (terrain.caveAt(wx, y, wz)) data[localIndex(x, y, z)] = AIR;
+        if (terrain.caveAt(wx, y, wz, h)) data[localIndex(x, y, z)] = AIR;
       }
     }
   }
@@ -85,7 +142,7 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
     for (let z = 0; z < CHUNK_SIZE; z++) {
       const wx = cx * CHUNK_SIZE + x;
       const wz = cz * CHUNK_SIZE + z;
-      const h = terrain.heightAt(wx, wz);
+      const h = cachedHeightAt(wx, wz);
       if (h < 0 || h >= SEA_LEVEL) continue;
       for (let y = SEA_LEVEL; y >= 4; y--) {
         const i = localIndex(x, y, z);
@@ -105,56 +162,150 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
       }
     }
   }
-  // 树木：检查本 chunk 及周围 2 格内的列，只写入落在本 chunk 的部分
-  for (let tx = -2; tx < CHUNK_SIZE + 2; tx++) {
-    for (let tz = -2; tz < CHUNK_SIZE + 2; tz++) {
+  // 树木与巨蘑菇：检查本 chunk 及周围 TREE_RING 格内的列，只写入落在本 chunk 的部分（跨 chunk 一致）
+  const put = (lx: number, y: number, lz: number, id: number, onlyAir: boolean) => {
+    if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+    const i = localIndex(lx, y, lz);
+    if (onlyAir && data[i] !== AIR) return;
+    data[i] = id;
+  };
+  for (let tx = -TREE_RING; tx < CHUNK_SIZE + TREE_RING; tx++) {
+    for (let tz = -TREE_RING; tz < CHUNK_SIZE + TREE_RING; tz++) {
       const wx = cx * CHUNK_SIZE + tx;
       const wz = cz * CHUNK_SIZE + tz;
+      const h = cachedHeightAt(wx, wz);
+      if (h <= SEA_LEVEL + 1 || h >= WORLD_HEIGHT - 2) continue;
+      const rand = mulberry32((seedHash ^ Math.imul(wx, 374761393) ^ Math.imul(wz, 668265263) ^ 0x7ee5) | 0);
       const kind = terrain.treeAt(wx, wz);
-      if (!kind) continue;
-      const h = terrain.heightAt(wx, wz);
-      if (h <= SEA_LEVEL + 1 || h + 6 >= WORLD_HEIGHT) continue;
-      const log = BLOCK_BY_KEY[kind === 'oak' ? 'log' : `${kind}_log`].id;
-      const leaves = BLOCK_BY_KEY[kind === 'oak' ? 'leaves' : `${kind}_leaves`].id;
-      const put = (lx: number, y: number, lz: number, id: number, onlyAir: boolean) => {
-        if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
-        const i = localIndex(lx, y, lz);
-        if (onlyAir && data[i] !== AIR) return;
-        data[i] = id;
-      };
-      for (let y = h + 1; y <= h + 4; y++) put(tx, y, tz, log, false);
-      for (const ly of [h + 3, h + 4]) {
-        for (let dx = -1; dx <= 1; dx++) {
-          for (let dz = -1; dz <= 1; dz++) put(tx + dx, ly, tz + dz, leaves, true);
-        }
+      if (kind) {
+        if (h + TREE_MAX_H[kind] >= WORLD_HEIGHT) continue;
+        writeTree(put, kind, tx, h, tz, rand);
+        continue;
       }
-      put(tx, h + 5, tz, leaves, true);
+      // 巨蘑菇：蘑菇岛成群、黑森林偶见（红/棕各半）
+      const biome = cachedBiomeAt(wx, wz);
+      const r = rand();
+      const chance = biome === 'mushroom_fields' ? 0.03 : biome === 'dark_forest' ? 0.006 : 0;
+      if (chance > 0 && r < chance && h + HUGE_MUSHROOM_MAX_H < WORLD_HEIGHT) {
+        writeHugeMushroom(put, rand() < 0.5, tx, h, tz, rand);
+      }
     }
   }
   // 村庄结构（确定性，跨 chunk 一致）
   applyStructures(seedHash, terrain, cx, cz, data);
 
-  // 花草：平原/盆地/森林的草地列按哈希撒花/草丛（只有支撑且上方为空才放）
+  // 植被：按群系撒花草/仙人掌/甘蔗/蘑菇/睡莲/瓜果（只有支撑且上方为空才放）
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
       const wx = cx * CHUNK_SIZE + x;
       const wz = cz * CHUNK_SIZE + z;
-      const biome = terrain.biomeAt(wx, wz);
-      if (biome !== 'plains' && biome !== 'forest' && biome !== 'basin') continue;
-      const h = terrain.heightAt(wx, wz);
-      if (h <= SEA_LEVEL || h + 1 >= WORLD_HEIGHT) continue;
-      if (data[localIndex(x, h, z)] !== BLOCK_BY_KEY.grass.id) continue;
-      const r = hash2(seedHash ^ 0x51ab3f, wx, wz);
-      const chance = biome === 'forest' ? 0.02 : 0.012;
-      if (r >= chance) continue;
-      const pick = hash2(seedHash ^ 0x7c91e2, wx, wz);
-      let plant: number;
-      if (biome === 'forest') {
-        plant = pick < 0.5 ? BLOCK_BY_KEY.fern.id : pick < 0.65 ? BLOCK_BY_KEY.short_grass.id : pick < 0.8 ? BLOCK_BY_KEY.poppy.id : pick < 0.9 ? BLOCK_BY_KEY.dandelion.id : BLOCK_BY_KEY.blue_orchid.id;
-      } else {
-        plant = pick < 0.45 ? BLOCK_BY_KEY.short_grass.id : pick < 0.6 ? BLOCK_BY_KEY.dandelion.id : pick < 0.75 ? BLOCK_BY_KEY.poppy.id : pick < 0.85 ? BLOCK_BY_KEY.cornflower.id : pick < 0.95 ? BLOCK_BY_KEY.oxeye_daisy.id : BLOCK_BY_KEY.allium.id;
+      const biome = cachedBiomeAt(wx, wz);
+      const h = cachedHeightAt(wx, wz);
+      if (h < 0) continue;
+      const surf = data[localIndex(x, h, z)];
+      // 睡莲：沼泽/丛林未封冻的水面（浮在水面之上的空气格）
+      if (h < SEA_LEVEL) {
+        if (
+          (biome === 'swamp' || biome === 'jungle') &&
+          data[localIndex(x, SEA_LEVEL, z)] === WATER &&
+          data[localIndex(x, SEA_LEVEL + 1, z)] === AIR &&
+          hash2(seedHash ^ 0x1e7b3d, wx, wz) < 0.08
+        ) {
+          data[localIndex(x, SEA_LEVEL + 1, z)] = K('lily_pad');
+        }
+        continue;
       }
-      if (data[localIndex(x, h + 1, z)] === AIR) data[localIndex(x, h + 1, z)] = plant;
+      if (h < SEA_LEVEL || h + 1 >= WORLD_HEIGHT) continue;
+      const aboveI = localIndex(x, h + 1, z);
+      if (data[aboveI] !== AIR) continue;
+      // 甘蔗：岸线（脚下即海平面）四邻同高有水，宿主为草/土/沙/灰化土/菌丝（MC 一致）
+      if (h === SEA_LEVEL && (surf === GRASS || surf === DIRT || surf === SAND || surf === PODZOL || surf === MYCELIUM)) {
+        const nearWater =
+          x > 0 && x < CHUNK_SIZE - 1 && z > 0 && z < CHUNK_SIZE - 1 &&
+          (data[localIndex(x + 1, h, z)] === WATER || data[localIndex(x - 1, h, z)] === WATER ||
+            data[localIndex(x, h, z + 1)] === WATER || data[localIndex(x, h, z - 1)] === WATER);
+        if (nearWater && hash2(seedHash ^ 0xca3e11, wx, wz) < 0.3) {
+          const ch = 1 + Math.floor(hash2(seedHash ^ 0xca3f22, wx, wz) * 3);
+          for (let i = 0; i < ch && h + 1 + i < WORLD_HEIGHT; i++) data[localIndex(x, h + 1 + i, z)] = K('sugar_cane');
+          continue;
+        }
+      }
+      const r = hash2(seedHash ^ 0x51ab3f, wx, wz);
+      const pick = hash2(seedHash ^ 0x7c91e2, wx, wz);
+      switch (biome) {
+        case 'plains':
+        case 'basin': {
+          if (surf !== GRASS) break;
+          if (r < 1 / 256) {
+            data[aboveI] = K('pumpkin');
+            break;
+          }
+          if (r >= 0.012) break;
+          data[aboveI] =
+            pick < 0.45 ? K('short_grass') : pick < 0.6 ? K('dandelion') : pick < 0.75 ? K('poppy') : pick < 0.85 ? K('cornflower') : pick < 0.95 ? K('oxeye_daisy') : K('allium');
+          break;
+        }
+        case 'forest':
+        case 'birch_forest': {
+          if (surf !== GRASS || r >= 0.02) break;
+          data[aboveI] =
+            pick < 0.5 ? K('fern') : pick < 0.65 ? K('short_grass') : pick < 0.8 ? K('poppy') : pick < 0.9 ? K('dandelion') : K('blue_orchid');
+          break;
+        }
+        case 'taiga': {
+          if ((surf !== GRASS && surf !== PODZOL) || r >= 0.05) break;
+          data[aboveI] = pick < 0.5 ? K('fern') : pick < 0.75 ? K('short_grass') : pick < 0.9 ? K('poppy') : K('brown_mushroom');
+          break;
+        }
+        case 'dark_forest': {
+          if (surf !== GRASS || r >= 0.03) break;
+          data[aboveI] = pick < 0.3 ? K('fern') : pick < 0.65 ? K('red_mushroom') : K('brown_mushroom');
+          break;
+        }
+        case 'desert': {
+          if (surf !== SAND) break;
+          if (r < 0.02) {
+            // 仙人掌：四邻同高须为空（MC 贴墙不长），高 1-3
+            const clear =
+              x > 0 && x < CHUNK_SIZE - 1 && z > 0 && z < CHUNK_SIZE - 1 &&
+              data[localIndex(x + 1, h + 1, z)] === AIR && data[localIndex(x - 1, h + 1, z)] === AIR &&
+              data[localIndex(x, h + 1, z + 1)] === AIR && data[localIndex(x, h + 1, z - 1)] === AIR;
+            if (!clear) break;
+            const ch = 1 + Math.floor(pick * 3);
+            for (let i = 0; i < ch && h + 1 + i < WORLD_HEIGHT; i++) data[localIndex(x, h + 1 + i, z)] = K('cactus');
+          } else if (r < 0.05) {
+            data[aboveI] = K('dead_bush');
+          }
+          break;
+        }
+        case 'savanna': {
+          if (surf !== GRASS || r >= 0.2) break;
+          data[aboveI] = pick < 0.8 ? K('short_grass') : K('dandelion');
+          break;
+        }
+        case 'jungle': {
+          if (surf !== GRASS || r >= 0.06) break;
+          data[aboveI] = pick < 0.05 ? K('melon') : pick < 0.5 ? K('fern') : K('short_grass');
+          break;
+        }
+        case 'swamp': {
+          if (surf !== GRASS || r >= 0.05) break;
+          data[aboveI] = pick < 0.3 ? K('blue_orchid') : pick < 0.6 ? K('short_grass') : pick < 0.85 ? K('fern') : K('brown_mushroom');
+          break;
+        }
+        case 'badlands': {
+          if (surf !== RED_SAND && !BLOCKS[surf]?.key.endsWith('terracotta')) break;
+          if (r < 0.025) data[aboveI] = K('dead_bush');
+          break;
+        }
+        case 'mushroom_fields': {
+          if (surf !== MYCELIUM || r >= 0.03) break;
+          data[aboveI] = pick < 0.5 ? K('red_mushroom') : K('brown_mushroom');
+          break;
+        }
+        default:
+          break; // snowy / mountains / ocean / river 无地表植被
+      }
     }
   }
 }
@@ -189,8 +340,11 @@ export class World {
     if (existing) return existing;
     const chunk = new Chunk(cx, cz);
     const s = this.saved.get(key);
-    if (s && s.length === CHUNK_VOLUME) chunk.data.set(s);
-    else {
+    if (s && s.length === CHUNK_VOLUME) {
+      chunk.data.set(s);
+      // 存档恢复的 chunk 光照数组为全 0：标脏交给 flushLight 限流重算（否则世界渲染全黑）
+      chunk.lightDirty = true;
+    } else {
       generateChunk(this.terrain, cx, cz, chunk.data, this.seedHash);
       cascadeLight(this, chunk);
     }

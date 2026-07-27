@@ -79,6 +79,8 @@ export function CraftingDialog() {
   const craft = useGameStore((s) => s.craft);
   const moveSlot = useGameStore((s) => s.moveSlot);
   const unequipArmor = useGameStore((s) => s.unequipArmor);
+  // 关闭时直接不渲染：避免每次背包变化都全量重算配方与 JSX（hooks 已全部调用，顺序稳定）
+  if (!open) return null;
   const merged = [...hotbarSlots, ...mainSlots];
   const recipes = RECIPES.filter((r) => withTable || !r.needsTable);
 

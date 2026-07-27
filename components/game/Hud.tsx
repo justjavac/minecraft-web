@@ -267,6 +267,10 @@ export function Hud() {
   const hotbarBlocks = useGameStore((s) => s.hotbarBlocks);
   const setSlot = useGameStore((s) => s.setSlot);
   const setCraftingOpen = useGameStore((s) => s.setCraftingOpen);
+  const craftingOpen = useGameStore((s) => s.craftingOpen);
+  const furnaceOpen = useGameStore((s) => s.furnaceOpen);
+  const storageOpen = useGameStore((s) => s.storageOpen);
+  const pickerOpen = useGameStore((s) => s.pickerOpen);
 
   // 当前选中项名称（创造=方块，生存=槽位内容）
   const heldSlot = hotbarSlots[selectedSlot];
@@ -341,8 +345,8 @@ export function Hud() {
       {/* 触屏控制层 */}
       {touchMode && !paused && <TouchControls />}
 
-      {/* 暂停遮罩（指针未锁定） */}
-      {paused && <PauseOverlay />}
+      {/* 暂停遮罩（指针未锁定；有界面打开时不显示，关掉界面即可直接继续） */}
+      {paused && !craftingOpen && !furnaceOpen && !storageOpen && !pickerOpen && <PauseOverlay />}
 
       {/* 死亡遮罩 */}
       {dead && <DeathOverlay />}

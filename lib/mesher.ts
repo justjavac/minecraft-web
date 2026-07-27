@@ -145,7 +145,8 @@ class GeometryBuilder {
       const b = Math.max(AO_CURVE[ao[3]] * sky, light);
       this.colors.push(b, b, b);
     }
-    this.indices.push(ndx, ndx + 1, ndx + 2, ndx + 1, ndx + 3, ndx + 2);
+    // 绕序与声明法线一致（+Y 朝上，否则被背面剔除）
+    this.indices.push(ndx, ndx + 2, ndx + 1, ndx + 1, ndx + 2, ndx + 3);
   }
 
   /** 单面（朝下）补面：倒置楼梯的前缘底面，区域 [x0,z0]-[x1,z1] */
@@ -167,7 +168,8 @@ class GeometryBuilder {
       const b = Math.max(AO_CURVE[ao[0]] * sky, light);
       this.colors.push(b, b, b);
     }
-    this.indices.push(ndx, ndx + 1, ndx + 2, ndx + 1, ndx + 3, ndx + 2);
+    // 绕序与声明法线一致（-Y 朝下，否则被背面剔除）
+    this.indices.push(ndx, ndx + 2, ndx + 1, ndx + 1, ndx + 2, ndx + 3);
   }
 
   /** 任意轴对齐盒（台阶半高/楼梯双箱/栅栏柱臂），UV 每面全贴图 */

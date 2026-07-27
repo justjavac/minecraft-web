@@ -40,6 +40,7 @@ export function addStackToSlots(
   const next = [...slots];
   const key = item.kind === 'block' ? `block:${item.id}` : `material:${item.material}`;
   let left = count;
+  let changed = false; // 完全放不下时原样返回 slots（store 用数组身份判断是否 set）
   // 先合并进已有堆叠
   for (let i = 0; i < next.length && left > 0; i++) {
     const s = next[i];
@@ -50,6 +51,7 @@ export function addStackToSlots(
     if (add > 0) {
       next[i] = { ...s, count: s.count + add };
       left -= add;
+      changed = true;
     }
   }
   // 再放进空槽
@@ -58,8 +60,9 @@ export function addStackToSlots(
     const add = Math.min(STACK_MAX, left);
     next[i] = item.kind === 'block' ? { kind: 'block', id: item.id, count: add } : { kind: 'material', material: item.material, count: add };
     left -= add;
+    changed = true;
   }
-  return { slots: next, leftover: left };
+  return { slots: changed ? next : slots, leftover: left };
 }
 
 /** 给工具找一个空槽，满则返回 null */

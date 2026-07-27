@@ -47,6 +47,20 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
   const def = BLOCKS[oldId];
   if (def?.digSound) playSound(def.digSound);
   if (def) breakParticles.push({ x, y, z, tile: def.side });
+  // 门：破坏一半时另一半同步消失（不掉落，否则 1 扇门拆出 2 扇）
+  if (def?.shape === 'door') {
+    const otherY = def.doorHalf === 'top' ? y - 1 : y + 1;
+    if (BLOCKS[world.getBlock(x, otherY, z)]?.shape === 'door') {
+      world.setBlock(x, otherY, z, AIR);
+    }
+  }
+  // 耕地被破坏：上面的作物一律清掉（创造模式也清，否则留浮空作物）；种子掉落物只在生存模式产生
+  if (isFarmlandId(oldId) && isWheatCropId(world.getBlock(x, y + 1, z))) {
+    world.setBlock(x, y + 1, z, AIR);
+    if (useGameStore.getState().worldMode === 'survival') {
+      spawnMaterialDrop('wheat_seeds', x + 0.5, y + 1.4, z + 0.5, 1);
+    }
+  }
   if (def && useGameStore.getState().worldMode === 'survival') {
     const s = useGameStore.getState();
     // MC：石头系/矿石/金属块挖掘需要镐（needsPick 任意镐；pickTier 限定最低层级）
@@ -81,11 +95,6 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
     // 容器被破坏：内容物一并掉落
     if (oldId === BLOCK_BY_KEY.chest.id || oldId === BLOCK_BY_KEY.barrel.id) {
       dropStorageContents(`${x},${y},${z}`, x, y, z);
-    }
-    // 耕地被破坏：上面的作物弹出为 1 种子
-    if (isFarmlandId(oldId) && isWheatCropId(world.getBlock(x, y + 1, z))) {
-      world.setBlock(x, y + 1, z, AIR);
-      spawnMaterialDrop('wheat_seeds', x + 0.5, y + 1.4, z + 0.5, 1);
     }
   }
 }
@@ -263,8 +272,9 @@ export function tryPlace(): boolean {
   if (intersectsPlayer(px, py, pz)) return false;
   let id: BlockId | null;
   if (s.worldMode === 'survival') {
-    // 生存模式：消耗选中槽位的方块，空槽/非方块则拒绝
-    id = s.consumeSelectedBlock();
+    // 生存模式：先「看」选中方块不扣减，形状/支撑校验全部通过后才真正消耗（否则校验失败吞物品）
+    const held = s.hotbarSlots[s.selectedSlot];
+    id = held?.kind === 'block' && held.count > 0 ? held.id : null;
     if (id === null) return false;
   } else {
     id = s.hotbarBlocks[s.selectedSlot];
@@ -276,6 +286,7 @@ export function tryPlace(): boolean {
   if (def.shape === 'slab') {
     // 点击同类台阶本身：合并成完整方块（MC 规则；无 fullBlock 的台阶形方块如床不合并）
     if (hitDef?.shape === 'slab' && hitDef.fullBlock !== undefined && hitDef.fullBlock === def.fullBlock) {
+      if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;
       world.setBlock(bx, by, bz, hitDef.fullBlock!);
       playSound(hitDef.placeSound);
       lastPlace = now;
@@ -290,6 +301,7 @@ export function tryPlace(): boolean {
     // 门：需不透明支撑且上方为空；朝向随玩家视线（注册序：bottom, top, open_bottom, open_top 每朝向 4 连）
     if (!BLOCKS[world.getBlock(px, py - 1, pz)]?.opaque) return false;
     if (world.getBlock(px, py + 1, pz) !== AIR) return false;
+    if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;
     const facing = Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 1 : 3) : dir.z > 0 ? 2 : 0;
     const baseId = BLOCK_BY_KEY.oak_door_bottom_n.id + facing * 4;
     world.setBlock(px, py, pz, baseId);
@@ -306,6 +318,8 @@ export function tryPlace(): boolean {
     const wallKey = fx === 1 ? 'torch_wall_e' : fx === -1 ? 'torch_wall_w' : fz === 1 ? 'torch_wall_s' : 'torch_wall_n';
     id = BLOCK_BY_KEY[wallKey].id;
   }
+  // 校验全部通过：扣减并放置
+  if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;
   world.setBlock(px, py, pz, id);
   playSound(BLOCKS[id]?.placeSound ?? 'place');
   lastPlace = now;

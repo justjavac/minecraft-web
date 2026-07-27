@@ -102,6 +102,7 @@ export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materi
     }
     return () => {
       cancelled = true;
+      getMesherPool()?.cancel(key);
     };
   }, [world, chunk, version, materials]);
 

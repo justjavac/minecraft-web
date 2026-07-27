@@ -15,6 +15,7 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   // 矿物（图标取 Faithful 物品贴图）
   coal: { name: '煤', tile: tileIcon('item/coal') },
   lapis: { name: '青金石', tile: tileIcon('item/lapis_lazuli') },
+  redstone: { name: '红石', tile: tileIcon('item/redstone') },
   diamond: { name: '钻石', tile: tileIcon('item/diamond') },
   emerald: { name: '绿宝石', tile: tileIcon('item/emerald') },
   iron_ingot: { name: '铁锭', tile: tileIcon('item/iron_ingot') },

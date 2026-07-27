@@ -12,6 +12,9 @@ import { clearTnt, primedTnt, tickTnt } from '@/lib/tnt';
 import { toGeometry } from './ChunkMesh';
 import { useRendererKind } from './renderer-kind';
 
+/** 帧循环复用的去重集合（避免每帧分配） */
+const seenScratch = new Set<number>();
+
 /** 引信中的 TNT 实体：重力缓落 + 白闪引信（越近爆点闪得越快）+ 到期爆炸 */
 export function Tnt() {
   const groupRef = useRef<Group>(null);
@@ -41,13 +44,16 @@ export function Tnt() {
     const group = groupRef.current;
     if (!world || !group || !materialsRef.current) return;
     const dt = Math.min(delta, 0.05);
-
-    tickTnt(world, dt, playerPosition, (dmg) => {
-      if (!useGameStore.getState().dead) useGameStore.getState().damagePlayer(dmg);
-    });
+    // 暂停（指针解锁/Esc）时引信冻结，与物理/生物一致
+    if (!useGameStore.getState().paused) {
+      tickTnt(world, dt, playerPosition, (dmg) => {
+        if (!useGameStore.getState().dead) useGameStore.getState().damagePlayer(dmg);
+      });
+    }
 
     // 同步 mesh：新增/更新/删除；引信后段加速白闪
-    const seen = new Set<number>();
+    const seen = seenScratch;
+    seen.clear();
     for (const t of primedTnt) {
       seen.add(t.id);
       let mesh = meshMap.current.get(t.id);

@@ -23,10 +23,16 @@ export function enqueueFluid(x: number, y: number, z: number): void {
   pending.add(`${x},${y},${z + 1}`);
   pending.add(`${x},${y},${z - 1}`);
   pending.add(`${x},${y - 1},${z}`);
+  pending.add(`${x},${y + 1},${z}`); // 上方格：挖掉水下的方块，上方水才能流下补坑
 }
 
 export function fluidQueueSize(): number {
   return pending.size;
+}
+
+/** 清空流体队列（切换世界时调用，防止旧坐标在新世界被 tick） */
+export function clearFluids(): void {
+  pending.clear();
 }
 
 /**
@@ -42,6 +48,8 @@ export function tickFluids(world: World, budget = 128): void {
     pending.delete(key);
     drained++;
     const [x, y, z] = key.split(',').map(Number);
+    // 未加载的格子不处理——getBlock 会隐式触发全量生成，把 chunk 生成拖出渲染半径形成生成风暴
+    if (!world.chunks.has(`${x >> 4},${z >> 4}`)) continue;
     const id = world.getBlock(x, y, z);
     const level = waterLevel(id);
     if (level < 0) continue;
@@ -76,12 +84,13 @@ export function tickFluids(world: World, budget = 128): void {
         }
       }
     }
-    if (world.getBlock(x, y - 1, z) === AIR) {
+    if (y > 0 && world.getBlock(x, y - 1, z) === AIR) {
       world.setBlock(x, y - 1, z, level === 0 ? FLOW_BASE : FLOW_BASE + level - 1);
       pending.add(`${x},${y - 1},${z}`);
       continue;
     }
-    if (level < 7) {
+    // 落地才向四方扩散（下方是非水实心/流体底托）；水柱中段不在半空散开（MC 瀑布观感）
+    if (level < 7 && !isWaterId(world.getBlock(x, y - 1, z))) {
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         if (world.getBlock(x + dx, y, z + dz) === AIR) {
           world.setBlock(x + dx, y, z + dz, FLOW_BASE + level);

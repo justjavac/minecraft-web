@@ -26,14 +26,16 @@ describe('生物群系', () => {
     }
   });
 
-  it('大尺度采样覆盖主要群系（沙漠/冰川/森林/海洋/河流）', () => {
+  it('大尺度采样覆盖主要群系', () => {
     const t = createTerrain(SEED);
     const counts = sample(t, 2000);
-    for (const b of ['desert', 'ice', 'forest', 'plains']) {
+    for (const b of [
+      'plains', 'forest', 'birch_forest', 'dark_forest', 'taiga', 'snowy',
+      'desert', 'savanna', 'jungle', 'swamp', 'badlands', 'mountains',
+      'ocean', 'river', 'basin',
+    ]) {
       expect(counts.get(b) ?? 0, b).toBeGreaterThan(0);
     }
-    expect(counts.get('ocean') ?? 0, 'ocean').toBeGreaterThan(0);
-    expect(counts.get('river') ?? 0, 'river').toBeGreaterThan(0);
   });
 
   it('河流：通道内水位达到海平面', () => {
@@ -65,11 +67,13 @@ describe('生物群系', () => {
     expect(checked).toBeGreaterThan(5);
   });
 
-  it('群系表层映射完整（冰原覆雪草+冰面，沙漠全沙）', () => {
-    expect(BIOME_SURFACE.ice.top).toBe(BLOCK_BY_KEY.snowy_grass.id);
-    expect(BIOME_SURFACE.ice.waterTop).toBe(BLOCK_BY_KEY.ice.id);
+  it('群系表层映射完整（雪原覆雪草+冰面，沙漠全沙，蘑菇岛菌丝，恶地红沙）', () => {
+    expect(BIOME_SURFACE.snowy.top).toBe(BLOCK_BY_KEY.snowy_grass.id);
+    expect(BIOME_SURFACE.snowy.waterTop).toBe(BLOCK_BY_KEY.ice.id);
     expect(BIOME_SURFACE.desert.top).toBe(BLOCK_BY_KEY.sand.id);
     expect(BIOME_SURFACE.desert.filler).toBe(BLOCK_BY_KEY.sand.id);
+    expect(BIOME_SURFACE.mushroom_fields.top).toBe(BLOCK_BY_KEY.mycelium.id);
+    expect(BIOME_SURFACE.badlands.top).toBe(BLOCK_BY_KEY.red_sand.id);
   });
 
   it('树木按群系分布：森林远多于沙漠/海洋', () => {
