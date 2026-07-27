@@ -390,6 +390,8 @@ add('respawn_anchor', '重生锚', { side: 'respawn_anchor_side0', top: 'respawn
 add('beacon', '信标', 'beacon', { cat: 'utility', opaque: false, digTime: 15, light: 15, ...GLASS_SND });
 add('target', '标靶', { side: 'target_side', top: 'target_top' }, { cat: 'utility', tool: 'shovel', digTime: 0.75, ...GRASS_SND });
 add('smithing_table', '锻造台', { side: 'smithing_table_side', top: 'smithing_table_top' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
+// 铁砧：修复工具/装备（材料补 25% 耐久）与附魔合并（MC 核心站点）
+add('anvil', '铁砧', { side: 'anvil', top: 'anvil_top', bottom: 'anvil' }, { cat: 'utility', tool: 'pickaxe', needsPick: true, digTime: 35 });
 add('fletching_table', '制箭台', { side: 'fletching_table_side', top: 'fletching_table_top' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
 add('cartography_table', '制图台', { side: 'cartography_table_side1', top: 'cartography_table_top' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
 add('ochre_froglight', '赭黄蛙明灯', { side: 'ochre_froglight_side', top: 'ochre_froglight_top' }, { cat: 'utility', digTime: 0.45, light: 15, ...GLASS_SND });

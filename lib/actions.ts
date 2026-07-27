@@ -443,6 +443,14 @@ export function tryPlace(): boolean {
     lastPlace = now;
     return false;
   }
+  // 铁砧：手持工具/装备右击——修复（耗材料 +25%）或附魔合并（MC）
+  if (hitId === BLOCK_BY_KEY.anvil.id) {
+    const r = s.anvilUse();
+    if (r.ok) playSound('place');
+    s.setNotice(r.notice);
+    lastPlace = now;
+    return false;
+  }
   // 末地门框架：手持末影之眼右击嵌入；12 框全嵌眼则激活末地传送门（MC）
   if (hitId === BLOCK_BY_KEY.end_portal_frame.id) {
     const heldEye = s.hotbarSlots[s.selectedSlot];

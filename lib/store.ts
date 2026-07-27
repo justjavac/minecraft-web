@@ -1,9 +1,11 @@
 // zustand 全局状态：界面、种子、热键栏、飞行/暂停、生存数值、槽位背包、装备
 
 import { create } from 'zustand';
-import { armorDef, armorPoints, emptyArmorSlots, type ArmorMaterial, type ArmorPiece, type ArmorSlots } from './armor';
-import { HOTBAR_BLOCKS, type BlockId } from './blocks';
+import { armorDef, armorDefOf, armorPoints, emptyArmorSlots, type ArmorMaterial, type ArmorPiece, type ArmorSlots } from './armor';
+import { armorRepairMaterial, mergeEnchants, toolRepairMaterial } from './anvil';
+import { BLOCKS, HOTBAR_BLOCKS, type BlockId } from './blocks';
 import { getBrew, putIntoBrewing, takePotion } from './brewing';
+import { MATERIAL_INFO } from './materials';
 import { FOODS, getFurnace, putIntoFurnace, takeOutput } from './furnace';
 import { hurtState, playerPosition, survivalStats } from './game';
 import { effects } from './effects';
@@ -199,6 +201,8 @@ interface GameStore {
   smithingUpgrade: () => boolean;
   /** 手持鞘翅右击：装备到胸甲槽（原胸甲回手，MC），成功返回 true */
   equipElytra: () => boolean;
+  /** 铁砧：手持工具/装备右击——有同型带附魔件则附魔合并（B 消失），否则耗 1 对应材料修 25% 耐久（MC） */
+  anvilUse: () => { ok: boolean; notice: string };
   /** 短暂提示条（睡觉/合成等反馈），HUD 定时清除 */
   notice: string | null;
   setNotice: (text: string | null) => void;
@@ -544,6 +548,67 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       armorSlots: { ...s.armorSlots, chestplate: { durability: 432, material: 'elytra' } }, // MC 鞘翅耐久 432
     });
     return true;
+  },
+  anvilUse: () => {
+    const s = get();
+    const held = s.hotbarSlots[s.selectedSlot];
+    if (!held || (held.kind !== 'tool' && held.kind !== 'armor')) {
+      return { ok: false, notice: '手持要修复或合并的工具/装备' };
+    }
+    // —— 附魔合并：物品栏另有一件同型且带附魔的 B（工具同 type / 装备同 piece+material，MC 铁砧双槽） ——
+    const all = [...s.hotbarSlots, ...s.mainSlots];
+    const bIdx = all.findIndex((sl, i) => {
+      if (i === s.selectedSlot || !sl) return false;
+      if (sl.kind !== 'tool' && sl.kind !== 'armor') return false;
+      if (!sl.ench || Object.keys(sl.ench).length === 0) return false;
+      return (
+        (held.kind === 'tool' && sl.kind === 'tool' && sl.tool === held.tool) ||
+        (held.kind === 'armor' && sl.kind === 'armor' && sl.piece === held.piece && (sl.material ?? 'leather') === (held.material ?? 'leather'))
+      );
+    });
+    if (bIdx >= 0) {
+      const b = all[bIdx]!;
+      if ((b.kind !== 'tool' && b.kind !== 'armor') || !b.ench) return { ok: false, notice: '合并失败' }; // 谓词已保证，仅为类型窄化
+      const hotbarSlots = [...s.hotbarSlots];
+      const mainSlots = [...s.mainSlots];
+      const maxDura = held.kind === 'tool' ? TOOLS[held.tool].durability : armorDefOf(held).durability;
+      const merged = {
+        ...held,
+        ench: mergeEnchants(held.ench, b.ench),
+        durability: Math.min(maxDura, held.durability + Math.ceil(maxDura * 0.12)), // MC 合并 +12% 耐久
+      };
+      hotbarSlots[s.selectedSlot] = merged as typeof held;
+      if (bIdx < hotbarSlots.length) hotbarSlots[bIdx] = null;
+      else mainSlots[bIdx - hotbarSlots.length] = null;
+      set({ hotbarSlots, mainSlots });
+      return { ok: true, notice: '附魔已合并（同级 +1，取高级）' };
+    }
+    // —— 修复：耐久未满 + 物品栏有对应材料 1 个 → 补 25%（MC 材料修复） ——
+    const maxDura = held.kind === 'tool' ? TOOLS[held.tool].durability : armorDefOf(held).durability;
+    if (held.durability >= maxDura) return { ok: false, notice: '耐久已满，无需修复' };
+    const key = held.kind === 'tool' ? toolRepairMaterial(held.tool) : armorRepairMaterial(held.material);
+    if (!key) return { ok: false, notice: '该物品无法修复' };
+    // 通用扣料（block:<id> 或 material:<name>，热键栏 + 背包）
+    const hotbarSlots = [...s.hotbarSlots];
+    const mainSlots = [...s.mainSlots];
+    const consume = (slots: Slot[]): boolean => {
+      for (let i = 0; i < slots.length; i++) {
+        const sl = slots[i];
+        if (!sl) continue;
+        const k = sl.kind === 'block' ? `block:${sl.id}` : sl.kind === 'material' ? `material:${sl.material}` : null;
+        if (k !== key) continue;
+        slots[i] = sl.kind === 'block' || sl.kind === 'material' ? (sl.count > 1 ? { ...sl, count: sl.count - 1 } : null) : sl;
+        return true;
+      }
+      return false;
+    };
+    if (!consume(hotbarSlots) && !consume(mainSlots)) {
+      const matName = key.startsWith('block:') ? BLOCKS[Number(key.slice(6))]?.name : (MATERIAL_INFO[key.slice(9)]?.name ?? key.slice(9));
+      return { ok: false, notice: `修复需要 1 个${matName}` };
+    }
+    hotbarSlots[s.selectedSlot] = { ...held, durability: Math.min(maxDura, held.durability + Math.ceil(maxDura * 0.25)) };
+    set({ hotbarSlots, mainSlots });
+    return { ok: true, notice: '已修复（+25% 耐久）' };
   },
   consumeSelectedBlock: () => {
     let id: BlockId | null = null;
