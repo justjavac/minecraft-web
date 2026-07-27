@@ -16,7 +16,7 @@ import {
   type SaveExtras,
 } from '@/lib/persistence';
 import { playerPosition, setActiveWorld, debugInfo, teleportState, worldClock } from '@/lib/game';
-import { findLanding, ensurePortal, type Dimension } from '@/lib/dimension';
+import { findLanding, ensurePortal, mapCoords, type Dimension } from '@/lib/dimension';
 import { createEndTerrain } from '@/lib/end';
 import { createNetherTerrain } from '@/lib/nether';
 import { clearFurnaces, furnaces, tickFurnaces, type FurnaceState } from '@/lib/furnace';
@@ -197,7 +197,9 @@ export function WorldRenderer() {
           if (dimension === 'end') {
             useGameStore.getState().setSpawnPoint({ x: tp.x, y: tp.y, z: tp.z }); // tp 即 END_SPAWN
           } else if (!tp.fromEnd) {
-            const landing = findLanding(w, Math.floor(tp.x), Math.floor(tp.z), dimension);
+            // MC 坐标映射：主世界 ↔ 下界 1:8（下界旅行 1 格 = 主世界 8 格）
+            const mapped = mapCoords(tp, dimension);
+            const landing = findLanding(w, Math.floor(mapped.x), Math.floor(mapped.z), dimension);
             ensurePortal(w, Math.floor(landing.x), Math.floor(landing.y), Math.floor(landing.z));
             useGameStore.getState().setSpawnPoint(landing);
           }
