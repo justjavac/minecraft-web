@@ -26,6 +26,8 @@ const creeperBodyGeo = new BoxGeometry(0.45, 0.85, 0.3);
 const creeperFaceGeo = new BoxGeometry(0.3, 0.3, 0.02);
 const snoutGeo = new BoxGeometry(0.16, 0.14, 0.08);
 const hornGeo = new BoxGeometry(0.08, 0.12, 0.08);
+const shroomGeo = new BoxGeometry(0.14, 0.06, 0.14);
+const shroomCapGeo = new BoxGeometry(0.18, 0.06, 0.18);
 const arrowGeo = new BoxGeometry(0.05, 0.05, 0.5);
 
 type MobMats = Record<string, Material>;
@@ -46,6 +48,8 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     pigDark: l('#d4838c'),
     cow: l('#6b4a2f'),
     cowLight: l('#d8cfc0'),
+    mooshroom: l('#a03028'), // 蘑菇牛红身（MC 红蘑菇牛）
+    mooshroomSpot: l('#e8e0d8'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -115,6 +119,24 @@ function makeMobMesh(type: MobType, mats: MobMats): Group {
       addPart(g, headGeo, mats.cowLight, 0, 0.75, 0.55);
       addPart(g, hornGeo, mats.cowLight, -0.18, 1.02, 0.55);
       addPart(g, hornGeo, mats.cowLight, 0.18, 1.02, 0.55);
+      break;
+    case 'mooshroom':
+      // 红身牛 + 背上蘑菇伞 + 白斑（MC 蘑菇牛）
+      addPart(g, pigLegGeo, mats.mooshroom, -0.25, 0.15, -0.25);
+      addPart(g, pigLegGeo, mats.mooshroom, 0.25, 0.15, -0.25);
+      addPart(g, pigLegGeo, mats.mooshroom, -0.25, 0.15, 0.25);
+      addPart(g, pigLegGeo, mats.mooshroom, 0.25, 0.15, 0.25);
+      addPart(g, bodyWideGeo, mats.mooshroom, 0, 0.6, 0);
+      addPart(g, headGeo, mats.mooshroomSpot, 0, 0.75, 0.55);
+      addPart(g, hornGeo, mats.mooshroomSpot, -0.18, 1.02, 0.55);
+      addPart(g, hornGeo, mats.mooshroomSpot, 0.18, 1.02, 0.55);
+      // 背上三朵蘑菇（红伞白斑小方块）
+      addPart(g, shroomGeo, mats.mooshroom, -0.15, 1.05, -0.1);
+      addPart(g, shroomCapGeo, mats.mooshroomSpot, -0.15, 1.13, -0.1);
+      addPart(g, shroomGeo, mats.mooshroom, 0.18, 1.05, 0.15);
+      addPart(g, shroomCapGeo, mats.mooshroomSpot, 0.18, 1.13, 0.15);
+      addPart(g, shroomGeo, mats.mooshroom, 0, 1.05, -0.25);
+      addPart(g, shroomCapGeo, mats.mooshroomSpot, 0, 1.13, -0.25);
       break;
     case 'chicken':
       addPart(g, chickenBodyGeo, mats.chicken, 0, 0.35, 0);

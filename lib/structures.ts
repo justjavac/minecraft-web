@@ -7,7 +7,7 @@ import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
 
 const REGION = 64; // 结构区域边长（格）
 
-export type StructureKind = 'village' | 'desert_village' | 'savanna_village' | 'taiga_village' | 'watchtower' | 'igloo' | 'desert_temple' | 'jungle_temple' | 'ruined_portal';
+export type StructureKind = 'village' | 'desert_village' | 'savanna_village' | 'taiga_village' | 'watchtower' | 'igloo' | 'desert_temple' | 'jungle_temple' | 'ruined_portal' | 'ocean_monument' | 'shipwreck';
 
 export interface StructureSpot {
   kind: StructureKind;
@@ -40,13 +40,14 @@ function flatEnough(terrain: Terrain, x: number, z: number): boolean {
   return Math.max(...hs) - Math.min(...hs) <= 6;
 }
 
-/** 该区域生成什么结构（按群系与区域哈希；海洋/河流不生成） */
+/** 该区域生成什么结构（按群系与区域哈希；河流不生成，海洋出遗迹与沉船） */
 export function structureAt(seedHash: number, terrain: Terrain, rx: number, rz: number): StructureSpot | null {
   const x = rx * REGION + 32;
   const z = rz * REGION + 32;
   const biome = terrain.biomeAt(x, z);
   const h = terrain.heightAt(x, z);
-  if (h <= SEA_LEVEL + 1) return null;
+  // 近水线以下不出陆地结构（海洋结构有自己的深度门）
+  if (h <= SEA_LEVEL + 1 && biome !== 'ocean') return null;
   if (!flatEnough(terrain, x, z)) return null;
   const r = regionHash(seedHash, rx, rz, 1);
   // 废弃传送门：任何陆地群系都可能出（独立盐哈希，不吃村庄配额）
@@ -79,6 +80,11 @@ export function structureAt(seedHash: number, terrain: Terrain, rx: number, rz: 
       return null;
     case 'jungle':
       if (r < 0.06) return { kind: 'jungle_temple', x, z };
+      return null;
+    case 'ocean':
+      // 海底遗迹须足够深（殿堂整栋没入水中）；沉船在较浅海床
+      if (r < 0.03 && h <= SEA_LEVEL - 10) return { kind: 'ocean_monument', x, z };
+      if (r < 0.05 && h <= SEA_LEVEL - 2) return { kind: 'shipwreck', x, z };
       return null;
     case 'forest':
     case 'birch_forest':
@@ -183,6 +189,8 @@ const VILLAGE_MATS: Record<StructureKind, VillageMats> = {
   desert_temple: PLAINS_MATS,
   jungle_temple: PLAINS_MATS,
   ruined_portal: PLAINS_MATS,
+  ocean_monument: PLAINS_MATS,
+  shipwreck: PLAINS_MATS,
 };
 
 function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
@@ -370,6 +378,13 @@ const PORTAL_LOOT: LootEntry[] = [
   ['iron_ingot', 1, 3, 0.5],
   ['emerald', 1, 2, 0.3],
 ];
+const SHIP_LOOT: LootEntry[] = [
+  ['iron_ingot', 1, 4, 0.6],
+  ['gold_ingot', 1, 3, 0.4],
+  ['diamond', 1, 1, 0.2],
+  ['leather', 1, 3, 0.5],
+  ['emerald', 1, 2, 0.25],
+];
 
 /** 宝箱战利品预填（只填全空的新箱子；已初始化/被开过的跳过——跨 chunk 生成与重载均幂等） */
 function fillChest(seedHash: number, x: number, y: number, z: number, table: LootEntry[], blockExtra?: [id: BlockId, min: number, max: number, chance: number]): void {
@@ -500,6 +515,100 @@ function writeRuinedPortal(spot: StructureSpot, terrain: Terrain, cx: number, cz
   fillChest(seedHash, bx + 3, by + 1, bz + 1, PORTAL_LOOT, [K('obsidian'), 1, 2, 0.6]);
 }
 
+/** 海底遗迹：海晶石主殿（金块核心 + 湿海绵房 + 暗海晶石柱与穹顶） */
+function writeOceanMonument(spot: StructureSpot, terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash: number): void {
+  const bricks = K('prismarine_bricks');
+  const dark = K('dark_prismarine');
+  const prism = K('prismarine');
+  const gold = K('gold_block');
+  const sponge = K('wet_sponge');
+  const bx = spot.x;
+  const bz = spot.z;
+  const by = terrain.heightAt(bx, bz) + 1;
+  const W = 10; // 21×21
+  // 主殿：外墙 8 高（海晶石砖，每 6 格开 2×2 窗），内空
+  for (let x = -W; x <= W; x++) {
+    for (let z = -W; z <= W; z++) {
+      putBase(data, cx, cz, bx + x, by, bz + z, bricks);
+      const edge = Math.abs(x) === W || Math.abs(z) === W;
+      for (let dy = 1; dy <= 7; dy++) {
+        if (!edge) {
+          put(data, cx, cz, bx + x, by + dy, bz + z, AIR);
+          continue;
+        }
+        const win = dy >= 3 && dy <= 4 && ((Math.abs(x) % 6) <= 1 && Math.abs(z) === W || (Math.abs(z) % 6) <= 1 && Math.abs(x) === W);
+        put(data, cx, cz, bx + x, by + dy, bz + z, win ? K('sea_lantern') : bricks);
+      }
+      // 顶盖：暗海晶石平层
+      put(data, cx, cz, bx + x, by + 8, bz + z, dark);
+    }
+  }
+  // 四角暗海晶石柱（3×3×11）
+  for (const [px, pz] of [[-W, -W], [W, -W], [-W, W], [W, W]] as const) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dy = 1; dy <= 11; dy++) put(data, cx, cz, bx + px + dx, by + dy, bz + pz + dz, dark);
+      }
+    }
+  }
+  // 穹顶：三层收分海晶石
+  for (let lvl = 0; lvl < 3; lvl++) {
+    const r = 6 - lvl * 2;
+    for (let x = -r; x <= r; x++) for (let z = -r; z <= r; z++) put(data, cx, cz, bx + x, by + 9 + lvl, bz + z, prism);
+  }
+  // 金块核心：中央 2×2×2（MC 遗迹宝藏）
+  for (let dx = 0; dx <= 1; dx++) {
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dz = 0; dz <= 1; dz++) put(data, cx, cz, bx - 1 + dx, by + 2 + dy, bz - 1 + dz, gold);
+    }
+  }
+  // 海绵房：东北角小室，顶板挂湿海绵
+  for (let x = W - 5; x <= W - 1; x++) {
+    for (let z = -W + 1; z <= -W + 5; z++) {
+      if (hash2(seedHash ^ 0x5b0a6e, x, z) < 0.5) put(data, cx, cz, bx + x, by + 6, bz + z, sponge);
+    }
+  }
+}
+
+/** 沉船：木船壳（尖头收分）+ 甲板 + 桅杆 + 尾舱宝箱 */
+function writeShipwreck(spot: StructureSpot, terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash: number): void {
+  const spruce = hash2(seedHash ^ 0x51a1b2, spot.x, spot.z) < 0.5;
+  const planks = K(spruce ? 'spruce_planks' : 'planks');
+  const log = K(spruce ? 'spruce_log' : 'log');
+  const bx = spot.x;
+  const bz = spot.z;
+  const by = terrain.heightAt(bx, bz) + 1;
+  // 船体：9 长 × 最宽 5，半宽沿船长按 [0,1,2,2,2,2,2,1,0] 收分
+  const HALF = [0, 1, 2, 2, 2, 2, 2, 1, 0];
+  for (let i = 0; i < 9; i++) {
+    const hw = HALF[i];
+    for (let dz = -hw; dz <= hw; dz++) {
+      // 船底与两舷（2 高）；舱内留空，甲板后铺
+      putBase(data, cx, cz, bx + i - 4, by, bz + dz, planks);
+      const rim = Math.abs(dz) === hw;
+      for (let dy = 1; dy <= 2; dy++) put(data, cx, cz, bx + i - 4, by + dy, bz + dz, rim ? planks : AIR);
+    }
+  }
+  // 甲板铺满（by+2 层内侧为甲板面）
+  for (let i = 0; i < 9; i++) {
+    for (let dz = -HALF[i]; dz <= HALF[i]; dz++) put(data, cx, cz, bx + i - 4, by + 2, bz + dz, planks);
+  }
+  // 桅杆：原木 9 高 + 顶横杆
+  for (let dy = 3; dy <= 10; dy++) put(data, cx, cz, bx, by + dy, bz, log);
+  for (let dz = -2; dz <= 2; dz++) put(data, cx, cz, bx, by + 8, bz + dz, log);
+  // 尾舱 3×3×3 + 宝箱
+  for (let dx = 2; dx <= 4; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dy = 3; dy <= 5; dy++) {
+        const edge = dx === 4 || Math.abs(dz) === 1 || dy === 5;
+        put(data, cx, cz, bx + dx, by + dy, bz + dz, edge ? planks : AIR);
+      }
+    }
+  }
+  put(data, cx, cz, bx + 3, by + 3, bz, K('chest'));
+  fillChest(seedHash, bx + 3, by + 3, bz, SHIP_LOOT);
+}
+
 /** 生成本 chunk 覆盖范围内的结构（检查本区域及相邻区域） */
 export function applyStructures(seedHash: number, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
   const rx = Math.floor((cx * CHUNK_SIZE) / REGION);
@@ -531,6 +640,10 @@ export function applyStructures(seedHash: number, terrain: Terrain, cx: number, 
         writeJungleTemple(spot, terrain, cx, cz, data, seedHash);
       } else if (spot.kind === 'ruined_portal') {
         writeRuinedPortal(spot, terrain, cx, cz, data, seedHash);
+      } else if (spot.kind === 'ocean_monument') {
+        writeOceanMonument(spot, terrain, cx, cz, data, seedHash);
+      } else if (spot.kind === 'shipwreck') {
+        writeShipwreck(spot, terrain, cx, cz, data, seedHash);
       } else {
         writeIgloo(spot, terrain, cx, cz, data);
       }

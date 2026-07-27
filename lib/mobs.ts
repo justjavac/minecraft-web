@@ -9,7 +9,7 @@ import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom';
 
 export interface MobDef {
   name: string;
@@ -35,6 +35,7 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   cow: { name: '牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
   chicken: { name: '鸡', hp: 4, speed: 1.6, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'feather', count: [0, 2] }, { material: 'raw_chicken', count: [1, 1] }] },
   villager: { name: '村民', hp: 20, speed: 1.2, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [] },
+  mooshroom: { name: '蘑菇牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
 };
 
 export interface Mob {
@@ -170,7 +171,7 @@ function makeMob(type: MobType, x: number, y: number, z: number): Mob {
   };
 }
 
-/** 在玩家周围环形区域找地表生成（夜晚敌对、白天被动且只在草地上；村庄附近生成村民） */
+/** 在玩家周围环形区域找地表生成（夜晚敌对、白天被动且只在草地上；村庄附近生成村民；蘑菇岛只出蘑菇牛且夜晚不刷怪） */
 export function trySpawn(world: World, px: number, pz: number): boolean {
   const night = isNight();
   const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
@@ -188,16 +189,25 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     const bz = Math.floor(pz + Math.sin(ang) * r);
     // 未加载的 chunk 不刷：读块会触发隐式全量生成（卡顿）
     if (!world.chunks.has(`${bx >> 4},${bz >> 4}`)) continue;
+    // 群系规则（MC）：蘑菇岛不刷敌对生物，被动只出蘑菇牛
+    const biome = world.terrain.biomeAt(bx, bz);
+    if (biome === 'mushroom_fields' && night) return false;
+    const wantType = biome === 'mushroom_fields' ? 'mooshroom' : type;
+    const wantDef = wantType === type ? def : MOB_DEFS[wantType];
     // 从世界顶向下找第一个实心方块作为地表
     let y = WORLD_HEIGHT - 1;
     while (y > 0 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
     if (y <= 0) continue;
     if (isWaterId(world.getBlock(bx, y, bz))) continue; // 不在水面生成
-    if (!def.hostile && world.getBlock(bx, y, bz) !== GRASS) continue; // 被动只在草地上
+    // 被动只在草地上（蘑菇牛在菌丝上）
+    if (!wantDef.hostile) {
+      const ground = world.getBlock(bx, y, bz);
+      if (wantType === 'mooshroom' ? BLOCKS[ground]?.key !== 'mycelium' : ground !== GRASS) continue;
+    }
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
-    const mob = makeMob(type, bx + 0.5, sy, bz + 0.5);
-    if (type === 'villager' && village) {
+    const mob = makeMob(wantType, bx + 0.5, sy, bz + 0.5);
+    if (mob.type === 'villager' && village) {
       mob.homeX = village.x;
       mob.homeZ = village.z;
     }
