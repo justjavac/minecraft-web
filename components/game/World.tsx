@@ -82,7 +82,7 @@ function currentExtras(d: Dimension): SaveExtras {
     dimension: d,
     survival:
       s.worldMode === 'survival'
-        ? { health: s.health, hunger: s.hunger, saturation: s.saturation, slots: s.hotbarSlots, backpack: s.mainSlots, armor: s.armorSlots }
+        ? { health: s.health, hunger: s.hunger, saturation: s.saturation, slots: s.hotbarSlots, backpack: s.mainSlots, armor: s.armorSlots, xp: s.xpTotal }
         : undefined,
     furnaces: furnaces.size > 0 ? Object.fromEntries(furnaces) : undefined,
     brews: brews.size > 0 ? Object.fromEntries(brews) : undefined,

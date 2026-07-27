@@ -23,6 +23,8 @@ export interface SurvivalSnapshot {
   hunger: number;
   /** MC 隐藏饱和度（可选，旧存档缺省回满） */
   saturation?: number;
+  /** 经验总量（可选，旧存档缺省 0） */
+  xp?: number;
   /** 热键栏 9 格（v2 槽位格式） */
   slots: Slot[];
   /** 主物品栏（背包）27 格（v5 新增，旧存档缺省为空） */

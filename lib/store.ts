@@ -11,6 +11,7 @@ import { applyCraft, canCraft, hasSpaceFor, type Recipe } from './recipes';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
 import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS, type ToolType } from './tools';
+import { levelFromXp, subtractLevels, type EnchOffer } from './xp';
 
 export type Screen = 'menu' | 'playing';
 export type GameMode = 'new' | 'continue';
@@ -95,6 +96,8 @@ interface GameStore {
   /** 生存数值（创造模式不使用） */
   health: number;
   hunger: number;
+  /** 经验总量（MC 等级由 levelFromXp 换算） */
+  xpTotal: number;
   /** MC 隐藏饱和度：先于饥饿消耗，满饥饿且有饱和度时快速回血 */
   saturation: number;
   dead: boolean;
@@ -113,6 +116,8 @@ interface GameStore {
   furnaceOpen: string | null;
   /** 打开的酿造台位置 key，null 未打开 */
   brewingOpen: string | null;
+  /** 附魔台界面开关（不绑位置，null 未打开） */
+  enchantOpen: string | null;
   /** 打开的容器（箱子/木桶）位置 key，null 未打开 */
   storageOpen: string | null;
   /** 创造模式热键栏 9 格内容（选块界面可更换） */
@@ -137,6 +142,10 @@ interface GameStore {
   updateSettings: (patch: Partial<Settings>) => void;
   setWorldMode: (m: WorldMode) => void;
   setDimension: (d: import('./dimension').Dimension) => void;
+  /** 增加经验（杀怪/挖矿/烧炼/繁殖） */
+  addXp: (amount: number) => void;
+  /** 附魔：对热键栏 slotIndex 的工具/装备应用一个附魔项（消耗青金石与整级经验），返回是否成功 */
+  enchantApply: (slotIndex: number, offer: EnchOffer) => boolean;
   setHealth: (v: number) => void;
   setHunger: (v: number) => void;
   setSaturation: (v: number) => void;
@@ -144,10 +153,11 @@ interface GameStore {
   /** 受伤（带无敌帧）；返回是否实际扣血 */
   damagePlayer: (amount: number) => boolean;
   /** 读档时恢复生存数值 */
-  loadSurvival: (s: { health: number; hunger: number; saturation?: number; slots?: Slot[]; backpack?: Slot[]; armor?: ArmorSlots }) => void;
+  loadSurvival: (s: { health: number; hunger: number; saturation?: number; slots?: Slot[]; backpack?: Slot[]; armor?: ArmorSlots; xp?: number }) => void;
   setCraftingOpen: (open: boolean, withTable?: boolean) => void;
   setFurnaceOpen: (key: string | null) => void;
   setBrewingOpen: (key: string | null) => void;
+  setEnchantOpen: (key: string | null) => void;
   setStorageOpen: (key: string | null) => void;
   /** 把热键栏/背包某格的整叠物品移入打开的容器 */
   storagePut: (area: 'hotbar' | 'main', slotIndex: number) => void;
@@ -207,6 +217,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   health: MAX_HEALTH,
   hunger: MAX_HUNGER,
   saturation: MAX_SATURATION,
+  xpTotal: 0,
   dead: false,
   lastDamageAt: 0,
   hotbarSlots: emptySlots(),
@@ -214,7 +225,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   armorSlots: emptyArmorSlots(),
   craftingOpen: false,
   craftingTable: false,
-  furnaceOpen: null, brewingOpen: null,
+  furnaceOpen: null, brewingOpen: null, enchantOpen: null,
   storageOpen: null,
   hotbarBlocks: [...HOTBAR_BLOCKS],
   pickerOpen: false,
@@ -228,14 +239,14 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set({
       screen: 'playing', mode: 'new', seed, paused: false, flying: false, worldReady: false, loadError: null,
       hasLocked: false, spawnPoint: null,
-      worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION,
+      worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION, xpTotal: 0,
       dimension: 'overworld',
-      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null,
+      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null,
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, loadError: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
@@ -247,7 +258,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setPickerOpen: (pickerOpen) => {
     if (pickerOpen && typeof document !== 'undefined') document.exitPointerLock();
     // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(pickerOpen ? { pickerOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null } : { pickerOpen });
+    set(pickerOpen ? { pickerOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null } : { pickerOpen });
   },
   toggleFly: () => set((s) => ({ flying: s.worldMode === 'creative' ? !s.flying : false })),
   setPaused: (paused) => set({ paused }),
@@ -265,6 +276,27 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     }),
   setWorldMode: (worldMode) => set({ worldMode }),
   setDimension: (dimension) => set({ dimension }),
+  addXp: (amount) => set((s) => ({ xpTotal: s.xpTotal + Math.max(0, Math.floor(amount)) })),
+  enchantApply: (slotIndex, offer) => {
+    const s = get();
+    const slot = s.hotbarSlots[slotIndex];
+    if (!slot || (slot.kind !== 'tool' && slot.kind !== 'armor')) return false;
+    const { level } = levelFromXp(s.xpTotal);
+    if (level < offer.levels) {
+      s.setNotice(`经验等级不足（需要 ${offer.levels} 级）`);
+      return false;
+    }
+    if (!s.consumeMaterial('lapis', offer.lapis)) {
+      s.setNotice(`青金石不足（需要 ${offer.lapis} 个）`);
+      return false;
+    }
+    // 同种附魔取更高级（MC 不降级）
+    const ench = { ...slot.ench, [offer.ench]: Math.max(slot.ench?.[offer.ench] ?? 0, offer.lvl) };
+    const next = [...s.hotbarSlots];
+    next[slotIndex] = { ...slot, ench };
+    set({ hotbarSlots: next, xpTotal: subtractLevels(s.xpTotal, offer.levels) });
+    return true;
+  },
   setHealth: (health) => set({ health }),
   setHunger: (hunger) => set({ hunger }),
   setSaturation: (saturation) => set({ saturation }),
@@ -275,9 +307,11 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     hurtState.lastAt = now;
     survivalStats.exhaustion += 0.1; // MC：受击也消耗能量
     set((s) => {
-      // 皮甲减伤（每护甲点 4%，与 MC 一致）并扣每件装备 1 点耐久
+      // 皮甲减伤（每护甲点 4%，与 MC 一致）+ 保护附魔减伤（每级 4%，上限 80%，MC）并扣每件装备 1 点耐久
       const points = armorPoints(s.armorSlots);
-      const finalAmount = points > 0 ? Math.max(1, Math.ceil(amount * (1 - points * 0.04))) : amount;
+      const protLvl = Object.values(s.armorSlots).reduce((n, p) => n + (p?.ench?.protection ?? 0), 0);
+      const reduction = points * 0.04 + Math.min(0.8 - points * 0.04, protLvl * 0.04);
+      const finalAmount = reduction > 0 ? Math.max(1, Math.ceil(amount * (1 - Math.min(0.8, reduction)))) : amount;
       let armorSlots = s.armorSlots;
       if (points > 0) {
         armorSlots = { ...s.armorSlots };
@@ -285,15 +319,17 @@ export const useGameStore = create<GameStore>()((set, get) => ({
           const cur = armorSlots[piece];
           if (!cur) continue;
           const durability = cur.durability - 1;
-          armorSlots[piece] = durability > 0 ? { durability } : null;
+          armorSlots[piece] = durability > 0 ? { ...cur, durability } : null;
         }
       }
       const health = Math.max(0, s.health - finalAmount);
       const died = health <= 0 && !s.dead;
       let hotbarSlots = s.hotbarSlots;
       let mainSlots = s.mainSlots;
+      let xpTotal = s.xpTotal;
       if (died) {
-        // 死亡掉落：热键栏 + 背包 + 装备槽全部物品散落在死亡点（与 MC 一致）
+        // 死亡掉落：热键栏 + 背包 + 装备槽全部物品散落在死亡点（与 MC 一致）；经验清零
+        xpTotal = 0;
         const { x, y, z } = playerPosition;
         for (const slot of [...s.hotbarSlots, ...s.mainSlots]) {
           if (!slot) continue;
@@ -317,13 +353,14 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         hotbarSlots,
         mainSlots,
         armorSlots,
+        xpTotal,
         // 死亡时关掉所有打开的界面（仅受伤未死不动）
-        ...(died ? { craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false } : {}),
+        ...(died ? { craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null, pickerOpen: false } : {}),
       };
     });
     return true;
   },
-  loadSurvival: ({ health, hunger, saturation, slots, backpack, armor }) =>
+  loadSurvival: ({ health, hunger, saturation, slots, backpack, armor, xp }) =>
     set({
       health,
       hunger,
@@ -331,6 +368,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       hotbarSlots: slots ?? emptySlots(),
       mainSlots: backpack ?? emptyBackpack(),
       armorSlots: armor ?? emptyArmorSlots(),
+      xpTotal: xp ?? 0,
       dead: false,
     }),
   setCraftingOpen: (craftingOpen, withTable) => {
@@ -339,23 +377,27 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set((s) => ({
       craftingOpen,
       craftingTable: craftingOpen ? (withTable ?? s.craftingTable) : s.craftingTable,
-      ...(craftingOpen ? { furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false } : {}),
+      ...(craftingOpen ? { furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null, pickerOpen: false } : {}),
     }));
   },
   setFurnaceOpen: (furnaceOpen) => {
     if (furnaceOpen && typeof document !== 'undefined') document.exitPointerLock();
     // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(furnaceOpen ? { furnaceOpen, craftingOpen: false, brewingOpen: null, storageOpen: null, pickerOpen: false } : { furnaceOpen });
+    set(furnaceOpen ? { furnaceOpen, craftingOpen: false, brewingOpen: null, enchantOpen: null, storageOpen: null, pickerOpen: false } : { furnaceOpen });
   },
   setBrewingOpen: (brewingOpen) => {
     if (brewingOpen && typeof document !== 'undefined') document.exitPointerLock();
     // 界面互斥：打开时关掉其余界面（关闭时不动其他的）
     set(brewingOpen ? { brewingOpen, craftingOpen: false, furnaceOpen: null, storageOpen: null, pickerOpen: false } : { brewingOpen });
   },
+  setEnchantOpen: (enchantOpen) => {
+    if (enchantOpen && typeof document !== 'undefined') document.exitPointerLock();
+    set(enchantOpen ? { enchantOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false } : { enchantOpen });
+  },
   setStorageOpen: (storageOpen) => {
     if (storageOpen && typeof document !== 'undefined') document.exitPointerLock();
     // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(storageOpen ? { storageOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, pickerOpen: false } : { storageOpen });
+    set(storageOpen ? { storageOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, pickerOpen: false } : { storageOpen });
   },
   storagePut: (area, slotIndex) => {
     const s = get();
@@ -402,7 +444,10 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   furnaceTakeOutput: () => {
     const s = get();
     if (!s.furnaceOpen) return;
+    const before = getFurnace(s.furnaceOpen).output;
     set({ hotbarSlots: takeOutput(s.hotbarSlots, getFurnace(s.furnaceOpen)) });
+    // 烧炼产出经验：每取出一件 +1 XP（MC 烧炼经验简化）
+    if (before) s.addXp(before.count);
   },
   brewingPut: (slotIndex) => {
     const s = get();
@@ -476,6 +521,9 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set((s) => {
       const slot = s.hotbarSlots[s.selectedSlot];
       if (!slot || slot.kind !== 'tool') return s;
+      // 耐久附魔：每级 1/(lvl+1) 概率不掉耐久（MC 公式）
+      const unb = slot.ench?.unbreaking ?? 0;
+      if (unb > 0 && Math.random() < unb / (unb + 1)) return s;
       const durability = slot.durability - amount;
       const slots = [...s.hotbarSlots];
       slots[s.selectedSlot] = durability > 0 ? { ...slot, durability } : null;

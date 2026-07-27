@@ -127,6 +127,10 @@ export const RECIPES: Recipe[] = [
   { id: 'sugar', name: '糖', out: { kind: 'material', material: 'sugar', count: 1 }, cost: [{ item: K('sugar_cane'), count: 1 }], needsTable: false },
   { id: 'magma_cream', name: '岩浆膏', out: { kind: 'material', material: 'magma_cream', count: 1 }, cost: [{ item: K('magma_block'), count: 1 }], needsTable: false },
   { id: 'glistering_melon', name: '闪烁的西瓜片', out: { kind: 'material', material: 'glistering_melon', count: 1 }, cost: [{ item: K('melon'), count: 1 }, { item: 'material:gold_ingot', count: 1 }], needsTable: false },
+  // —— 附魔（配方与 MC 一致） ——
+  { id: 'paper', name: '纸 ×3', out: { kind: 'material', material: 'paper', count: 3 }, cost: [{ item: K('sugar_cane'), count: 3 }], needsTable: false },
+  { id: 'book', name: '书', out: { kind: 'material', material: 'book', count: 1 }, cost: [{ item: 'material:paper', count: 3 }, { item: 'material:leather', count: 1 }], needsTable: false },
+  { id: 'enchanting_table', name: '附魔台', out: { kind: 'block', id: KID('enchanting_table'), count: 1 }, cost: [{ item: 'material:book', count: 1 }, { item: 'material:diamond', count: 2 }, { item: K('obsidian'), count: 4 }], needsTable: true },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_pickaxe', name: '石镐', out: { kind: 'tool', tool: 'stone_pickaxe' }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'wooden_axe', name: '木斧', out: { kind: 'tool', tool: 'wooden_axe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },

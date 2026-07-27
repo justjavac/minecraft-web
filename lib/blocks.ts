@@ -616,6 +616,10 @@ for (let stage = 0; stage <= 7; stage++) {
 const torchDef = add('torch', '火把', 'torch', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.05, light: 14, ...GRASS_SND });
 // 酿造台：右键打开酿造界面（lib/brewing.ts；配方 烈焰棒×1 + 圆石×3）
 add('brewing_stand', '酿造台', { side: 'brewing_stand', top: 'brewing_stand_base' }, { cat: 'utility', tool: 'pickaxe', digTime: 1 });
+// 附魔台：右键打开附魔界面（lib/xp.ts；3/4 高，MC 造型）
+add('enchanting_table', '附魔台', { side: 'enchanting_table_side', top: 'enchanting_table_top', bottom: 'enchanting_table_bottom' }, {
+  cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.75, 1], opaque: false, tool: 'pickaxe', needsPick: true, digTime: 12.5,
+});
 // 墙上火把（4 朝向，贴墙小十字，统一掉落地火把）
 add('torch_wall_n', '火把', 'torch', { cat: 'utility', shape: 'cross', facing: 0, opaque: false, solid: false, digTime: 0.05, light: 14, ...GRASS_SND, dropBlock: torchDef.id });
 add('torch_wall_e', '火把', 'torch', { cat: 'utility', shape: 'cross', facing: 1, opaque: false, solid: false, digTime: 0.05, light: 14, ...GRASS_SND, dropBlock: torchDef.id });

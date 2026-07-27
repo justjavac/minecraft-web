@@ -2,6 +2,8 @@
 
 import { AIR, BLOCKS, GRASS, isWaterId } from './blocks';
 import { dayFactorAt, survivalStats, worldClock } from './game';
+import { useGameStore } from './store';
+import { XP_MOB } from './xp';
 import { explodeAt } from './explosion';
 import { spawnMaterialDrop } from './items';
 import { fortressNear } from './netherstructures';
@@ -152,11 +154,12 @@ function pickSpawnType(night: boolean): MobType {
   return 'chicken';
 }
 
-/** 喂食繁殖：在亲代身旁生成同种幼体（90s 长成） */
+/** 喂食繁殖：在亲代身旁生成同种幼体（90s 长成；产仔掉 1-7 经验，MC） */
 export function breedMob(parent: Mob): Mob {
   const baby = makeMob(parent.type, parent.x + 0.6, parent.y, parent.z + 0.6);
   baby.baby = true;
   baby.growUp = 90;
+  useGameStore.getState().addXp(1 + Math.floor(Math.random() * 7));
   mobs.push(baby);
   return baby;
 }
@@ -610,8 +613,8 @@ export function mobInReach(
   return best;
 }
 
-/** 对生物造成伤害（attackerPos 用于被动生物逃跑方向），返回是否击杀 */
-export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }): boolean {
+/** 对生物造成伤害（attackerPos 用于被动生物逃跑方向；lootBonus = 抢夺附魔等级），返回是否击杀 */
+export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }, lootBonus = 0): boolean {
   mob.hp -= damage;
   // 僵尸猪灵：受伤激怒自身与 32 格内同伴（MC 群体仇恨）
   if (mob.type === 'zombified_piglin') {
@@ -628,11 +631,12 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
     }
     return false;
   }
-  // 击杀掉落（数量在区间内随机）
+  // 击杀掉落（数量在区间内随机；抢夺附魔每件 +0~lvl）与杀怪经验（MC）
   for (const drop of MOB_DEFS[mob.type].drops) {
-    const count = drop.count[0] + Math.floor(Math.random() * (drop.count[1] - drop.count[0] + 1));
+    const count = drop.count[0] + Math.floor(Math.random() * (drop.count[1] - drop.count[0] + 1)) + (lootBonus > 0 ? Math.floor(Math.random() * (lootBonus + 1)) : 0);
     if (count > 0) spawnMaterialDrop(drop.material, mob.x, mob.y + 0.3, mob.z, count);
   }
+  useGameStore.getState().addXp(XP_MOB[mob.type]);
   const i = mobs.indexOf(mob);
   if (i >= 0) mobs.splice(i, 1);
   return true;

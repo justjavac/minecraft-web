@@ -499,7 +499,7 @@ export function Player() {
           const held = gs.hotbarSlots[gs.selectedSlot];
           const tool = held?.kind === 'tool' ? TOOLS[held.tool] : null;
           attackCd.current = tool?.attackCd ?? 0.25; // MC 拳头 4 攻速，剑 1.6
-          damageMob(mob, (tool?.attackDamage ?? 1) + (effects.strength > 0 ? 2 : 0), playerPosition); // 拳头 1 点（半心），力量药水 +2
+          damageMob(mob, (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? (held.ench?.sharpness ?? 0) * 0.5 : 0) + (effects.strength > 0 ? 2 : 0), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0); // 拳头 1 点（半心），锋利 +0.5/级，力量药水 +2，抢夺加掉落
           if (tool) gs.damageHeldTool(tool.kind === 'sword' ? 1 : 2); // MC：剑耗 1，工具作武器耗 2
           playSound('dig_choppy', 0.8);
           survivalStats.exhaustion += 0.1; // MC：攻击消耗
@@ -534,7 +534,7 @@ export function Player() {
             digState.progress = 0;
           } else {
             const digTime = BLOCKS[blockId]?.digTime ?? 1;
-            // 持有对应工具时按倍率加速（MC：木 2x 石 4x）
+            // 持有对应工具时按倍率加速（MC：木 2x 石 4x；效率附魔再 +30%/级）
             const held = gs.hotbarSlots[gs.selectedSlot];
             let speedMul = 1;
             if (held?.kind === 'tool') {
@@ -542,6 +542,7 @@ export function Player() {
               if (def.kind !== 'sword' && BLOCKS[blockId]?.tool === def.kind) {
                 speedMul = def.speed;
               }
+              speedMul *= 1 + 0.3 * (held.ench?.efficiency ?? 0);
             }
             digState.progress += (dt * speedMul) / digTime;
             if (digState.progress >= 1) {

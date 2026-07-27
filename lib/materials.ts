@@ -34,6 +34,8 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   sugar: { name: '糖', tile: tileIcon('item/sugar') },
   magma_cream: { name: '岩浆膏', tile: tileIcon('item/magma_cream') },
   glistering_melon: { name: '闪烁的西瓜片', tile: tileIcon('item/glistering_melon_slice') },
+  paper: { name: '纸', tile: tileIcon('item/paper') },
+  book: { name: '书', tile: tileIcon('item/book') },
   diamond: { name: '钻石', tile: tileIcon('item/diamond') },
   emerald: { name: '绿宝石', tile: tileIcon('item/emerald') },
   iron_ingot: { name: '铁锭', tile: tileIcon('item/iron_ingot') },

@@ -3,13 +3,14 @@
 import type { ArmorPiece } from './armor';
 import type { BlockId } from './blocks';
 import type { ToolType } from './tools';
+import type { EnchMap } from './xp';
 
-/** 槽位：方块堆叠 / 材料 / 工具 / 装备（不可堆叠，带耐久） */
+/** 槽位：方块堆叠 / 材料 / 工具 / 装备（不可堆叠，带耐久；工具/装备可带附魔） */
 export type Slot =
   | { kind: 'block'; id: BlockId; count: number }
   | { kind: 'material'; material: string; count: number }
-  | { kind: 'tool'; tool: ToolType; durability: number }
-  | { kind: 'armor'; piece: ArmorPiece; durability: number }
+  | { kind: 'tool'; tool: ToolType; durability: number; ench?: EnchMap }
+  | { kind: 'armor'; piece: ArmorPiece; durability: number; ench?: EnchMap }
   | null;
 
 /** 可堆叠的槽位（方块/材料） */

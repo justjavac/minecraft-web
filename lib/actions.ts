@@ -13,6 +13,7 @@ import { setSaplingDropHandler } from './saplings';
 import { raycastBlock } from './raycast';
 import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { toggleLever } from './redstone';
+import { XP_ORE } from './xp';
 import { BREED_FOOD, feedMob, firePlayerArrow, MOB_DEFS, mobInReach } from './mobs';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
@@ -92,10 +93,14 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
     const needTier = def.pickTier ?? (def.needsPick ? 0 : null);
     const tierOk = needTier === null || (heldPick !== null && TIER_ORDER.indexOf(heldPick) >= needTier);
     if (def.drop) {
-      // 矿石类：镐达标才掉材料（如钻石矿需铁镐以上）
+      // 矿石类：镐达标才掉材料（如钻石矿需铁镐以上）；时运附魔加掉、矿物掉经验（MC）
       if (tierOk) {
         const [min, max] = def.drop.count;
-        spawnMaterialDrop(def.drop.material, x + 0.5, y + 0.4, z + 0.5, min + Math.floor(Math.random() * (max - min + 1)));
+        const fortune = held?.kind === 'tool' ? (held.ench?.fortune ?? 0) : 0;
+        const bonus = fortune > 0 ? Math.floor(Math.random() * (fortune + 1)) : 0;
+        spawnMaterialDrop(def.drop.material, x + 0.5, y + 0.4, z + 0.5, min + Math.floor(Math.random() * (max - min + 1)) + bonus);
+        const xpRange = XP_ORE[def.drop.material];
+        if (xpRange) s.addXp(xpRange[0] + Math.floor(Math.random() * (xpRange[1] - xpRange[0] + 1)));
       }
     } else if (isWheatCropId(oldId)) {
       // 小麦收割：成熟（第 7 阶段）掉 1 小麦 + 0-2 种子；未熟只掉 1 种子
@@ -286,6 +291,11 @@ export function tryPlace(): boolean {
   // 酿造台：右键打开酿造界面
   if (hitId === BLOCK_BY_KEY.brewing_stand.id) {
     s.setBrewingOpen(`${bx},${by},${bz}`);
+    return false;
+  }
+  // 附魔台：右键打开附魔界面
+  if (hitId === BLOCK_BY_KEY.enchanting_table.id) {
+    s.setEnchantOpen(`${bx},${by},${bz}`);
     return false;
   }
   // 箱子/木桶：右键打开容器界面

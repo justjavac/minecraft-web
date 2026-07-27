@@ -6,6 +6,7 @@ import { debugInfo, survivalStats } from '@/lib/game';
 import { clearMobs } from '@/lib/mobs';
 import { MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
 import { effects } from '@/lib/effects';
+import { levelFromXp } from '@/lib/xp';
 import { loadWorldMeta, type WorldMeta } from '@/lib/persistence';
 import { armorPoints, ARMOR_DEFS } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
@@ -18,6 +19,7 @@ import { SettingsDialog } from './SettingsDialog';
 import { CraftingDialog } from './CraftingDialog';
 import { FurnaceDialog } from './FurnaceDialog';
 import { BrewingDialog } from './BrewingDialog';
+import { EnchantingDialog } from './EnchantingDialog';
 import { StorageDialog } from './StorageDialog';
 import { TileIcon } from './TileIcon';
 import { BlockPicker } from './BlockPicker';
@@ -132,6 +134,7 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
 function SurvivalBars() {
   const health = useGameStore((s) => s.health);
   const hunger = useGameStore((s) => s.hunger);
+  const xpTotal = useGameStore((s) => s.xpTotal);
   const armor = useGameStore((s) => armorPoints(s.armorSlots));
   const [, setTick] = useState(0);
   // 药水效果倒计时徽章（1s 刷新）
@@ -155,6 +158,17 @@ function SurvivalBars() {
         </div>
       )}
       {armor > 0 && <Meter value={armor * 2} color="#9ca3af" />}
+      {(() => {
+        const { level, progress } = levelFromXp(xpTotal);
+        return (
+          <div className="relative">
+            <Meter value={progress * 20} color="#7efc20" />
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-green-400" style={{ textShadow: '1px 1px 0 #000' }}>
+              {level}
+            </span>
+          </div>
+        );
+      })()}
       <div className="flex justify-between">
         <Meter value={health} color="#ef4444" />
         <Meter value={hunger} color="#d97706" />
@@ -380,6 +394,9 @@ export function Hud() {
 
       {/* 酿造台界面 */}
       <BrewingDialog />
+
+      {/* 附魔台界面 */}
+      <EnchantingDialog />
 
       {/* 容器界面（箱子/木桶） */}
       <StorageDialog />
