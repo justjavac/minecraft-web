@@ -24,6 +24,7 @@ export const FOODS: Record<string, FoodDef> = {
   tropical_fish: { name: '热带鱼', hunger: 1, saturation: 0 },
   cooked_cod: { name: '熟鳕鱼', hunger: 5, saturation: 2 },
   cooked_salmon: { name: '熟鲑鱼', hunger: 6, saturation: 3 },
+  chorus_fruit: { name: '紫颂果', hunger: 4, saturation: 2 }, // MC：食用后随机传送 ±8 格
 };
 
 // ——— 烧炼配方与燃料 ———

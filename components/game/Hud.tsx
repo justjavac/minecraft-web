@@ -151,6 +151,7 @@ function SurvivalBars() {
   if (effects.haste > 0) active.push(['急迫', effects.haste]);
   if (effects.resistance > 0) active.push(['抗性', effects.resistance]);
   if (effects.jumpBoost > 0) active.push(['跳跃', effects.jumpBoost]);
+  if (effects.levitation > 0) active.push(['漂浮', effects.levitation]);
   return (
     <div className="w-full space-y-1 pb-0.5">
       {active.length > 0 && (

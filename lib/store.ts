@@ -197,6 +197,8 @@ interface GameStore {
   consumeMaterial: (material: string, count?: number) => boolean;
   /** 锻造台升级：手持下界合金锭 + 物品栏首个钻石工具 → 下界合金工具（保留附魔/耐久，MC），成功返回 true */
   smithingUpgrade: () => boolean;
+  /** 手持鞘翅右击：装备到胸甲槽（原胸甲回手，MC），成功返回 true */
+  equipElytra: () => boolean;
   /** 短暂提示条（睡觉/合成等反馈），HUD 定时清除 */
   notice: string | null;
   setNotice: (text: string | null) => void;
@@ -526,6 +528,20 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set({
       hotbarSlots: slots,
       armorSlots: { ...s.armorSlots, [slot.piece]: { durability: slot.durability, material: slot.material, ench: slot.ench } },
+    });
+    return true;
+  },
+  equipElytra: () => {
+    const s = get();
+    const slot = s.hotbarSlots[s.selectedSlot];
+    if (slot?.kind !== 'material' || slot.material !== 'elytra') return false;
+    const prev = s.armorSlots.chestplate;
+    const slots = [...s.hotbarSlots];
+    // 原胸甲回手（保留材质/附魔/耐久）
+    slots[s.selectedSlot] = prev ? { kind: 'armor', piece: 'chestplate', material: prev.material, durability: prev.durability, ench: prev.ench } : null;
+    set({
+      hotbarSlots: slots,
+      armorSlots: { ...s.armorSlots, chestplate: { durability: 432, material: 'elytra' } }, // MC 鞘翅耐久 432
     });
     return true;
   },

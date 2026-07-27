@@ -15,9 +15,11 @@ export interface Effects {
   resistance: number;
   /** 跳跃提升：跳得更高（信标） */
   jumpBoost: number;
+  /** 漂浮：匀速上浮（潜影贝弹命中，MC） */
+  levitation: number;
 }
 
-export const effects: Effects = { speed: 0, strength: 0, fireRes: 0, regen: 0, haste: 0, resistance: 0, jumpBoost: 0 };
+export const effects: Effects = { speed: 0, strength: 0, fireRes: 0, regen: 0, haste: 0, resistance: 0, jumpBoost: 0, levitation: 0 };
 
 /** 每帧递减（秒） */
 export function tickEffects(dt: number): void {
@@ -28,6 +30,7 @@ export function tickEffects(dt: number): void {
   effects.haste = Math.max(0, effects.haste - dt);
   effects.resistance = Math.max(0, effects.resistance - dt);
   effects.jumpBoost = Math.max(0, effects.jumpBoost - dt);
+  effects.levitation = Math.max(0, effects.levitation - dt);
 }
 
 export function clearEffects(): void {
@@ -38,4 +41,5 @@ export function clearEffects(): void {
   effects.haste = 0;
   effects.resistance = 0;
   effects.jumpBoost = 0;
+  effects.levitation = 0;
 }

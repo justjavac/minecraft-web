@@ -6,7 +6,7 @@ import { dropFurnaceContents, FOODS } from './furnace';
 import { dropBrewingContents, POTIONS } from './brewing';
 import { effects } from './effects';
 import { isFarmlandId, isWheatCropId } from './crops';
-import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, playerPosition, worldClock } from './game';
+import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, pearlTeleport, playerPosition, worldClock } from './game';
 import { setGrowthDropHandler } from './growth';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler } from './saplings';
@@ -154,8 +154,28 @@ export function tryPlace(): boolean {
       return false;
     }
     if (held?.kind === 'material' && FOODS[held.material] && s.eatSelectedFood()) {
+      // 紫颂果：食用后随机传送 ±8 格（MC 特色）——试 8 次找上方两格空的实心面
+      if (held.material === 'chorus_fruit') {
+        for (let t = 0; t < 8; t++) {
+          const tx = Math.floor(playerPosition.x + (Math.random() - 0.5) * 16);
+          const tz = Math.floor(playerPosition.z + (Math.random() - 0.5) * 16);
+          let ty = Math.min(WORLD_HEIGHT - 2, Math.floor(playerPosition.y) + 8);
+          while (ty > 1 && !BLOCKS[world.getBlock(tx, ty - 1, tz)]?.solid) ty--;
+          if (ty <= 1 || BLOCKS[world.getBlock(tx, ty, tz)]?.solid || BLOCKS[world.getBlock(tx, ty + 1, tz)]?.solid) continue;
+          pearlTeleport.pending = { x: tx + 0.5, y: ty, z: tz + 0.5 };
+          break;
+        }
+      }
       lastPlace = now;
       return false;
+    }
+    // 鞘翅：手持右击装备到胸甲槽（MC；原胸甲回手）
+    if (held?.kind === 'material' && held.material === 'elytra') {
+      if (s.equipElytra()) {
+        playSound('place');
+        lastPlace = now;
+        return false;
+      }
     }
     // 手持药水右键：饮用（水瓶/粗制药水无效果）
     if (held?.kind === 'material' && POTIONS[held.material]) {

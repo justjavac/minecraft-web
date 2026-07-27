@@ -60,6 +60,8 @@ const dragonTailGeo = new BoxGeometry(0.55, 0.55, 2.2);
 const dragonTailTipGeo = new BoxGeometry(0.3, 0.3, 1.8);
 const dragonWingGeo = new BoxGeometry(3.2, 0.12, 1.7);
 const dragonEyeBandGeo = new BoxGeometry(0.9, 0.15, 0.15);
+const shulkerBaseGeo = new BoxGeometry(0.9, 0.55, 0.9);
+const shulkerLidGeo = new BoxGeometry(0.8, 0.35, 0.8);
 
 type MobMats = Record<string, Material>;
 
@@ -103,6 +105,9 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     dragonBody: l('#171221'),
     dragonWing: l('#2b2340'),
     dragonEye: l('#c860ff'),
+    shulkerShell: l('#8a6a9a'),
+    shulkerTop: l('#a585b5'),
+    shulkerBullet: l('#c9a0e8'),
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -276,6 +281,11 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, witherSideHeadGeo, mats.witherBody, -0.42, 1.55, 0);
       addPart(g, witherSideHeadGeo, mats.witherBody, 0.42, 1.55, 0);
       break;
+    case 'shulker':
+      // 潜影贝：紫壳方盒 + 微开顶盖（MC 标志造型；固着不动）
+      addPart(g, shulkerBaseGeo, mats.shulkerShell, 0, 0.3, 0);
+      addPart(g, shulkerLidGeo, mats.shulkerTop, 0.04, 0.72, 0.04);
+      break;
     case 'ender_dragon': {
       // 末影龙 Boss：黑紫长躯 + 双翼展开 + 紫眼（MC 标志造型）；部件以体心为原点
       addPart(g, dragonBodyGeo, mats.dragonBody, 0, 0, 0);
@@ -431,9 +441,9 @@ export function Mobs() {
         seenArrows.add(a.id);
         let mesh = arrowMeshMap.current.get(a.id);
         if (!mesh) {
-          // 烈焰人火球：橙色大球；恶魂爆裂球：淡紫大球；末影之眼：绿色小球；箭：灰色小条
-          const isBall = a.kind === 'fireball' || a.kind === 'ghast' || a.kind === 'eye';
-          mesh = new Mesh(isBall ? fireballGeo : arrowGeo, a.kind === 'ghast' ? mobMats.ghastTear : a.kind === 'fireball' ? mobMats.blaze : a.kind === 'eye' ? mobMats.enderEye : mobMats.arrow);
+          // 烈焰人火球：橙色大球；恶魂爆裂球：淡紫大球；末影之眼：绿色小球；潜影弹：紫色小球；箭：灰色小条
+          const isBall = a.kind === 'fireball' || a.kind === 'ghast' || a.kind === 'eye' || a.kind === 'shulker';
+          mesh = new Mesh(isBall ? fireballGeo : arrowGeo, a.kind === 'ghast' ? mobMats.ghastTear : a.kind === 'fireball' ? mobMats.blaze : a.kind === 'eye' ? mobMats.enderEye : a.kind === 'shulker' ? mobMats.shulkerBullet : mobMats.arrow);
           group.add(mesh);
           arrowMeshMap.current.set(a.id, mesh);
         }

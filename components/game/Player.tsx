@@ -331,6 +331,22 @@ export function Player() {
     const scale = mLen > 1 ? speed / mLen : speed;
     mx *= scale;
     mz *= scale;
+    // 鞘翅滑翔（MC）：空中按住跳跃键且胸甲槽为鞘翅 → 朝视线方向推进，缓降（俯仰调制：俯视加速、仰视拉升）
+    const gliding =
+      !flying &&
+      !onGround.current &&
+      velY.current <= 0.01 &&
+      space &&
+      !inFluid &&
+      gs.armorSlots.chestplate?.material === 'elytra';
+    if (gliding) {
+      const pitch = Math.atan2(rayDir.y, Math.max(fLen, 1e-4)); // 上正下负
+      const glideSpeed = 10 + Math.min(Math.max(-pitch, -0.9), 0.9) * 6; // ~5 到 ~15
+      mx = fx * glideSpeed;
+      mz = fz * glideSpeed;
+      velY.current = Math.max(velY.current - GRAVITY * 0.12 * dt, -3);
+      if (pitch > 0.35) velY.current = Math.min(velY.current + 3 * dt, 0.5); // 仰视拉升
+    }
     const wantX = p.x + mx * dt;
     const wantZ = p.z + mz * dt;
     p.x = wantX;
@@ -367,11 +383,17 @@ export function Player() {
       }
       velY.current = Math.min(Math.max(velY.current, -3), 4);
     } else {
-      velY.current = Math.max(velY.current - GRAVITY * dt, -50);
-      if (space && onGround.current) {
-        velY.current = JUMP_VEL * (effects.jumpBoost > 0 ? 1.2 : 1); // 跳跃提升（信标）：约 1.8 格高（MC 跳跃 I）
+      if (effects.levitation > 0) {
+        // 漂浮：匀速上浮（MC 潜影贝弹命中效果；期间跳跃/重力不生效）
+        velY.current = 1.8;
         onGround.current = false;
-        if (gs.worldMode === 'survival') survivalStats.exhaustion += 0.05; // MC：跳跃消耗
+      } else if (!gliding) {
+        velY.current = Math.max(velY.current - GRAVITY * dt, -50);
+        if (space && onGround.current) {
+          velY.current = JUMP_VEL * (effects.jumpBoost > 0 ? 1.2 : 1); // 跳跃提升（信标）：约 1.8 格高（MC 跳跃 I）
+          onGround.current = false;
+          if (gs.worldMode === 'survival') survivalStats.exhaustion += 0.05; // MC：跳跃消耗
+        }
       }
     }
     const dy = velY.current * dt;
@@ -401,6 +423,8 @@ export function Player() {
     }
 
     // —— 生存模式数值（掉落/溺水/消耗度/回血，逻辑在 lib/survival.ts） ——
+    // 鞘翅滑翔中不累计摔落高度（MC：滑翔着陆无摔落伤害）
+    if (gliding) survivalMem.current.fallDist = 0;
     const headInWater = isWaterId(
       world.getBlock(Math.floor(p.x), Math.floor(p.y + EYE), Math.floor(p.z)),
     );

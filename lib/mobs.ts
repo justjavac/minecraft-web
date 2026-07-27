@@ -3,18 +3,20 @@
 import { AIR, BLOCK_BY_KEY, BLOCKS, GRASS, isWaterId } from './blocks';
 import type { Biome } from './noise';
 import { dayFactorAt, bossState, pearlTeleport, survivalStats, worldClock } from './game';
+import { effects } from './effects';
 import { useGameStore } from './store';
 import { XP_MOB } from './xp';
 import { explodeAt } from './explosion';
 import { endCrystals, hitCrystal } from './endfight';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { bastionNear, fortressNear } from './netherstructures';
+import { outerIslandContaining } from './end';
 import { aabbFree, collideAxis } from './physics';
 import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon' | 'shulker';
 
 export interface MobDef {
   name: string;
@@ -66,6 +68,8 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   },
   // 末影龙：末地 Boss——盘旋/俯冲/栖息喷息三态（完全自管理飞行，穿方块）；掉落为空，结算见 lib/endfight.ts（龙蛋 + 返回门）
   ender_dragon: { name: '末影龙', hp: 200, speed: 0, hostile: true, burnsAtDay: false, damage: 8, attackRange: 2.5, attackCd: 1, drops: [] },
+  // 潜影贝：末地城守卫——固着不动，玩家 12 格内开壳射追踪弹（命中漂浮，MC）
+  shulker: { name: '潜影贝', hp: 30, speed: 0, hostile: true, burnsAtDay: false, damage: 4, attackRange: 12, attackCd: 2.5, drops: [{ material: 'shulker_shell', count: [0, 1] }] },
 };
 
 export interface Mob {
@@ -138,7 +142,7 @@ export interface Arrow {
   /** 玩家发射（命中生物而非玩家；缺省为骷髅射向玩家的箭） */
   fromPlayer?: boolean;
   /** 烈焰人火球（更大更亮，命中伤害 4）或恶魂爆裂火球（命中/撞墙爆炸）或凋灵骷髅弹（爆炸 + 凋零 DOT）或末影珍珠（落点传送）或末影之眼（飞向要塞后悬停碎裂/掉落） */
-  kind?: 'fireball' | 'ghast' | 'pearl' | 'wither_skull' | 'eye';
+  kind?: 'fireball' | 'ghast' | 'pearl' | 'wither_skull' | 'eye' | 'shulker';
 }
 
 export const mobs: Mob[] = [];
@@ -440,9 +444,15 @@ function trySpawnEnd(world: World, px: number, pz: number): boolean {
     if (BLOCKS[world.getBlock(bx, y, bz)]?.key !== 'end_stone') continue;
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
-    const pack = 1 + Math.floor(Math.random() * 3); // 1-3 只
-    for (let i = 0; i < pack; i++) {
-      mobs.push(makeMob('enderman', bx + 0.5 + (Math.random() - 0.5) * 2, sy, bz + 0.5 + (Math.random() - 0.5) * 2));
+    // 末地城（城岛）附近 60% 出潜影贝守卫（MC）；其余末影人成群
+    const isle = outerIslandContaining(world.seedHash, bx, bz);
+    if (isle?.city && Math.random() < 0.6) {
+      mobs.push(makeMob('shulker', bx + 0.5, sy, bz + 0.5));
+    } else {
+      const pack = 1 + Math.floor(Math.random() * 3); // 1-3 只
+      for (let i = 0; i < pack; i++) {
+        mobs.push(makeMob('enderman', bx + 0.5 + (Math.random() - 0.5) * 2, sy, bz + 0.5 + (Math.random() - 0.5) * 2));
+      }
     }
     return true;
   }
@@ -496,7 +506,7 @@ export function checkEndermanStare(
   return false;
 }
 
-function spawnArrow(m: Mob, target: { x: number; y: number; z: number }, kind?: 'fireball' | 'ghast' | 'wither_skull'): void {
+function spawnArrow(m: Mob, target: { x: number; y: number; z: number }, kind?: 'fireball' | 'ghast' | 'wither_skull' | 'shulker'): void {
   const ox = m.x;
   const oy = m.y + 1.5;
   const oz = m.z;
@@ -599,6 +609,21 @@ function tickArrows(
       }
       continue;
     }
+    // 潜影弹：低速追踪玩家（MC 制导），4 秒自毁
+    if (a.kind === 'shulker') {
+      const dx = playerPos.x - a.x;
+      const dy = playerPos.y + 0.9 - a.y;
+      const dz = playerPos.z - a.z;
+      const d = Math.max(Math.hypot(dx, dy, dz), 0.01);
+      const sp = 5;
+      a.vx += ((dx / d) * sp - a.vx) * Math.min(1, dt * 4);
+      a.vy += ((dy / d) * sp - a.vy) * Math.min(1, dt * 4);
+      a.vz += ((dz / d) * sp - a.vz) * Math.min(1, dt * 4);
+      if (a.age > 4) {
+        arrows.splice(i, 1);
+        continue;
+      }
+    }
     if (!a.kind || a.kind === 'pearl') a.vy -= 4 * dt; // 箭与珍珠的重力（较轻，保证射程内能命中）；火球类无重力（MC）
     const nx = a.x + a.vx * dt;
     const ny = a.y + a.vy * dt;
@@ -665,6 +690,9 @@ function tickArrows(
       else if (a.kind === 'wither_skull') {
         explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 8, hurtRadius: 3 });
         survivalStats.wither = 5;
+      } else if (a.kind === 'shulker') {
+        onAttackPlayer(4);
+        effects.levitation = Math.max(effects.levitation, 5); // 漂浮 5 秒（MC）
       } else onAttackPlayer(a.kind === 'fireball' ? 4 : 3);
       arrows.splice(i, 1);
       continue;
@@ -848,7 +876,14 @@ export function tickMobs(
       }
     } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0)) && (m.type !== 'enderman' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'piglin' || ((m.aggroTimer ?? 0) > 0 || !wearsGoldArmor()))) {
       // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼/末影人未被激怒时中立）
-      if (m.type === 'wither') {
+      if (m.type === 'shulker') {
+        // 潜影贝：固着不动，12 格内开壳射追踪弹（MC；命中漂浮）
+        m.arrowCd -= dt;
+        if (dist < def.attackRange && m.arrowCd <= 0) {
+          m.arrowCd = def.attackCd;
+          spawnArrow(m, playerPos, 'shulker');
+        }
+      } else if (m.type === 'wither') {
         // 凋灵 Boss：悬浮追踪 + 每 2s 凋灵骷髅弹幕 + 每 4s 粉碎周围方块（MC）
         if (dist > 0.01 && dist < CHASE_RANGE * 2) {
           mx = (dx / dist) * def.speed;

@@ -3,7 +3,7 @@
 import { ICON_TILE_START, tileIcon } from './blocks';
 
 export type ArmorPiece = 'helmet' | 'chestplate' | 'leggings' | 'boots';
-export type ArmorMaterial = 'leather' | 'gold' | 'iron' | 'diamond' | 'netherite';
+export type ArmorMaterial = 'leather' | 'gold' | 'iron' | 'diamond' | 'netherite' | 'elytra';
 
 export interface ArmorDef {
   piece: ArmorPiece;
@@ -25,6 +25,7 @@ const POINTS: Record<ArmorMaterial, Record<ArmorPiece, number>> = {
   iron: { helmet: 2, chestplate: 6, leggings: 5, boots: 2 },
   diamond: { helmet: 3, chestplate: 8, leggings: 6, boots: 3 },
   netherite: { helmet: 3, chestplate: 8, leggings: 6, boots: 3 },
+  elytra: { helmet: 0, chestplate: 0, leggings: 0, boots: 0 }, // 鞘翅：无护甲（MC）
 };
 
 const DURABILITY: Record<ArmorMaterial, Record<ArmorPiece, number>> = {
@@ -33,6 +34,7 @@ const DURABILITY: Record<ArmorMaterial, Record<ArmorPiece, number>> = {
   iron: { helmet: 165, chestplate: 240, leggings: 225, boots: 195 },
   diamond: { helmet: 363, chestplate: 528, leggings: 495, boots: 429 },
   netherite: { helmet: 407, chestplate: 592, leggings: 555, boots: 481 },
+  elytra: { helmet: 432, chestplate: 432, leggings: 432, boots: 432 }, // MC 鞘翅耐久 432
 };
 
 export const MATERIAL_NAME: Record<ArmorMaterial, string> = {
@@ -41,6 +43,7 @@ export const MATERIAL_NAME: Record<ArmorMaterial, string> = {
   iron: '铁',
   diamond: '钻石',
   netherite: '下界合金',
+  elytra: '鞘翅',
 };
 export const PIECE_NAME: Record<ArmorPiece, string> = { helmet: '头盔', chestplate: '胸甲', leggings: '护腿', boots: '靴子' };
 export const PIECE_COST: Record<ArmorPiece, number> = { helmet: 5, chestplate: 8, leggings: 7, boots: 4 };
@@ -64,7 +67,7 @@ function buildDefs(): Record<ArmorMaterial, Record<ArmorPiece, ArmorDef>> {
         points: POINTS[material][piece],
         durability: DURABILITY[material][piece],
         cost: PIECE_COST[piece],
-        iconTile: material === 'leather' ? LEATHER_ICON[piece] : tileIcon(`item/${material}_${piece}`),
+        iconTile: material === 'leather' ? LEATHER_ICON[piece] : tileIcon(material === 'elytra' ? 'item/elytra' : `item/${material}_${piece}`),
       };
     }
   }

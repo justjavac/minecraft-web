@@ -756,6 +756,13 @@ add('end_stone', '末地石', 'end_stone', { cat: 'stone', tool: 'pickaxe', need
 add('ancient_debris', '远古残骸', { side: 'ancient_debris_side', top: 'ancient_debris_top' }, { cat: 'ore', tool: 'pickaxe', pickTier: 3, digTime: 30 });
 // 龙蛋：击杀末影龙后置于祭坛中心柱顶（MC 纪念战利品，可采集带走）
 add('dragon_egg', '龙蛋', 'dragon_egg', { cat: 'utility', opaque: false, digTime: 3, shape: 'slab', box3: [0.0625, 0, 0.0625, 0.9375, 1, 0.9375], ...STONE_SND });
+// 末地石砖与紫珀块：末地城主体（MC）
+add('end_stone_bricks', '末地石砖', 'end_stone_bricks', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 9, ...STONE_SND });
+add('purpur_block', '紫珀块', 'purpur_block', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 9, ...STONE_SND });
+add('purpur_pillar', '紫珀柱', { side: 'purpur_pillar_side', top: 'purpur_pillar_top' }, { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 9, ...STONE_SND });
+// 紫颂植株：柱状（破坏任一节上方全掉，同仙人掌），顶花为装饰（MC 外岛作物）
+add('chorus_plant', '紫颂植株', 'chorus_plant', { cat: 'earth', opaque: false, shape: 'slab', box3: [0.3125, 0, 0.3125, 0.6875, 1, 0.6875], digTime: 0.4, ...GRASS_SND });
+add('chorus_flower', '紫颂花', 'chorus_flower', { cat: 'earth', opaque: false, shape: 'cross', solid: false, digTime: 0.05, ...GRASS_SND });
 
 /** 以方块 id 为下标 */
 export const BLOCKS: BlockDef[] = defs;
@@ -773,10 +780,10 @@ export function isLavaId(id: BlockId): boolean {
   return BLOCKS[id]?.lava === true;
 }
 
-/** 是否柱状植物（仙人掌/甘蔗/竹子）：破坏任一节，上方各节一并掉落 */
+/** 是否柱状植物（仙人掌/甘蔗/竹子/紫颂植株）：破坏任一节，上方各节一并掉落 */
 export function isColumnPlantId(id: BlockId): boolean {
   const k = BLOCKS[id]?.key;
-  return k === 'cactus' || k === 'sugar_cane' || k === 'bamboo' || k === 'bamboo_top';
+  return k === 'cactus' || k === 'sugar_cane' || k === 'bamboo' || k === 'bamboo_top' || k === 'chorus_plant';
 }
 
 /** 热键栏 9 格（创造模式初始值，可在选块界面更换） */
