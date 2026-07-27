@@ -550,6 +550,9 @@ add('soul_sand', '灵魂沙', 'soul_sand', {
 // 荧石：发光 15，挖掉掉荧石粉 2-4（MC）
 add('glowstone', '荧石', 'glowstone', { cat: 'utility', digTime: 1.5, light: 15, drop: { material: 'glowstone_dust', count: [2, 4] }, ...GLASS_SND });
 add('nether_quartz_ore', '下界石英矿石', 'nether_quartz_ore', { cat: 'ore', tool: 'pickaxe', pickTier: 0, drop: { material: 'quartz', count: [1, 1] }, digTime: 15 });
+// 下界砖块（堡垒主体）；地狱疣：堡垒花园作物（种在灵魂沙上，挖掉掉 1-2 个）
+add('nether_bricks', '下界砖块', 'nether_bricks', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 10 });
+add('nether_wart', '地狱疣', 'nether_wart_stage2', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, drop: { material: 'nether_wart', count: [1, 2] }, ...GRASS_SND });
 // 雪层：薄板（1/8 高，无碰撞），寒带地表覆盖
 add('snow_layer', '雪层', 'snow', {
   cat: 'earth', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, solid: false, tool: 'shovel', digTime: 0.2, ...GRASS_SND,

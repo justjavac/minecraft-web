@@ -99,7 +99,7 @@ export function Player() {
   /** 已应用到相机的 FOV，变化时在帧循环里同步 */
   const appliedFov = useRef(0);
   /** 生存：下落/憋气/回血计时（逻辑在 lib/survival.ts） / 攻击冷却 / 死亡边沿 */
-  const survivalMem = useRef<SurvivalMem>({ fallDist: 0, air: 15, regenTick: 0 });
+  const survivalMem = useRef<SurvivalMem>({ fallDist: 0, air: 15, regenTick: 0, witherTick: 0 });
   /** 岩浆灼烧累计（满 1 点扣 1 血） */
   const lavaAcc = useRef(0);
   const attackCd = useRef(0);

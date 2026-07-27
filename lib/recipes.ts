@@ -117,6 +117,10 @@ export const RECIPES: Recipe[] = [
   // 打火石：铁锭 + 燧石（MC）；荧石：荧石粉 ×4（MC）
   { id: 'flint_and_steel', name: '打火石', out: { kind: 'material', material: 'flint_and_steel', count: 1 }, cost: [{ item: 'material:iron_ingot', count: 1 }, { item: 'material:flint', count: 1 }], needsTable: false },
   { id: 'glowstone', name: '荧石', out: { kind: 'block', id: KID('glowstone'), count: 1 }, cost: [{ item: 'material:glowstone_dust', count: 4 }], needsTable: false },
+  // 烈焰粉：1 烈焰棒 → 2 烈焰粉（MC）
+  { id: 'blaze_powder', name: '烈焰粉 ×2', out: { kind: 'material', material: 'blaze_powder', count: 2 }, cost: [{ item: 'material:blaze_rod', count: 1 }], needsTable: false },
+  // 下界砖块：4 下界岩（MC：2×2 下界岩合下界砖块的前身——此处按 4 合 1 简化）
+  { id: 'nether_bricks', name: '下界砖块', out: { kind: 'block', id: KID('nether_bricks'), count: 1 }, cost: [{ item: K('netherrack'), count: 4 }], needsTable: false },
   { id: 'wooden_pickaxe', name: '木镐', out: { kind: 'tool', tool: 'wooden_pickaxe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'stone_pickaxe', name: '石镐', out: { kind: 'tool', tool: 'stone_pickaxe' }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },
   { id: 'wooden_axe', name: '木斧', out: { kind: 'tool', tool: 'wooden_axe' }, cost: [{ item: PLANKS_ITEM, count: 3 }, { item: STICK, count: 2 }], needsTable: true },

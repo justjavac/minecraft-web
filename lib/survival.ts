@@ -20,6 +20,8 @@ export interface SurvivalMem {
   air: number;
   /** 回血计时器 */
   regenTick: number;
+  /** 凋零 DOT 计时器（满 1 秒扣 1 血） */
+  witherTick: number;
 }
 
 export interface SurvivalSnapshotLite {
@@ -66,6 +68,18 @@ export function tickSurvival(
     mem.air = 15;
   }
 
+  // 凋零：凋灵骷髅命中附加的 5 秒 DOT（MC 凋零效果，每秒 1 点）
+  if (survivalStats.wither > 0) {
+    survivalStats.wither -= env.dt;
+    mem.witherTick += env.dt;
+    if (mem.witherTick >= 1) {
+      mem.witherTick = 0;
+      actions.damagePlayer(1);
+    }
+  } else {
+    mem.witherTick = 0;
+  }
+
   // 消耗度（MC exhaustion）：满 4 先扣饱和度，饱和耗尽后扣饥饿
   if (survivalStats.exhaustion >= 4) {
     survivalStats.exhaustion -= 4;
@@ -91,4 +105,5 @@ export function resetSurvivalMem(mem: SurvivalMem): void {
   mem.fallDist = 0;
   mem.air = 15;
   mem.regenTick = 0;
+  mem.witherTick = 0;
 }

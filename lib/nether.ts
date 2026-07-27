@@ -2,6 +2,7 @@
 // 顶层基岩天花板（y≈122-127 参差）+ 萤石簇 + 下界石英矿 + 灵魂沙/沙砾斑块
 
 import { AIR, BLOCK_BY_KEY, LAVA } from './blocks';
+import { applyNetherStructures } from './netherstructures';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
 import { hash2, hashString, mulberry32, type Terrain } from './noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
@@ -139,6 +140,8 @@ export function generateNetherChunk(terrain: Terrain, cx: number, cz: number, da
       }
     }
   }
+  // 下界堡垒（桥廊 + 塔楼 + 地狱疣园 + 宝箱）
+  applyNetherStructures(seedHash, terrain, cx, cz, data);
 }
 
 /** 下界石英矿脉（石头团簇式随机游走；下界岩宿主） */

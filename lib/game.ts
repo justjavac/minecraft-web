@@ -69,7 +69,7 @@ export function dayFactorAt(t: number): number {
 export const hurtState = { lastAt: Number.NEGATIVE_INFINITY };
 
 /** 生存模式消耗度（MC exhaustion）：满 4 消耗 1 点饱和度/饥饿 */
-export const survivalStats = { exhaustion: 0 };
+export const survivalStats = { exhaustion: 0, wither: 0 };
 
 /** 每帧一次的准星射线结果：Player 计算，BlockHighlight / PlacePreview / 挖掘共用 */
 export const targetBlock: { hit: RaycastHit | null } = { hit: null };

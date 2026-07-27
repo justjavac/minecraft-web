@@ -1,15 +1,16 @@
 // 生物系统：类型化怪物（敌对/被动）+ 骷髅箭 + 苦力怕爆炸。纯数据逻辑（不依赖 three，可单测）
 
 import { AIR, BLOCKS, GRASS, isWaterId } from './blocks';
-import { dayFactorAt, worldClock } from './game';
+import { dayFactorAt, survivalStats, worldClock } from './game';
 import { explodeAt } from './explosion';
 import { spawnMaterialDrop } from './items';
+import { fortressNear } from './netherstructures';
 import { aabbFree, collideAxis } from './physics';
 import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
 import { WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'blaze' | 'wither_skeleton';
 
 export interface MobDef {
   name: string;
@@ -38,6 +39,10 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   mooshroom: { name: '蘑菇牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
   // 僵尸猪灵：中立敌对——不被激怒时不攻击；受伤则群体仇恨（MC 下界特色）
   zombified_piglin: { name: '僵尸猪灵', hp: 20, speed: 2.4, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'gold_ingot', count: [0, 1] }, { material: 'bone', count: [0, 1] }] },
+  // 烈焰人：悬浮飞行，远程火球（MC 下界堡垒标志怪）
+  blaze: { name: '烈焰人', hp: 20, speed: 2.0, hostile: true, burnsAtDay: false, damage: 4, attackRange: 14, attackCd: 2.5, drops: [{ material: 'blaze_rod', count: [0, 1] }] },
+  // 凋灵骷髅：堡垒近战，命中附加凋零 DOT（MC）
+  wither_skeleton: { name: '凋灵骷髅', hp: 20, speed: 2.6, hostile: true, burnsAtDay: false, damage: 5, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'coal', count: [0, 1] }, { material: 'bone', count: [0, 2] }] },
 };
 
 export interface Mob {
@@ -72,6 +77,8 @@ export interface Mob {
   breedCd?: number;
   /** 僵尸猪灵仇恨剩余秒数（>0 时攻击玩家；群体传染） */
   aggroTimer?: number;
+  /** 烈焰人悬浮起伏相位 */
+  bob?: number;
   /** 村庄锚点（村民不远离村庄；生成时写入） */
   homeX?: number;
   homeZ?: number;
@@ -88,6 +95,8 @@ export interface Arrow {
   age: number;
   /** 玩家发射（命中生物而非玩家；缺省为骷髅射向玩家的箭） */
   fromPlayer?: boolean;
+  /** 烈焰人火球（更大更亮，命中伤害 4） */
+  kind?: 'fireball';
 }
 
 export const mobs: Mob[] = [];
@@ -223,10 +232,10 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
   return false;
 }
 
-/** 下界刷怪：僵尸猪灵 2-3 只成群（下界岩/灵魂沙表面、岩浆海以上；MC 成群出没） */
+/** 下界刷怪：僵尸猪灵 2-3 只成群（下界岩/灵魂沙表面、岩浆海以上；MC 成群出没）；堡垒附近出凋灵骷髅/烈焰人 */
 function trySpawnNether(world: World, px: number, pz: number): boolean {
-  const piglins = mobs.filter((m) => m.type === 'zombified_piglin').length;
-  if (piglins >= MAX_HOSTILE) return false;
+  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
+  if (hostileCount >= MAX_HOSTILE) return false;
   for (let attempt = 0; attempt < 8; attempt++) {
     const ang = Math.random() * Math.PI * 2;
     const r = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
@@ -238,20 +247,35 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
     if (y <= 32) continue; // 岩浆海面上方
     const ground = world.getBlock(bx, y, bz);
     const gk = BLOCKS[ground]?.key;
-    if (gk !== 'netherrack' && gk !== 'soul_sand') continue;
+    if (gk !== 'netherrack' && gk !== 'soul_sand' && gk !== 'nether_bricks') continue;
     if (isWaterId(ground) || BLOCKS[ground]?.lava) continue;
     const sy = y + 1;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
-    const pack = 2 + Math.floor(Math.random() * 2); // 2-3 只
-    for (let i = 0; i < pack; i++) {
-      mobs.push(makeMob('zombified_piglin', bx + 0.5 + (Math.random() - 0.5) * 2, sy, bz + 0.5 + (Math.random() - 0.5) * 2));
+    // 堡垒附近（48 格）：凋灵骷髅/烈焰人为主；远处猪灵成群、少量烈焰人（MC 分布）
+    const roll = Math.random();
+    const type: MobType = fortressNear(world.seedHash, world.terrain, bx, bz, 48)
+      ? roll < 0.55
+        ? 'wither_skeleton'
+        : roll < 0.8
+          ? 'blaze'
+          : 'zombified_piglin'
+      : roll < 0.8
+        ? 'zombified_piglin'
+        : 'blaze';
+    if (type === 'zombified_piglin') {
+      const pack = 2 + Math.floor(Math.random() * 2); // 2-3 只
+      for (let i = 0; i < pack; i++) {
+        mobs.push(makeMob(type, bx + 0.5 + (Math.random() - 0.5) * 2, sy, bz + 0.5 + (Math.random() - 0.5) * 2));
+      }
+    } else {
+      mobs.push(makeMob(type, bx + 0.5, sy, bz + 0.5));
     }
     return true;
   }
   return false;
 }
 
-function spawnArrow(m: Mob, target: { x: number; y: number; z: number }): void {
+function spawnArrow(m: Mob, target: { x: number; y: number; z: number }, kind?: 'fireball'): void {
   const ox = m.x;
   const oy = m.y + 1.5;
   const oz = m.z;
@@ -264,9 +288,10 @@ function spawnArrow(m: Mob, target: { x: number; y: number; z: number }): void {
     id: nextArrowId++,
     x: ox, y: oy, z: oz,
     vx: (dx / d) * speed,
-    vy: (dy / d) * speed + d * 0.05, // 抬高补偿重力下坠
+    vy: (dy / d) * speed + (kind === 'fireball' ? 0 : d * 0.05), // 箭抬高补偿重力下坠；火球直线飞行
     vz: (dz / d) * speed,
     age: 0,
+    kind,
   });
 }
 
@@ -304,7 +329,7 @@ function tickArrows(
   for (let i = arrows.length - 1; i >= 0; i--) {
     const a = arrows[i];
     a.age += dt;
-    a.vy -= 4 * dt; // 箭的重力（较轻，保证射程内能命中）
+    if (a.kind !== 'fireball') a.vy -= 4 * dt; // 箭的重力（较轻，保证射程内能命中）；火球无重力（MC）
     const nx = a.x + a.vx * dt;
     const ny = a.y + a.vy * dt;
     const nz = a.z + a.vz * dt;
@@ -335,13 +360,13 @@ function tickArrows(
         continue;
       }
     } else if (
-      // 骷髅的箭：命中玩家（AABB 粗略判定）
+      // 骷髅的箭/烈焰人的火球：命中玩家（AABB 粗略判定；火球伤害 4）
       Math.abs(playerPos.x - a.x) < 0.5 &&
       a.y > playerPos.y &&
       a.y < playerPos.y + 1.8 &&
       Math.abs(playerPos.z - a.z) < 0.5
     ) {
-      onAttackPlayer(3);
+      onAttackPlayer(a.kind === 'fireball' ? 4 : 3);
       arrows.splice(i, 1);
       continue;
     }
@@ -409,8 +434,8 @@ export function tickMobs(
       }
     } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0)) {
       // 敌对 AI（蜘蛛白天中立；僵尸猪灵未被激怒时中立）
-      if (m.type === 'skeleton') {
-        // 保持 8-16 距离并射箭
+      if (m.type === 'skeleton' || m.type === 'blaze') {
+        // 保持 8-14 距离并远程射击（骷髅箭 / 烈焰人火球）
         if (dist > 14 && dist > 0.01) {
           mx = (dx / dist) * def.speed;
           mz = (dz / dist) * def.speed;
@@ -419,9 +444,9 @@ export function tickMobs(
           mz = (-dz / dist) * def.speed;
         }
         m.arrowCd -= dt;
-        if (dist < 16 && m.arrowCd <= 0) {
+        if (dist < def.attackRange && m.arrowCd <= 0) {
           m.arrowCd = def.attackCd;
-          spawnArrow(m, playerPos);
+          spawnArrow(m, playerPos, m.type === 'blaze' ? 'fireball' : undefined);
         }
       } else if (m.type === 'creeper') {
         if (m.ignite >= 0) {
@@ -446,6 +471,8 @@ export function tickMobs(
         m.attackCd -= dt;
         if (m.attackCd <= 0 && dist < def.attackRange && Math.abs(playerPos.y - m.y) < 2) {
           m.attackCd = def.attackCd;
+          // 凋灵骷髅命中附加凋零 DOT（MC 凋零效果 5 秒）
+          if (m.type === 'wither_skeleton') survivalStats.wither = 5;
           onAttackPlayer(def.damage);
         }
       }
@@ -519,7 +546,7 @@ export function tickMobs(
       }
     }
 
-    // 移动 + 碰撞（与玩家同一套物理）
+    // 移动 + 碰撞（与玩家同一套物理；烈焰人悬浮无重力）
     m.x += mx * dt;
     const hitX = collideAxis(world, m, 0, mx * dt, HALF_W, HEIGHT);
     m.z += mz * dt;
@@ -527,15 +554,22 @@ export function tickMobs(
     // 被 1 格障碍挡住时跳起
     if ((hitX || hitZ) && m.onGround) m.velY = 8.5;
 
-    m.velY = Math.max(m.velY - GRAVITY * dt, -50);
-    const dy = m.velY * dt;
-    m.y += dy;
-    const hitY = collideAxis(world, m, 1, dy, HALF_W, HEIGHT);
-    if (hitY) {
-      if (dy < 0) m.onGround = true;
+    if (m.type === 'blaze') {
+      // 悬浮：相位起伏，不受重力
+      m.bob = (m.bob ?? Math.random() * 6) + dt * 2;
+      m.y += Math.sin(m.bob) * 0.5 * dt;
       m.velY = 0;
-    } else if (dy !== 0) {
-      m.onGround = false;
+    } else {
+      m.velY = Math.max(m.velY - GRAVITY * dt, -50);
+      const dy = m.velY * dt;
+      m.y += dy;
+      const hitY = collideAxis(world, m, 1, dy, HALF_W, HEIGHT);
+      if (hitY) {
+        if (dy < 0) m.onGround = true;
+        m.velY = 0;
+      } else if (dy !== 0) {
+        m.onGround = false;
+      }
     }
 
     if (m.y < -10) {

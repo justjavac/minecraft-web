@@ -355,7 +355,7 @@ function writeIgloo(spot: StructureSpot, terrain: Terrain, cx: number, cz: numbe
 }
 
 // ——— 神庙战利品（确定性预填宝箱；storages 随存档持久化） ———
-type LootEntry = [material: string, min: number, max: number, chance: number];
+export type LootEntry = [material: string, min: number, max: number, chance: number];
 
 const DESERT_LOOT: LootEntry[] = [
   ['gold_ingot', 1, 4, 0.5],
@@ -387,7 +387,7 @@ const SHIP_LOOT: LootEntry[] = [
 ];
 
 /** 宝箱战利品预填（只填全空的新箱子；已初始化/被开过的跳过——跨 chunk 生成与重载均幂等） */
-function fillChest(seedHash: number, x: number, y: number, z: number, table: LootEntry[], blockExtra?: [id: BlockId, min: number, max: number, chance: number]): void {
+export function fillChest(seedHash: number, x: number, y: number, z: number, table: LootEntry[], blockExtra?: [id: BlockId, min: number, max: number, chance: number]): void {
   const key = `${x},${y},${z}`;
   const storage = getStorage(key);
   if (storage.some((s) => s !== null)) return;

@@ -30,6 +30,8 @@ const shroomGeo = new BoxGeometry(0.14, 0.06, 0.14);
 const shroomCapGeo = new BoxGeometry(0.18, 0.06, 0.18);
 const arrowGeo = new BoxGeometry(0.05, 0.05, 0.5);
 const swordGeo = new BoxGeometry(0.05, 0.5, 0.05);
+const blazeRodGeo = new BoxGeometry(0.09, 0.9, 0.09);
+const fireballGeo = new BoxGeometry(0.22, 0.22, 0.22);
 
 type MobMats = Record<string, Material>;
 
@@ -54,6 +56,9 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     piglinSkin: l('#c98a8a'), // 僵尸猪灵：腐粉
     piglinRot: l('#7f9e5f'), // 僵尸猪灵：尸斑绿
     goldSword: l('#e8c840'),
+    blaze: l('#e8b830'), // 烈焰人明黄
+    blazeRod: l('#c07818'), // 烈焰棒橙
+    wither: l('#1a1a1a'), // 凋灵骷髅炭黑
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -153,6 +158,23 @@ function makeMobMesh(type: MobType, mats: MobMats): Group {
       addPart(g, snoutGeo, mats.piglinRot, 0, 1.6, 0.22);
       addPart(g, swordGeo, mats.goldSword, 0.42, 1.0, 0.1);
       break;
+    case 'blaze':
+      // 烈焰人：明黄头 + 环身烈焰棒（MC 标志造型）
+      addPart(g, headGeo, mats.blaze, 0, 1.3, 0);
+      for (const [rx, rz] of [[0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]] as const) {
+        addPart(g, blazeRodGeo, mats.blazeRod, rx, 0.85, rz);
+      }
+      break;
+    case 'wither_skeleton':
+      // 凋灵骷髅：炭黑高个 + 石剑
+      addPart(g, legGeo, mats.wither, -0.13, 0.45, 0);
+      addPart(g, legGeo, mats.wither, 0.13, 0.45, 0);
+      addPart(g, bodyGeo, mats.wither, 0, 1.25, 0);
+      addPart(g, armGeo, mats.wither, -0.34, 1.3, 0);
+      addPart(g, armGeo, mats.wither, 0.34, 1.3, 0);
+      addPart(g, headGeo, mats.wither, 0, 1.85, 0);
+      addPart(g, swordGeo, mats.arrow, 0.42, 1.1, 0.1);
+      break;
     case 'chicken':
       addPart(g, chickenBodyGeo, mats.chicken, 0, 0.35, 0);
       addPart(g, chickenHeadGeo, mats.chicken, 0, 0.62, 0.2);
@@ -251,7 +273,8 @@ export function Mobs() {
         seenArrows.add(a.id);
         let mesh = arrowMeshMap.current.get(a.id);
         if (!mesh) {
-          mesh = new Mesh(arrowGeo, mobMats.arrow);
+          // 烈焰人火球：橙色大球；箭：灰色小条
+          mesh = new Mesh(a.kind === 'fireball' ? fireballGeo : arrowGeo, a.kind === 'fireball' ? mobMats.blaze : mobMats.arrow);
           group.add(mesh);
           arrowMeshMap.current.set(a.id, mesh);
         }
