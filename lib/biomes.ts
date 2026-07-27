@@ -35,6 +35,12 @@ export const BIOME_SURFACE: Record<Biome, BiomeSurface> = {
     underwater: [K('dirt'), K('gravel')],
     waterTop: K('ice'),
   },
+  ice_spikes: {
+    top: K('snowy_grass'),
+    filler: K('dirt'),
+    underwater: [K('dirt'), K('gravel')],
+    waterTop: K('ice'),
+  },
   desert: {
     top: K('sand'),
     filler: K('sand'),
@@ -102,6 +108,7 @@ export const BIOME_TINT_HEX: Record<Biome, number> = {
   dark_forest: 0x507a32,
   taiga: 0x86b783,
   snowy: 0x80b497,
+  ice_spikes: 0x80b497,
   desert: 0xbfb755,
   savanna: 0xbfb755,
   jungle: 0x59c93c,

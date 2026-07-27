@@ -300,6 +300,8 @@ export function tryPlace(): boolean {
 
   // —— 形状放置规则 ——
   if (def.shape === 'slab') {
+    // 雪层：下方必须是实心方块（MC 规则，不能悬空放）
+    if (id === BLOCK_BY_KEY.snow_layer.id && !BLOCKS[world.getBlock(px, py - 1, pz)]?.solid) return false;
     // 点击同类台阶本身：合并成完整方块（MC 规则；无 fullBlock 的台阶形方块如床不合并）
     if (hitDef?.shape === 'slab' && hitDef.fullBlock !== undefined && hitDef.fullBlock === def.fullBlock) {
       if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;

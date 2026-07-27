@@ -8,7 +8,7 @@ export const SEA_LEVEL = 40;
 /** 地形高度上限（world.WORLD_HEIGHT - 10；此处不 import world 避免循环依赖） */
 const MAX_TERRAIN_H = 118;
 
-/** 生物群系（主世界 16 种） */
+/** 生物群系（主世界 17 种；BIOME_LIST 索引稳定，新增只追加） */
 export type Biome =
   | 'plains'
   | 'forest'
@@ -16,6 +16,7 @@ export type Biome =
   | 'dark_forest'
   | 'taiga'
   | 'snowy'
+  | 'ice_spikes'
   | 'desert'
   | 'savanna'
   | 'jungle'
@@ -27,11 +28,11 @@ export type Biome =
   | 'river'
   | 'basin';
 
-/** 群系稳定枚举（网格化/存档按索引传递） */
+/** 群系稳定枚举（网格化/存档按索引传递；只能追加不能重排） */
 export const BIOME_LIST: Biome[] = [
   'plains', 'forest', 'birch_forest', 'dark_forest', 'taiga', 'snowy',
   'desert', 'savanna', 'jungle', 'swamp', 'badlands', 'mountains',
-  'mushroom_fields', 'ocean', 'river', 'basin',
+  'mushroom_fields', 'ocean', 'river', 'basin', 'ice_spikes',
 ];
 
 /** 群系 → 稳定索引（BIOME_LIST 下标） */
@@ -231,8 +232,11 @@ export function createTerrain(seed: string): Terrain {
     if (mesa > 0.5) return 'badlands';
     const temp = temperature(x, z);
     const humid = humidity(x, z);
-    // 寒带：湿冷针叶林，干冷雪原
-    if (temp < -0.28) return humid > 0.25 ? 'taiga' : 'snowy';
+    // 寒带：湿冷针叶林，干冷雪原（奇异度高的雪原出冰刺）
+    if (temp < -0.28) {
+      if (humid > 0.25) return 'taiga';
+      return weirdField(x, z) > 0.2 ? 'ice_spikes' : 'snowy';
+    }
     // 热带：干沙漠 / 半干热带草原 / 湿丛林
     if (temp > 0.35) {
       if (humid < -0.05) return 'desert';

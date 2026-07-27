@@ -238,8 +238,28 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
         writeTree(put, kind, tx, h, tz, rand, { vines: cachedBiomeAt(wx, wz) === 'swamp' });
         continue;
       }
-      // 巨蘑菇：蘑菇岛成群、黑森林偶见（红/棕各半）
       const biome = cachedBiomeAt(wx, wz);
+      // 冰刺：冰刺平原标志（浮冰高柱，偶带蓝冰基座）
+      if (biome === 'ice_spikes') {
+        if (rand() < 0.02 && h + 20 < WORLD_HEIGHT) {
+          const H = 8 + Math.floor(rand() * 11); // 8-18
+          const packed = K('packed_ice');
+          for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            put(tx + dx, h + 1, tz + dz, packed, true);
+            put(tx + dx, h + 2, tz + dz, packed, true);
+          }
+          for (let y = h + 3; y <= h + H; y++) put(tx, y, tz, packed, true);
+          if (rand() < 0.5) {
+            for (let dx = -1; dx <= 1; dx++) {
+              for (let dz = -1; dz <= 1; dz++) {
+                if (rand() < 0.6) put(tx + dx, h, tz + dz, K('blue_ice'), false);
+              }
+            }
+          }
+        }
+        continue;
+      }
+      // 巨蘑菇：蘑菇岛成群、黑森林偶见（红/棕各半）
       const r = rand();
       const chance = biome === 'mushroom_fields' ? 0.03 : biome === 'dark_forest' ? 0.006 : 0;
       if (chance > 0 && r < chance && h + HUGE_MUSHROOM_MAX_H < WORLD_HEIGHT) {
@@ -315,7 +335,13 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
           break;
         }
         case 'taiga': {
-          if ((surf !== GRASS && surf !== PODZOL) || r >= 0.05) break;
+          if (surf !== GRASS && surf !== PODZOL) break;
+          // 薄雪覆盖（针叶林寒带地面）
+          if (hash2(seedHash ^ 0x5e11c4, wx, wz) < 0.25) {
+            data[aboveI] = K('snow_layer');
+            break;
+          }
+          if (r >= 0.05) break;
           // 大型蕨（双格，针叶林标志）
           if (pick < 0.2 && h + 2 < WORLD_HEIGHT && data[localIndex(x, h + 2, z)] === AIR) {
             data[aboveI] = K('large_fern');
@@ -323,6 +349,17 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
             break;
           }
           data[aboveI] = pick < 0.5 ? K('fern') : pick < 0.75 ? K('short_grass') : pick < 0.9 ? K('poppy') : K('brown_mushroom');
+          break;
+        }
+        case 'snowy':
+        case 'ice_spikes': {
+          // 雪层覆盖（MC 雪原招牌）
+          if (hash2(seedHash ^ 0x5e11a2, wx, wz) < 0.65) data[aboveI] = K('snow_layer');
+          break;
+        }
+        case 'mountains': {
+          // 雪顶之上再覆薄雪层，峰面更有层次
+          if (surf === SNOW_BLOCK && hash2(seedHash ^ 0x5e11b3, wx, wz) < 0.4) data[aboveI] = K('snow_layer');
           break;
         }
         case 'dark_forest': {

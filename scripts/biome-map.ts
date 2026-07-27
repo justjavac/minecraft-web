@@ -14,6 +14,7 @@ const COLORS: Record<Biome, [number, number, number]> = {
   dark_forest: [24, 66, 20],
   taiga: [52, 96, 78],
   snowy: [232, 240, 244],
+  ice_spikes: [180, 220, 235],
   desert: [226, 211, 160],
   savanna: [168, 158, 70],
   jungle: [30, 130, 40],
