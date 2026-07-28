@@ -1,9 +1,9 @@
-// 钓鱼：浮标抛投（抛物线 → 落水漂浮）→ 等待咬钩（5-30s，雨天 ×0.8，MC）→ 1.5s 窗口 → 收竿得渔获
-// 概率表对齐 MC Java：85% 鱼（60% 鳕鱼/25% 鲑鱼/15% 热带鱼）、10% 垃圾、5% 宝藏
+// 钓鱼：浮标抛投（抛物线 → 落水漂浮）→ 等待咬钩（5-30s，雨天 ×0.8、不见天空 ×2，MC）→ 1.5s 窗口 → 收竿得渔获
+// 概率表对齐 MC Java：85% 鱼（60% 鳕鱼/25% 鲑鱼/13% 河豚/2% 热带鱼）、10% 垃圾、5% 宝藏
 
-import { BLOCKS } from './blocks';
-import { weather } from './weather';
-import type { World } from './world';
+import { AIR, BLOCKS } from './blocks';
+import { weather, precipAt } from './weather';
+import { WORLD_HEIGHT, type World } from './world';
 
 export type BobberState = 'flying' | 'waiting' | 'bite';
 
@@ -28,7 +28,8 @@ export const bobber: { current: Bobber | null } = { current: null };
 export const CATCH_TABLE: { tier: 'fish' | 'junk' | 'treasure'; material: string; count: [number, number]; weight: number }[] = [
   { tier: 'fish', material: 'raw_cod', count: [1, 1], weight: 51 }, // 85% × 60%
   { tier: 'fish', material: 'raw_salmon', count: [1, 1], weight: 21 }, // 85% × 25%
-  { tier: 'fish', material: 'tropical_fish', count: [1, 1], weight: 13 }, // 85% × 15%
+  { tier: 'fish', material: 'pufferfish', count: [1, 1], weight: 11 }, // 85% × 13%
+  { tier: 'fish', material: 'tropical_fish', count: [1, 1], weight: 2 }, // 85% × 2%
   { tier: 'junk', material: 'bone', count: [1, 1], weight: 3 },
   { tier: 'junk', material: 'string', count: [1, 1], weight: 3 },
   { tier: 'junk', material: 'leather', count: [1, 1], weight: 2 },
@@ -61,10 +62,22 @@ export function reelIn(): { material: string; count: number } | null {
   return rollCatch();
 }
 
-/** 下次咬钩等待秒（MC 5-30s 均匀；雨天 ×0.8） */
-function nextBiteWait(): number {
+/** 浮标位置是否露天（MC：不见天空则咬钩等待 ×2）；水面上方有任何非空气方块即遮顶 */
+function exposedToSky(world: World, b: Bobber): boolean {
+  const bx = Math.floor(b.x);
+  const bz = Math.floor(b.z);
+  for (let y = Math.floor(b.floatY) + 1; y < WORLD_HEIGHT; y++) {
+    if (world.getBlock(bx, y, bz) !== AIR) return false;
+  }
+  return true;
+}
+
+/** 下次咬钩等待秒（MC 5-30s 均匀；本地下雨 ×0.8（雪/干旱群系无加成，MC）；浮标不见天空 ×2） */
+function nextBiteWait(world: World, b: Bobber): number {
   const base = 5 + Math.random() * 25;
-  return weather.kind === 'clear' ? base : base * 0.8;
+  const raining = precipAt(world.terrain, weather.kind, Math.floor(b.x), Math.floor(b.floatY), Math.floor(b.z)) === 'rain';
+  const wait = raining ? base * 0.8 : base;
+  return exposedToSky(world, b) ? wait : wait * 2;
 }
 
 function rollCatch(): { material: string; count: number } {
@@ -101,7 +114,7 @@ export function tickFishing(world: World, dt: number): void {
       b.floatY = by + 1 - 0.2;
       b.y = b.floatY;
       b.vx = b.vy = b.vz = 0;
-      b.timer = nextBiteWait();
+      b.timer = nextBiteWait(world, b);
     } else if (def?.solid) {
       // 挂墙/挂地：停住不咬钩（MC 浮标挂上后静置，可收竿）
       b.state = 'waiting';
@@ -130,7 +143,7 @@ export function tickFishing(world: World, dt: number): void {
   if (b.timer <= 0) {
     b.state = 'waiting';
     b.y = b.floatY;
-    b.timer = nextBiteWait();
+    b.timer = nextBiteWait(world, b);
   }
 }
 

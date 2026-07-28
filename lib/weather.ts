@@ -1,5 +1,7 @@
 // 天气状态机：晴/雨/雷暴循环切换，雷暴带随机闪电亮度脉冲
 
+import type { Biome, Terrain } from './noise';
+
 export type WeatherKind = 'clear' | 'rain' | 'thunder';
 
 export interface WeatherState {
@@ -18,6 +20,37 @@ export const weather: WeatherState = { kind: 'clear', timer: 180 + Math.random()
 /** 天气对天空/光照的压暗系数 */
 export function weatherDim(kind: WeatherKind): number {
   return kind === 'clear' ? 1 : kind === 'rain' ? 0.6 : 0.35;
+}
+
+/** 降水类型（MC：干旱群系从不下雨，寒冷群系与雪线以上下雪） */
+export type Precip = 'rain' | 'snow' | 'none';
+
+/** 群系的降水类型（snowline 用于山地/雪线以上降雪；y 为所在高度） */
+export function precipForBiome(biome: Biome, y = 0, snowline = Infinity): Precip {
+  switch (biome) {
+    case 'desert':
+    case 'badlands':
+    case 'savanna':
+      return 'none'; // MC：干旱群系无降水
+    case 'snowy':
+    case 'ice_spikes':
+    case 'taiga':
+      return 'snow'; // MC：寒冷群系降雪
+    case 'nether':
+    case 'warped_forest':
+    case 'crimson_forest':
+    case 'soul_sand_valley':
+    case 'basalt_deltas':
+      return 'none'; // 下界无天气
+    default:
+      return y >= snowline ? 'snow' : 'rain';
+  }
+}
+
+/** 当前天气下某位置的本地降水（晴天恒 none；按群系与雪线本地化，MC） */
+export function precipAt(terrain: Pick<Terrain, 'biomeAt' | 'snowlineAt'>, kind: WeatherKind, x: number, y: number, z: number): Precip {
+  if (kind === 'clear') return 'none';
+  return precipForBiome(terrain.biomeAt(x, z), y, terrain.snowlineAt(x, z));
 }
 
 /** 各状态持续时长（秒）：晴长、雨中、雷暴短 */

@@ -148,6 +148,7 @@ function SurvivalBars() {
   if (effects.strength > 0) active.push(['力量', effects.strength]);
   if (effects.fireRes > 0) active.push(['抗火', effects.fireRes]);
   if (effects.regen > 0) active.push(['再生', effects.regen]);
+  if (effects.waterBreath > 0) active.push(['水肺', effects.waterBreath]);
   if (effects.haste > 0) active.push(['急迫', effects.haste]);
   if (effects.resistance > 0) active.push(['抗性', effects.resistance]);
   if (effects.jumpBoost > 0) active.push(['跳跃', effects.jumpBoost]);

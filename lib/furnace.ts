@@ -25,6 +25,7 @@ export const FOODS: Record<string, FoodDef> = {
   cooked_cod: { name: '熟鳕鱼', hunger: 5, saturation: 2 },
   cooked_salmon: { name: '熟鲑鱼', hunger: 6, saturation: 3 },
   chorus_fruit: { name: '紫颂果', hunger: 4, saturation: 2 }, // MC：食用后随机传送 ±8 格
+  rotten_flesh: { name: '腐肉', hunger: 4, saturation: 0.2 }, // MC：饥饿 4、饱和 0.8（÷4 缩放 0.2；本游戏无饥饿负面效果机制）
 };
 
 // ——— 烧炼配方与燃料 ———
@@ -71,7 +72,7 @@ export const SMELTING: Record<string, SmeltDef> = {
   [K('ancient_debris')]: { out: 'material:netherite_scrap', name: '下界合金碎片' },
 };
 
-/** 燃料燃烧秒数（MC：木板/原木 15s，木棍 5s，木炭 80s，干海带块 200s，煤块 800s） */
+/** 燃料燃烧秒数（MC：木板/原木 15s，木棍 5s，木炭/煤 80s，烈焰棒 120s，干海带块 200s，煤块 800s） */
 export const FUELS: Record<string, number> = {
   [`block:${PLANKS}`]: 15,
   [`block:${LOG}`]: 15,
@@ -87,6 +88,7 @@ export const FUELS: Record<string, number> = {
   'material:stick': 5,
   'material:charcoal': 80,
   'material:coal': 80, // MC：煤 80s
+  'material:blaze_rod': 120, // MC：烈焰棒 120s
 };
 
 export const SMELT_TIME = 10; // 秒/件

@@ -63,6 +63,13 @@ export const MATERIAL_INFO: Record<string, { name: string; tile: number }> = {
   raw_gold: { name: '粗金', tile: tileIcon('item/raw_gold') },
   raw_copper: { name: '粗铜', tile: tileIcon('item/raw_copper') },
   // 怪物掉落
+  // 腐肉可食用（数值见 furnace.ts FOODS）；图标复用生牛肉 canvas 格（新贴图格需重建 atlas，源贴图包不在仓库）
+  rotten_flesh: { name: '腐肉', tile: ICON_TILE_START + 12 },
+  // 新增物品统一用 canvas 图标格（ICON_TILE_START+19 起，canvas 绘制见 textures.ts，避免重建 atlas）
+  egg: { name: '鸡蛋', tile: ICON_TILE_START + 19 },
+  pufferfish: { name: '河豚', tile: ICON_TILE_START + 20 },
+  spider_eye: { name: '蜘蛛眼', tile: ICON_TILE_START + 21 },
+  gold_nugget: { name: '金粒', tile: ICON_TILE_START + 22 },
   string: { name: '线', tile: tileIcon('item/string') },
   feather: { name: '羽毛', tile: tileIcon('item/feather') },
   bone: { name: '骨头', tile: tileIcon('item/bone') },

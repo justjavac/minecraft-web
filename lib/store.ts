@@ -7,15 +7,16 @@ import { BLOCKS, HOTBAR_BLOCKS, type BlockId } from './blocks';
 import { getBrew, putIntoBrewing, takePotion } from './brewing';
 import { MATERIAL_INFO } from './materials';
 import { FOODS, getFurnace, putIntoFurnace, takeOutput } from './furnace';
-import { hurtState, playerPosition, survivalStats } from './game';
+import { hurtState, playerPosition, survivalStats, worldClock } from './game';
 import { effects } from './effects';
+import { beaconTiers } from './beacon';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
 import { applyCraft, canCraft, hasSpaceFor, type Recipe } from './recipes';
 import { netheriteUpgradeOf } from './smithing';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
 import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS, type ToolType } from './tools';
-import { executeTrade, professionOf, TRADES } from './trading';
+import { executeTrade, MAX_TRADE_USES, professionOf, TRADES, tradeDay, tradeStockLeft, deductTradeStock } from './trading';
 import { levelFromXp, subtractLevels, type EnchOffer } from './xp';
 
 export type Screen = 'menu' | 'playing';
@@ -157,8 +158,8 @@ interface GameStore {
   setHunger: (v: number) => void;
   setSaturation: (v: number) => void;
   setDead: (d: boolean) => void;
-  /** 受伤（带无敌帧）；返回是否实际扣血 */
-  damagePlayer: (amount: number) => boolean;
+  /** 受伤（带无敌帧）；返回是否实际扣血。bypassArmor：摔落/溺水/虚空/凋零类伤害不吃护甲/保护（MC） */
+  damagePlayer: (amount: number, opts?: { bypassArmor?: boolean }) => boolean;
   /** 读档时恢复生存数值 */
   loadSurvival: (s: { health: number; hunger: number; saturation?: number; slots?: Slot[]; backpack?: Slot[]; armor?: ArmorSlots; xp?: number }) => void;
   setCraftingOpen: (open: boolean, withTable?: boolean) => void;
@@ -166,8 +167,10 @@ interface GameStore {
   setBrewingOpen: (key: string | null) => void;
   setEnchantOpen: (key: string | null) => void;
   setTradeMob: (id: number | null) => void;
-  /** 执行当前村民的第 i 项交易（扣付出、给获得、加经验） */
+  /** 执行当前村民的第 i 项交易（扣付出、给获得、加经验；当日库存售罄则拒绝并提示） */
   executeMobTrade: (i: number) => void;
+  /** 当前村民第 i 项交易当日剩余库存（跨天补满；供交易界面显示） */
+  tradeStockLeft: (i: number) => number;
   setStorageOpen: (key: string | null) => void;
   /** 把热键栏/背包某格的整叠物品移入打开的容器 */
   storagePut: (area: 'hotbar' | 'main', slotIndex: number) => void;
@@ -317,16 +320,18 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setHunger: (hunger) => set({ hunger }),
   setSaturation: (saturation) => set({ saturation }),
   setDead: (dead) => set({ dead }),
-  damagePlayer: (amount) => {
+  damagePlayer: (amount, opts) => {
     const now = performance.now();
     if (now - hurtState.lastAt < HURT_COOLDOWN) return false;
     hurtState.lastAt = now;
     survivalStats.exhaustion += 0.1; // MC：受击也消耗能量
     set((s) => {
-      // 皮甲减伤（每护甲点 4%，与 MC 一致）+ 保护附魔减伤（每级 4%，上限 80%，MC）并扣每件装备 1 点耐久；抗性效果（信标）再减 20%
-      const points = armorPoints(s.armorSlots);
-      const protLvl = Object.values(s.armorSlots).reduce((n, p) => n + (p?.ench?.protection ?? 0), 0);
-      const reduction = points * 0.04 + Math.min(0.8 - points * 0.04, protLvl * 0.04) + (effects.resistance > 0 ? 0.2 : 0);
+      // 皮甲减伤（每护甲点 4%，与 MC 一致）+ 保护附魔减伤（每级 4%，上限 80%，MC）并扣每件装备 1 点耐久；抗性效果（信标）再减 20%/级（4 层金字塔 II 级 40%）
+      // MC：摔落/溺水/虚空/凋零等伤害不被护甲/保护减免，也不耗装备耐久（bypassArmor）
+      const bypass = opts?.bypassArmor === true;
+      const points = bypass ? 0 : armorPoints(s.armorSlots);
+      const protLvl = bypass ? 0 : Object.values(s.armorSlots).reduce((n, p) => n + (p?.ench?.protection ?? 0), 0);
+      const reduction = points * 0.04 + Math.min(0.8 - points * 0.04, protLvl * 0.04) + (effects.resistance > 0 ? 0.2 * (beaconTiers.get('resistance') ?? 1) : 0);
       const finalAmount = reduction > 0 ? Math.max(1, Math.ceil(amount * (1 - Math.min(0.8, reduction)))) : amount;
       let armorSlots = s.armorSlots;
       if (points > 0) {
@@ -419,10 +424,22 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (s.tradeMob === null) return;
     const trade = TRADES[professionOf(s.tradeMob)][i];
     if (!trade) return;
+    // 库存（简化 MC）：每项每天限购，售罄拒绝并提示；成交才扣库存
+    const day = tradeDay(worldClock.t);
+    if (tradeStockLeft(s.tradeMob, i, day) <= 0) {
+      s.setNotice(`该交易今日已达上限（${MAX_TRADE_USES} 次），明天补货`);
+      return;
+    }
     const r = executeTrade(s.hotbarSlots, s.mainSlots, trade);
     if (!r) return;
+    deductTradeStock(s.tradeMob, i, day);
     set({ hotbarSlots: r.hotbar, mainSlots: r.backpack });
     s.addXp(r.xp);
+  },
+  tradeStockLeft: (i) => {
+    const s = get();
+    if (s.tradeMob === null) return 0;
+    return tradeStockLeft(s.tradeMob, i, tradeDay(worldClock.t));
   },
   setStorageOpen: (storageOpen) => {
     if (storageOpen && typeof document !== 'undefined') document.exitPointerLock();
@@ -474,10 +491,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   furnaceTakeOutput: () => {
     const s = get();
     if (!s.furnaceOpen) return;
-    const before = getFurnace(s.furnaceOpen).output;
-    set({ hotbarSlots: takeOutput(s.hotbarSlots, getFurnace(s.furnaceOpen)) });
-    // 烧炼产出经验：每取出一件 +1 XP（MC 烧炼经验简化）
-    if (before) s.addXp(before.count);
+    const f = getFurnace(s.furnaceOpen);
+    const before = f.output?.count ?? 0;
+    set({ hotbarSlots: takeOutput(s.hotbarSlots, f) });
+    // 烧炼产出经验：按实际取出件数 +1 XP/件（热键栏满取不出则不给，MC 烧炼经验简化）
+    const taken = before - (f.output?.count ?? 0);
+    if (taken > 0) s.addXp(taken);
   },
   brewingPut: (slotIndex) => {
     const s = get();

@@ -146,3 +146,56 @@ export function executeTrade(
   }
   return { hotbar: h, backpack: b, xp: trade.xp };
 }
+
+// ——— 交易库存（简化 MC：每项交易每天限购，跨天补满；状态按村民 id 存内存，不持久化） ———
+
+/** 每项交易每日限购次数（MC 12-16，取 12） */
+export const MAX_TRADE_USES = 12;
+
+/** 单个村民的当日库存：day = 游戏内天数，used[交易序号] = 当日已交易次数 */
+interface VillagerStock {
+  day: number;
+  used: Map<number, number>;
+}
+const stocks = new Map<number, VillagerStock>();
+
+// 游戏内天数：昼夜时钟 t（0..1）回卷（1→0，即过日出）记一天；时钟值由调用方传入保持纯数据
+let lastClockT = -1;
+let dayCount = 0;
+/** 由昼夜时钟 t 推游戏天数（t 回卷时 +1）；store 交易/查库存时调用 */
+export function tradeDay(t: number): number {
+  if (lastClockT >= 0 && t < lastClockT) dayCount++;
+  lastClockT = t;
+  return dayCount;
+}
+
+/** 取村民当日库存记录（跨天自动重置补满） */
+function stockOf(mobId: number, day: number): VillagerStock {
+  let s = stocks.get(mobId);
+  if (!s || s.day !== day) {
+    s = { day, used: new Map() };
+    stocks.set(mobId, s);
+  }
+  return s;
+}
+
+/** 第 tradeIndex 项交易当日剩余次数 */
+export function tradeStockLeft(mobId: number, tradeIndex: number, day: number): number {
+  return MAX_TRADE_USES - (stockOf(mobId, day).used.get(tradeIndex) ?? 0);
+}
+
+/** 扣 1 次当日库存；已达上限返回 false（不扣） */
+export function deductTradeStock(mobId: number, tradeIndex: number, day: number): boolean {
+  const s = stockOf(mobId, day);
+  const used = s.used.get(tradeIndex) ?? 0;
+  if (used >= MAX_TRADE_USES) return false;
+  s.used.set(tradeIndex, used + 1);
+  return true;
+}
+
+/** 清空全部库存与天数状态（测试用） */
+export function resetTradeStocks(): void {
+  stocks.clear();
+  lastClockT = -1;
+  dayCount = 0;
+}

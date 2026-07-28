@@ -144,6 +144,16 @@ export const RECIPES: Recipe[] = [
   { id: 'repeater', name: '红石中继器', out: { kind: 'block', id: KID('repeater_n'), count: 1 }, cost: [{ item: K('redstone_torch'), count: 2 }, { item: 'material:redstone', count: 1 }, { item: K('stone'), count: 3 }], needsTable: true },
   // 红石比较器：红石火把×3 + 下界石英×1 + 石头×3（MC 配方）
   { id: 'comparator', name: '红石比较器', out: { kind: 'block', id: KID('comparator_n'), count: 1 }, cost: [{ item: K('redstone_torch'), count: 3 }, { item: 'material:quartz', count: 1 }, { item: K('stone'), count: 3 }], needsTable: true },
+  // 按钮：1 木板/石头（MC）；压力板：同材质 ×2（MC）
+  { id: 'oak_button', name: '橡木按钮', out: { kind: 'block', id: KID('oak_button'), count: 1 }, cost: [{ item: PLANKS_ITEM, count: 1 }], needsTable: false },
+  { id: 'stone_button', name: '石头按钮', out: { kind: 'block', id: KID('stone_button'), count: 1 }, cost: [{ item: K('stone'), count: 1 }], needsTable: false },
+  { id: 'oak_pressure_plate', name: '橡木压力板', out: { kind: 'block', id: KID('oak_pressure_plate'), count: 1 }, cost: [{ item: PLANKS_ITEM, count: 2 }], needsTable: false },
+  { id: 'stone_pressure_plate', name: '石头压力板', out: { kind: 'block', id: KID('stone_pressure_plate'), count: 1 }, cost: [{ item: K('stone'), count: 2 }], needsTable: false },
+  // 侦测器：圆石×6 + 红石×2 + 下界石英×1（MC 配方）
+  { id: 'observer', name: '侦测器', out: { kind: 'block', id: KID('observer_n'), count: 1 }, cost: [{ item: COBBLE_ITEM, count: 6 }, { item: 'material:redstone', count: 2 }, { item: 'material:quartz', count: 1 }], needsTable: true },
+  // 金粒互转（MC）：1 锭拆 9 粒，9 粒合 1 锭
+  { id: 'gold_nugget', name: '金粒 ×9', out: { kind: 'material', material: 'gold_nugget', count: 9 }, cost: [{ item: 'material:gold_ingot', count: 1 }], needsTable: false },
+  { id: 'gold_ingot_from_nuggets', name: '金锭', out: { kind: 'material', material: 'gold_ingot', count: 1 }, cost: [{ item: 'material:gold_nugget', count: 9 }], needsTable: true },
   // —— 附魔（配方与 MC 一致） ——
   { id: 'paper', name: '纸 ×3', out: { kind: 'material', material: 'paper', count: 3 }, cost: [{ item: K('sugar_cane'), count: 3 }], needsTable: false },
   // 剪刀：铁锭 ×2（MC）
@@ -195,6 +205,11 @@ export const RECIPES: Recipe[] = [
       { id: `${tier}_hoe`, name: `${cn}锄`, out: { kind: 'tool', tool: `${tier}_hoe` }, cost: [{ item: mat, count: 2 }, { item: STICK, count: 2 }], needsTable: true },
     ];
   }),
+  // —— 金工具（配方同铁钻：金锭 + 木棍；MC 速度最快但耐久仅 32） ——
+  { id: 'golden_pickaxe', name: '金镐', out: { kind: 'tool', tool: 'golden_pickaxe' }, cost: [{ item: 'material:gold_ingot', count: 3 }, { item: STICK, count: 2 }], needsTable: true },
+  { id: 'golden_axe', name: '金斧', out: { kind: 'tool', tool: 'golden_axe' }, cost: [{ item: 'material:gold_ingot', count: 3 }, { item: STICK, count: 2 }], needsTable: true },
+  { id: 'golden_shovel', name: '金锹', out: { kind: 'tool', tool: 'golden_shovel' }, cost: [{ item: 'material:gold_ingot', count: 1 }, { item: STICK, count: 2 }], needsTable: true },
+  { id: 'golden_sword', name: '金剑', out: { kind: 'tool', tool: 'golden_sword' }, cost: [{ item: 'material:gold_ingot', count: 2 }, { item: STICK, count: 1 }], needsTable: true },
   // —— 矿物储物块（9 合 1 / 1 拆 9，与 MC 一致） ——
   ...([
     ['coal', 'coal_block', '煤'],

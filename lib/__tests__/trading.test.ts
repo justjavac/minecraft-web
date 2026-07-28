@@ -5,7 +5,19 @@ import { BLOCK_BY_KEY } from '../blocks';
 import { MATERIAL_INFO } from '../materials';
 import { useGameStore } from '../store';
 import { emptySlots, type Slot } from '../slots';
-import { canAfford, executeTrade, professionOf, TRADES, tradeItemName, type Profession } from '../trading';
+import {
+  canAfford,
+  executeTrade,
+  MAX_TRADE_USES,
+  professionOf,
+  resetTradeStocks,
+  TRADES,
+  tradeDay,
+  tradeItemName,
+  tradeStockLeft,
+  deductTradeStock,
+  type Profession,
+} from '../trading';
 
 const mat = (material: string, count = 1): Slot => ({ kind: 'material', material, count });
 const blk = (key: string, count = 1): Slot => ({ kind: 'block', id: BLOCK_BY_KEY[key].id, count });
@@ -108,5 +120,60 @@ describe('界面辅助', () => {
     expect(tradeItemName({ kind: 'material', material: 'emerald', count: 1 })).toBe('绿宝石');
     expect(tradeItemName({ kind: 'block', id: BLOCK_BY_KEY.cobble.id, count: 16 })).toBe('圆石');
     expect(tradeItemName({ kind: 'material', material: 'armor:helmet', count: 1 })).toBe('皮革头盔');
+  });
+});
+
+describe('交易库存（简化 MC：每项每天限购，跨天补满）', () => {
+  beforeEach(() => resetTradeStocks());
+
+  it('每项每天限购 12 次，售罄后拒绝；按村民/交易项独立', () => {
+    expect(MAX_TRADE_USES).toBe(12);
+    expect(tradeStockLeft(1, 0, 0)).toBe(12);
+    for (let k = 0; k < 12; k++) expect(deductTradeStock(1, 0, 0)).toBe(true);
+    expect(tradeStockLeft(1, 0, 0)).toBe(0);
+    expect(deductTradeStock(1, 0, 0)).toBe(false); // 已达上限不扣
+    expect(tradeStockLeft(1, 1, 0)).toBe(12); // 同村民其他交易项不受影响
+    expect(tradeStockLeft(2, 0, 0)).toBe(12); // 其他村民不受影响
+  });
+
+  it('跨天自动补满', () => {
+    for (let k = 0; k < 12; k++) deductTradeStock(1, 0, 0);
+    expect(tradeStockLeft(1, 0, 0)).toBe(0);
+    expect(tradeStockLeft(1, 0, 1)).toBe(12); // 新的一天补满
+    expect(deductTradeStock(1, 0, 1)).toBe(true);
+  });
+
+  it('tradeDay：昼夜时钟回卷（过日出）记一天', () => {
+    expect(tradeDay(0.3)).toBe(0);
+    expect(tradeDay(0.8)).toBe(0);
+    expect(tradeDay(0.1)).toBe(1); // 0.8 → 0.1 回卷
+    expect(tradeDay(0.5)).toBe(1);
+  });
+
+  it('store：成交才扣库存，售罄拒绝并提示，材料不足不扣库存', () => {
+    resetTradeStocks();
+    useGameStore.getState().loadSurvival({ health: 20, hunger: 20, slots: [mat('emerald', 12), ...emptySlots().slice(1)] });
+    let id = 1;
+    while (professionOf(id) !== 'farmer') id++;
+    const s = useGameStore.getState();
+    s.setTradeMob(id);
+    useGameStore.setState({ xpTotal: 0, notice: null });
+    // 材料不足的交易项（农民[0] 要 20 小麦）：不成交也不扣库存
+    useGameStore.getState().executeMobTrade(0);
+    expect(useGameStore.getState().tradeStockLeft(0)).toBe(12);
+    // 农民[1] 绿宝石 ×1 → 面包 ×6：连续成交 12 次后售罄
+    for (let k = 0; k < 12; k++) useGameStore.getState().executeMobTrade(1);
+    let after = useGameStore.getState();
+    expect(after.xpTotal).toBe(24); // 12 × 2xp
+    expect(after.tradeStockLeft(1)).toBe(0);
+    // 第 13 次：拒绝，物品/经验不变并提示
+    useGameStore.getState().executeMobTrade(1);
+    after = useGameStore.getState();
+    expect(after.xpTotal).toBe(24);
+    expect(after.notice).toContain('已达上限');
+    // 12 次共得 72 面包（64 + 8 两堆叠）
+    const bread = after.hotbarSlots.reduce((n, s2) => (s2?.kind === 'material' && s2.material === 'bread' ? n + s2.count : n), 0);
+    expect(bread).toBe(72);
+    useGameStore.getState().setTradeMob(null);
   });
 });

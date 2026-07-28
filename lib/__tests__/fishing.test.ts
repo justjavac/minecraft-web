@@ -1,4 +1,4 @@
-// 钓鱼：抛竿落水漂浮、挂墙静置、等待→咬钩窗口、收竿渔获（MC 概率表）、雨天加速、钓竿配方
+// 钓鱼：抛竿落水漂浮、挂墙静置、等待→咬钩窗口、收竿渔获（MC 概率表）、雨天加速、遮顶减速、钓竿配方
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BLOCK_BY_KEY } from '../blocks';
@@ -92,7 +92,7 @@ describe('咬钩与收竿', () => {
     expect(bobber.current!.state).toBe('waiting');
   });
 
-  it('渔获概率表：85% 鱼 / 10% 垃圾 / 5% 宝藏（按 roll 区间验证）', () => {
+  it('渔获概率表：85% 鱼 / 10% 垃圾 / 5% 宝藏（按 roll 区间验证，MC 鱼类内部 60/25/13/2）', () => {
     const w = setup();
     pond(w);
     const catchAt = (roll: number): string | null => {
@@ -105,9 +105,10 @@ describe('咬钩与收竿', () => {
       const got = reelIn();
       return got?.material ?? null;
     };
-    expect(catchAt(10)).toBe('raw_cod'); // 0-51
-    expect(catchAt(60)).toBe('raw_salmon'); // 51-72
-    expect(catchAt(80)).toBe('tropical_fish'); // 72-85
+    expect(catchAt(10)).toBe('raw_cod'); // 0-51（鳕鱼 60%）
+    expect(catchAt(60)).toBe('raw_salmon'); // 51-72（鲑鱼 25%）
+    expect(catchAt(78)).toBe('pufferfish'); // 72-83（河豚 13%）
+    expect(catchAt(84)).toBe('tropical_fish'); // 83-85（热带鱼 2%）
     expect(['bone', 'string', 'leather', 'stick']).toContain(catchAt(90)); // 85-95 垃圾
     expect(['gold_ingot', 'lapis']).toContain(catchAt(97)); // 95-100 宝藏
     // 权重和 = 100
@@ -122,6 +123,35 @@ describe('咬钩与收竿', () => {
     castBobber({ x: 8.5, y: 45, z: 2.5 }, { x: 0, y: 0.2, z: 1 });
     for (let i = 0; i < 60 && bobber.current?.state === 'flying'; i++) tickFishing(w, 0.05);
     expect(bobber.current!.timer).toBeCloseTo(12, 0);
+  });
+
+  it('浮标不见天空：等待 ×2（MC 露天规则）；错过窗口重摇同样 ×2', () => {
+    const w = setup();
+    pond(w);
+    // 水面上方盖顶（y=45 石板遮住整池）
+    for (let x = 4; x <= 12; x++) for (let z = 4; z <= 12; z++) w.setBlock(x, 45, z, K('stone'));
+    vi.spyOn(Math, 'random').mockReturnValue(0.4); // 基础 15s ×2 = 30s
+    // 顶下竖直向下抛，立即落水
+    castBobber({ x: 8.5, y: 44, z: 8.5 }, { x: 0, y: -1, z: 0 });
+    for (let i = 0; i < 20 && bobber.current?.state === 'flying'; i++) tickFishing(w, 0.05);
+    const b = bobber.current!;
+    expect(b.state).toBe('waiting');
+    expect(b.timer).toBeCloseTo(30, 0);
+    // 推进到咬钩并错过窗口：重摇等待仍 ×2
+    for (let i = 0; i < 80 && b.state === 'waiting'; i++) tickFishing(w, 0.5);
+    expect(b.state).toBe('bite');
+    for (let i = 0; i < 3; i++) tickFishing(w, 0.5); // 1.5s 窗口刚好耗尽
+    expect(b.state).toBe('waiting');
+    expect(b.timer).toBeCloseTo(30, 0);
+  });
+
+  it('露天浮标等待不加倍（对照：同池无顶 15s）', () => {
+    const w = setup();
+    pond(w);
+    vi.spyOn(Math, 'random').mockReturnValue(0.4);
+    castBobber({ x: 8.5, y: 44, z: 8.5 }, { x: 0, y: -1, z: 0 });
+    for (let i = 0; i < 20 && bobber.current?.state === 'flying'; i++) tickFishing(w, 0.05);
+    expect(bobber.current!.timer).toBeCloseTo(15, 0);
   });
 });
 

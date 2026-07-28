@@ -9,7 +9,7 @@ import { VOID_TERRAIN } from '../noise';
 import { RECIPES } from '../recipes';
 import { useGameStore } from '../store';
 import { emptySlots, type Slot } from '../slots';
-import { levelFromXp, subtractLevels, xpForLevel, XP_MOB, type EnchOffer } from '../xp';
+import { levelFromXp, subtractLevels, xpForLevel, XP_MOB, ENCHANTS, enchCost, rollOffers, type EnchOffer } from '../xp';
 import { World } from '../world';
 
 const K = (k: string) => BLOCK_BY_KEY[k].id;
@@ -167,5 +167,88 @@ describe('附魔应用与效果', () => {
     const table = RECIPES.find((r) => r.id === 'enchanting_table')!;
     expect(table.cost).toContainEqual({ item: 'material:book', count: 1 });
     expect(table.cost).toContainEqual({ item: 'material:diamond', count: 2 });
+  });
+});
+
+describe('精准采集（silk_touch，MC）', () => {
+  it('附魔定义：工具类仅 1 级；击退为剑类 1-2 级', () => {
+    expect(ENCHANTS.silk_touch).toMatchObject({ name: '精准采集', maxLvl: 1, applies: ['dig'] });
+    expect(ENCHANTS.knockback).toMatchObject({ name: '击退', maxLvl: 2, applies: ['sword'] });
+  });
+
+  it('石头掉石头而非圆石；煤矿石掉煤矿石方块（不掉煤、不掉经验）', () => {
+    const w = new World('xp-silk', undefined, VOID_TERRAIN);
+    const slots = emptySlots();
+    slots[0] = { kind: 'tool', tool: 'iron_pickaxe', durability: 250, ench: { silk_touch: 1 } };
+    setup(slots);
+    // 石头 → 石头（跳过 dropBlock → 圆石的转换）
+    w.setBlock(4, 30, 4, K('stone'));
+    breakBlock(w, 4, 30, 4);
+    expect(itemDrops.some((d) => d.drop.kind === 'block' && d.drop.blockId === K('stone'))).toBe(true);
+    expect(itemDrops.some((d) => d.drop.kind === 'block' && d.drop.blockId === K('cobble'))).toBe(false);
+    // 煤矿石 → 煤矿石方块自身
+    clearDrops();
+    w.setBlock(6, 30, 6, K('coal_ore'));
+    breakBlock(w, 6, 30, 6);
+    expect(itemDrops.some((d) => d.drop.kind === 'block' && d.drop.blockId === K('coal_ore'))).toBe(true);
+    expect(itemDrops.some((d) => d.drop.kind === 'material' && d.drop.material === 'coal')).toBe(false);
+    expect(useGameStore.getState().xpTotal).toBe(0); // MC：精准采矿不掉经验
+    // 深层矿石同理
+    clearDrops();
+    w.setBlock(8, 30, 8, K('deepslate_diamond_ore'));
+    breakBlock(w, 8, 30, 8);
+    expect(itemDrops.some((d) => d.drop.kind === 'block' && d.drop.blockId === K('deepslate_diamond_ore'))).toBe(true);
+    expect(itemDrops.some((d) => d.drop.kind === 'material' && d.drop.material === 'diamond')).toBe(false);
+  });
+
+  it('镐层级不足仍无掉落（不可采规则不变）；无精准时石头仍掉圆石', () => {
+    const w = new World('xp-silk2', undefined, VOID_TERRAIN);
+    const slots = emptySlots();
+    slots[0] = { kind: 'tool', tool: 'wooden_pickaxe', durability: 59, ench: { silk_touch: 1 } };
+    setup(slots);
+    // 木镐（tier 0）+ 精准挖钻石矿（需 tier 2）：无掉落（MC 层级规则优先）
+    w.setBlock(4, 30, 4, K('diamond_ore'));
+    breakBlock(w, 4, 30, 4);
+    expect(itemDrops.length).toBe(0);
+    // 对照：无精准采集，石头仍掉圆石
+    slots[0] = { kind: 'tool', tool: 'wooden_pickaxe', durability: 59 };
+    setup(slots);
+    w.setBlock(6, 30, 6, K('stone'));
+    breakBlock(w, 6, 30, 6);
+    expect(itemDrops.some((d) => d.drop.kind === 'block' && d.drop.blockId === K('cobble'))).toBe(true);
+    expect(itemDrops.some((d) => d.drop.kind === 'block' && d.drop.blockId === K('stone'))).toBe(false);
+  });
+
+  it('rollOffers：精准采集与时运互斥（已有其一则另一个不出现）', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      expect(rollOffers(seed, 'dig', 30, { fortune: 3 }).some((o) => o.ench === 'silk_touch')).toBe(false);
+      expect(rollOffers(seed, 'dig', 30, { silk_touch: 1 }).some((o) => o.ench === 'fortune')).toBe(false);
+    }
+  });
+});
+
+describe('附魔台成本（MC 封顶 3）', () => {
+  it('enchCost：1-3 级按档位，4 级以上封顶 3', () => {
+    expect(enchCost(1)).toEqual({ lapis: 1, levels: 1 });
+    expect(enchCost(2)).toEqual({ lapis: 2, levels: 2 });
+    expect(enchCost(3)).toEqual({ lapis: 3, levels: 3 });
+    expect(enchCost(4)).toEqual({ lapis: 3, levels: 3 });
+    expect(enchCost(5)).toEqual({ lapis: 3, levels: 3 });
+  });
+
+  it('rollOffers：高等级玩家摇出 4-5 级附魔时成本仍为 3', () => {
+    let sawHigh = false;
+    for (let seed = 0; seed < 200; seed++) {
+      for (const o of rollOffers(seed, 'sword', 30)) {
+        expect(o.lapis).toBeLessThanOrEqual(3);
+        expect(o.levels).toBeLessThanOrEqual(3);
+        if (o.lvl > 3) {
+          sawHigh = true;
+          expect(o.lapis).toBe(3);
+          expect(o.levels).toBe(3);
+        }
+      }
+    }
+    expect(sawHigh).toBe(true); // 30 级玩家必能摇出 4+ 级（cap = ceil(30/5) = 6 → maxLvl 5）
   });
 });

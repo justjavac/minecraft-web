@@ -1,7 +1,7 @@
 // 生物系统：类型化怪物（敌对/被动）+ 骷髅箭 + 苦力怕爆炸。纯数据逻辑（不依赖 three，可单测）
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, GRASS, isWaterId } from './blocks';
-import type { Biome } from './noise';
+import { hash2, type Biome } from './noise';
 import { dayFactorAt, bossState, pearlTeleport, survivalStats, worldClock } from './game';
 import { effects } from './effects';
 import { useGameStore } from './store';
@@ -14,9 +14,12 @@ import { outerIslandContaining } from './end';
 import { aabbFree, collideAxis } from './physics';
 import { raycastBlock } from './raycast';
 import { villageCenterNear } from './structures';
-import { WORLD_HEIGHT, type World } from './world';
+import { weather, precipAt, type WeatherKind } from './weather';
+// 循环引用说明：redstone.ts 的 tickPlates 引用本文件 mobs 列表；此处 strikeTarget 仅运行时调用，ESM live binding 安全
+import { strikeTarget } from './redstone';
+import { chunkKey, localIndex, WORLD_HEIGHT, type World } from './world';
 
-export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon' | 'shulker' | 'slime';
+export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon' | 'shulker' | 'slime' | 'phantom' | 'iron_golem';
 
 export interface MobDef {
   name: string;
@@ -34,19 +37,19 @@ export interface MobDef {
 }
 
 export const MOB_DEFS: Record<MobType, MobDef> = {
-  zombie: { name: '僵尸', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [] },
+  zombie: { name: '僵尸', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'rotten_flesh', count: [0, 2] }] },
   skeleton: { name: '骷髅', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 3, attackRange: 16, attackCd: 2, drops: [{ material: 'bone', count: [0, 2] }, { material: 'arrow', count: [0, 2] }] },
-  spider: { name: '蜘蛛', hp: 16, speed: 3.2, hostile: true, burnsAtDay: false, damage: 2, attackRange: 1.4, attackCd: 1, drops: [{ material: 'string', count: [0, 2] }] },
+  spider: { name: '蜘蛛', hp: 16, speed: 3.2, hostile: true, burnsAtDay: false, damage: 2, attackRange: 1.4, attackCd: 1, drops: [{ material: 'string', count: [0, 2] }, { material: 'spider_eye', count: [0, 1] }] },
   creeper: { name: '苦力怕', hp: 20, speed: 2.2, hostile: true, burnsAtDay: false, damage: 0, attackRange: 3, attackCd: 1.5, drops: [{ material: 'gunpowder', count: [0, 2] }] },
   pig: { name: '猪', hp: 10, speed: 1.5, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'raw_pork', count: [1, 3] }] },
   cow: { name: '牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
   chicken: { name: '鸡', hp: 4, speed: 1.6, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'feather', count: [0, 2] }, { material: 'raw_chicken', count: [1, 1] }] },
   villager: { name: '村民', hp: 20, speed: 1.2, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [] },
   mooshroom: { name: '蘑菇牛', hp: 10, speed: 1.4, hostile: false, burnsAtDay: false, damage: 0, attackRange: 0, attackCd: 0, drops: [{ material: 'leather', count: [0, 2] }, { material: 'raw_beef', count: [1, 3] }] },
-  // 僵尸猪灵：中立敌对——不被激怒时不攻击；受伤则群体仇恨（MC 下界特色）
-  zombified_piglin: { name: '僵尸猪灵', hp: 20, speed: 2.4, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'gold_ingot', count: [0, 1] }, { material: 'bone', count: [0, 1] }] },
-  // 猪灵：中立敌对——玩家穿任一金装备则不主动攻击（MC 金甲豁免）；受伤群体仇恨；可以物易物
-  piglin: { name: '猪灵', hp: 16, speed: 2.6, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.6, attackCd: 1, drops: [{ material: 'gold_ingot', count: [0, 1] }] },
+  // 僵尸猪灵：中立敌对——不被激怒时不攻击；受伤则群体仇恨（MC 下界特色）；掉腐肉 + 金粒（MC）
+  zombified_piglin: { name: '僵尸猪灵', hp: 20, speed: 2.4, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'rotten_flesh', count: [0, 1] }, { material: 'gold_nugget', count: [0, 1] }] },
+  // 猪灵：中立敌对——玩家穿任一金装备则不主动攻击（MC 金甲豁免）；受伤群体仇恨；可以物易物；死亡掉金粒（MC 概率掉落简化）
+  piglin: { name: '猪灵', hp: 16, speed: 2.6, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.6, attackCd: 1, drops: [{ material: 'gold_nugget', count: [0, 2] }] },
   // 猪灵蛮兵：堡垒守卫——始终敌对、不受金甲豁免、不接受易物（MC）
   piglin_brute: { name: '猪灵蛮兵', hp: 50, speed: 2.8, hostile: true, burnsAtDay: false, damage: 7, attackRange: 1.6, attackCd: 1, drops: [] },
   // 烈焰人：悬浮飞行，远程火球（MC 下界堡垒标志怪）
@@ -72,6 +75,10 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   shulker: { name: '潜影贝', hp: 30, speed: 0, hostile: true, burnsAtDay: false, damage: 4, attackRange: 12, attackCd: 2.5, drops: [{ material: 'shulker_shell', count: [0, 1] }] },
   // 史莱姆：三档体型（slimeSize 4/2/1），蹦跳前进；杀死大/中分裂 2-4 只小一档（MC），最小档掉黏液球
   slime: { name: '史莱姆', hp: 16, speed: 2.2, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.4, attackCd: 1, drops: [{ material: 'slime_ball', count: [0, 2] }] },
+  // 幻翼：失眠惩罚怪——玩家 ≥3 天没睡，夜晚在头顶高空来袭（盘旋→俯冲→拉升）；白天自燃同僵尸；无幻翼膜材料，掉 0-1 羽毛
+  phantom: { name: '幻翼', hp: 20, speed: 4.5, hostile: true, burnsAtDay: true, damage: 4, attackRange: 1.8, attackCd: 2, drops: [{ material: 'feather', count: [0, 1] }] },
+  // 铁傀儡：村庄守卫——中立，猎杀威胁玩家的敌对怪；玩家攻击村民或它则仇恨玩家；高伤 7-14 随机（MC 普通 7-21 取低段）
+  iron_golem: { name: '铁傀儡', hp: 100, speed: 1.1, hostile: true, burnsAtDay: false, damage: 7, attackRange: 1.8, attackCd: 1, drops: [{ material: 'iron_ingot', count: [1, 2] }] },
 };
 
 export interface Mob {
@@ -132,9 +139,24 @@ export interface Mob {
   strafeX?: number;
   strafeY?: number;
   strafeZ?: number;
-  /** 村庄锚点（村民不远离村庄；生成时写入） */
+  /** 村庄锚点（村民/铁傀儡不远离村庄；生成时写入） */
   homeX?: number;
   homeZ?: number;
+  /** 幻翼：三态（circle 高空盘旋 / dive 俯冲 / climb 拉升）与盘旋角 */
+  phantomPhase?: 'circle' | 'dive' | 'climb';
+  phantomAngle?: number;
+  /** 烈焰人三连发：待发余量与发间间隔（MC 蓄力后快速三连） */
+  burstLeft?: number;
+  burstCd?: number;
+  /** 鸡：下蛋倒计时（MC 每 5-10 分钟一个） */
+  eggTimer?: number;
+  /** 摔落距离（滞空累计、落地结算；与玩家 fallDist 同公式） */
+  fallDist?: number;
+  /** 距离消失计时（32-64 格持续远离 20-40s 后消失，MC 随机刻消失简版） */
+  despawnTimer?: number;
+  /** 击退水平冲量（击退附魔施加，随时间指数衰减；Boss/铁傀儡免疫） */
+  kbx?: number;
+  kbz?: number;
 }
 
 export interface Arrow {
@@ -165,6 +187,15 @@ const SPAWN_MAX = 48;
 const SPAWN_INTERVAL = 4; // 秒
 const CHASE_RANGE = 40;
 const BURN_DAMAGE = 2; // 每秒（白天）
+/** 铁傀儡猎杀对象（MC：威胁村庄的敌对怪） */
+const GOLEM_TARGETS: readonly MobType[] = ['zombie', 'skeleton', 'spider', 'creeper', 'phantom'];
+/** 摔落免疫（MC：鸡缓降不摔伤；烈焰人/恶魂等飞行者本就走悬浮分支，列名防御） */
+const FALL_IMMUNE: readonly MobType[] = ['chicken', 'phantom', 'blaze', 'ghast', 'wither', 'ender_dragon'];
+
+/** 幻翼失眠状态：连续未睡觉的完整游戏日数（≥3 的夜晚来袭，睡过清零）与来袭间隔计时 */
+export const phantomState = { insomniaDays: 0, timer: 0 };
+/** 上一帧的昼夜时钟（区分自然跨日与睡觉回拨：床把 worldClock.t 直接设回日出 0） */
+let lastClockT = worldClock.t;
 
 let nextId = 1;
 let nextArrowId = 1;
@@ -190,6 +221,27 @@ function exposedToSky(world: World, m: Mob): boolean {
     if (world.getBlock(bx, y, bz) !== AIR) return false;
   }
   return true;
+}
+
+// 本地降水缓存：biomeAt/snowlineAt 是多次噪声求值，按 (chunk, 天气) 缓存避免每帧每生物重算
+const precipCache = new Map<string, boolean>();
+let precipCacheKind: WeatherKind | null = null;
+
+/** 该生物处是否正在下雨（MC：仅雨抑制自燃——雪与干旱群系不保护；沙漠全局雨天也照烧） */
+function rainingAt(world: World, m: Mob): boolean {
+  if (weather.kind === 'clear') return false;
+  if (precipCacheKind !== weather.kind) {
+    precipCache.clear();
+    precipCacheKind = weather.kind;
+  }
+  const ck = `${Math.floor(m.x) >> 4},${Math.floor(m.z) >> 4}`;
+  let v = precipCache.get(ck);
+  if (v === undefined) {
+    v = precipAt(world.terrain, weather.kind, Math.floor(m.x), Math.floor(m.y), Math.floor(m.z)) === 'rain';
+    if (precipCache.size > 512) precipCache.clear();
+    precipCache.set(ck, v);
+  }
+  return v;
 }
 
 function pickSpawnType(night: boolean, biome?: Biome): MobType {
@@ -288,6 +340,27 @@ export function makeSlime(x: number, y: number, z: number, size: 4 | 2 | 1): Mob
   return m;
 }
 
+/** 在指定位置生成一只生物并加入世界（actions.ts 鸡蛋砸出小鸡等定点生成场景用；返回生成的生物） */
+export function spawnMobAt(type: MobType, x: number, y: number, z: number): Mob {
+  const m = makeMob(type, x, y, z);
+  mobs.push(m);
+  return m;
+}
+
+/** 史莱姆区块判定（MC：种子 + 区块坐标哈希，约 1/10 区块；区块内 y<40 无视亮度刷史莱姆） */
+export function isSlimeChunk(seedHash: number, cx: number, cz: number): boolean {
+  return hash2(seedHash ^ 0x3ad5e7c9, cx, cz) < 0.1;
+}
+
+/** 生成点亮度：方块光与天空光×昼夜系数取大（白天露天 15、深夜露天 ≈0、深洞恒 0；MC 敌对刷怪需 ≤7） */
+export function spawnLightAt(world: World, x: number, y: number, z: number): number {
+  if (y < 0 || y >= WORLD_HEIGHT) return 0;
+  const c = world.chunks.get(chunkKey(x >> 4, z >> 4));
+  if (!c) return 0;
+  const i = localIndex(x & 15, y, z & 15);
+  return Math.max(c.light[i], c.sky[i] * dayFactorAt(worldClock.t));
+}
+
 /** 玩家是否穿任一金装备（MC：猪灵不主动攻击穿金甲的玩家；蛮兵不吃这套） */
 export function wearsGoldArmor(): boolean {
   const a = useGameStore.getState().armorSlots;
@@ -323,20 +396,24 @@ export function barterWith(mob: Mob): boolean {
   return true;
 }
 
-/** 在玩家周围环形区域找地表生成（夜晚敌对、白天被动且只在草地上；村庄附近生成村民；蘑菇岛只出蘑菇牛且夜晚不刷怪） */
+/** 在玩家周围环形区域找生成点（夜晚敌对、白天被动且只在草地上；昼夜都可能尝试地下洞穴刷敌对——MC 洞穴恒暗；
+ *  敌对生成需点亮度 ≤7（天空光按昼夜折算）；村庄附近生成村民与铁傀儡守卫；蘑菇岛只出蘑菇牛且夜晚不刷怪） */
 export function trySpawn(world: World, px: number, pz: number): boolean {
   const night = isNight();
   // 下界：只刷僵尸猪灵（下界岩上 2-3 只成群；不被激怒不攻击）
   if (world.terrain.kind === 'nether') return trySpawnNether(world, px, pz);
   // 末地：末影人成群（末地石表面；MC 末地主岛遍布末影人）
   if (world.terrain.kind === 'end') return trySpawnEnd(world, px, pz);
-  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
-  const passiveCount = mobs.length - hostileCount;
+  // 靠近村庄中心：白天 70% 生成村民（锚定村庄，不远离）；村庄无守卫时刷 1 只铁傀儡（MC，不占刷怪上限）
+  const village = villageCenterNear(world.seedHash, world.terrain, px, pz, 48);
+  if (village && !mobs.some((m) => m.type === 'iron_golem' && Math.hypot(m.x - village.x, m.z - village.z) < 48) && Math.random() < 0.2) {
+    if (trySpawnGolem(world, village)) return true;
+  }
+  const villageRoll = !night && village !== null && Math.random() < 0.7;
+  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile && m.type !== 'iron_golem').length;
+  const passiveCount = mobs.filter((m) => !MOB_DEFS[m.type].hostile).length;
   if (night && hostileCount >= MAX_HOSTILE) return false;
   if (!night && passiveCount >= MAX_PASSIVE) return false;
-  // 白天且靠近村庄中心：70% 生成村民（锚定村庄，不远离）
-  const village = !night ? villageCenterNear(world.seedHash, world.terrain, px, pz, 48) : null;
-  const villageRoll = village !== null && Math.random() < 0.7;
   for (let attempt = 0; attempt < 8; attempt++) {
     const ang = Math.random() * Math.PI * 2;
     const r = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
@@ -347,12 +424,36 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     // 群系规则（MC）：蘑菇岛不刷敌对生物，被动只出蘑菇牛；林地出狼、平原出羊
     const biome = world.terrain.biomeAt(bx, bz);
     if (biome === 'mushroom_fields' && night) return false;
-    const wantType = biome === 'mushroom_fields' ? 'mooshroom' : villageRoll ? 'villager' : pickSpawnType(night, biome);
-    const wantDef = MOB_DEFS[wantType];
     // 从世界顶向下找第一个实心方块作为地表
     let y = WORLD_HEIGHT - 1;
     while (y > 0 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
     if (y <= 0) continue;
+    // 地下洞穴刷敌对（MC：洞穴恒暗昼夜皆刷）——地表向下随机采样，找「固体地面 + 上方 2 格非固体非水」的洞穴平台
+    if (biome !== 'mushroom_fields' && hostileCount < MAX_HOSTILE && Math.random() < (night ? 0.5 : 0.35)) {
+      const depth = y - 6;
+      let caveY = -1;
+      for (let s = 0; s < 12 && depth > 4; s++) {
+        const cy = 4 + Math.floor(Math.random() * (depth - 4));
+        const floorId = world.getBlock(bx, cy, bz);
+        const feet = world.getBlock(bx, cy + 1, bz);
+        const head = world.getBlock(bx, cy + 2, bz);
+        if (BLOCKS[floorId]?.solid && !BLOCKS[feet]?.solid && !isWaterId(feet) && !BLOCKS[feet]?.lava && !BLOCKS[head]?.solid && !isWaterId(head) && !BLOCKS[head]?.lava) {
+          caveY = cy;
+          break;
+        }
+      }
+      if (caveY < 0) continue;
+      const sy = caveY + 1;
+      // 史莱姆区块（MC：约 1/10 区块 y<40 无视亮度刷史莱姆）
+      const slimeChunk = sy < 40 && isSlimeChunk(world.seedHash, bx >> 4, bz >> 4);
+      if (!slimeChunk && spawnLightAt(world, bx, sy, bz) > 7) continue; // 亮度门控（MC 敌对 ≤7）
+      const type: MobType = slimeChunk ? 'slime' : pickSpawnType(true, biome);
+      if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
+      mobs.push(type === 'slime' ? makeSlime(bx + 0.5, sy, bz + 0.5, Math.random() < 0.6 ? 4 : 2) : makeMob(type, bx + 0.5, sy, bz + 0.5));
+      return true;
+    }
+    const wantType = biome === 'mushroom_fields' ? 'mooshroom' : villageRoll ? 'villager' : pickSpawnType(night, biome);
+    const wantDef = MOB_DEFS[wantType];
     if (isWaterId(world.getBlock(bx, y, bz))) continue; // 不在水面生成
     // 被动只在草地上（蘑菇牛在菌丝上）
     if (!wantDef.hostile) {
@@ -360,6 +461,8 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
       if (wantType === 'mooshroom' ? BLOCKS[ground]?.key !== 'mycelium' : ground !== GRASS) continue;
     }
     const sy = y + 1;
+    // 亮度门控（MC：敌对在亮度 ≤7 生成；地表白天天空光 15 不刷，深夜露天 ≈0 可刷）
+    if (wantDef.hostile && spawnLightAt(world, bx, sy, bz) > 7) continue;
     if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
     const mob = wantType === 'slime' ? makeSlime(bx + 0.5, sy, bz + 0.5, Math.random() < 0.6 ? 4 : 2) : makeMob(wantType, bx + 0.5, sy, bz + 0.5); // 史莱姆生成大/中档（MC）
     if (mob.type === 'villager' && village) {
@@ -367,6 +470,26 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
       mob.homeZ = village.z;
     }
     mobs.push(mob);
+    return true;
+  }
+  return false;
+}
+
+/** 村庄铁傀儡：中心附近地表生成 1 只并锚定村庄（MC 村庄守卫） */
+function trySpawnGolem(world: World, village: { x: number; z: number }): boolean {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const bx = Math.floor(village.x + (Math.random() - 0.5) * 12);
+    const bz = Math.floor(village.z + (Math.random() - 0.5) * 12);
+    if (!world.chunks.has(`${bx >> 4},${bz >> 4}`)) continue;
+    let y = WORLD_HEIGHT - 1;
+    while (y > 0 && !BLOCKS[world.getBlock(bx, y, bz)]?.solid) y--;
+    if (y <= 0 || isWaterId(world.getBlock(bx, y, bz))) continue;
+    const sy = y + 1;
+    if (!aabbFree(world, bx + 0.5, sy, bz + 0.5, HALF_W, HEIGHT)) continue;
+    const g = makeMob('iron_golem', bx + 0.5, sy, bz + 0.5);
+    g.homeX = village.x;
+    g.homeZ = village.z;
+    mobs.push(g);
     return true;
   }
   return false;
@@ -573,7 +696,7 @@ export function fireEnderPearl(origin: { x: number; y: number; z: number }, dir:
   });
 }
 
-/** 玩家投掷末影之眼：朝最近要塞水平方向直飞，悬停后 20% 碎裂 / 80% 原地掉落（MC 规则） */
+/** 玩家投掷末影之眼：朝最近要塞水平方向直飞（约 60-80 格，MC 远距指向），悬停后 20% 碎裂 / 80% 原地掉落（MC 规则） */
 export function fireEyeOfEnder(origin: { x: number; y: number; z: number }, targetX: number, targetZ: number): void {
   const dx = targetX - origin.x;
   const dz = targetZ - origin.z;
@@ -581,9 +704,9 @@ export function fireEyeOfEnder(origin: { x: number; y: number; z: number }, targ
   arrows.push({
     id: nextArrowId++,
     x: origin.x, y: origin.y, z: origin.z,
-    vx: (dx / d) * 9,
+    vx: (dx / d) * 26,
     vy: 3.5, // 先升后平（MC 之眼先窜高）
-    vz: (dz / d) * 9,
+    vz: (dz / d) * 26,
     age: 0,
     fromPlayer: true,
     kind: 'eye',
@@ -609,9 +732,9 @@ function tickArrows(
   for (let i = arrows.length - 1; i >= 0; i--) {
     const a = arrows[i];
     a.age += dt;
-    // 末影之眼：无重力直飞 0.8s，随后减速悬停缓升；1.5s 到期 20% 碎裂 / 80% 原地掉落（MC）
+    // 末影之眼：无重力直飞 2.6s（约 60-80 格，MC 远距指向要塞），随后减速悬停缓升；3.2s 到期 20% 碎裂 / 80% 原地掉落（MC）
     if (a.kind === 'eye') {
-      if (a.age > 0.8) {
+      if (a.age > 2.6) {
         a.vx *= Math.max(0, 1 - dt * 4);
         a.vz *= Math.max(0, 1 - dt * 4);
         a.vy = 1.2;
@@ -619,7 +742,7 @@ function tickArrows(
       a.x += a.vx * dt;
       a.y += a.vy * dt;
       a.z += a.vz * dt;
-      if (a.age >= 1.5) {
+      if (a.age >= 3.2) {
         arrows.splice(i, 1);
         if (Math.random() >= 0.2) spawnMaterialDrop('eye_of_ender', a.x, a.y, a.z);
       }
@@ -653,6 +776,8 @@ function tickArrows(
     a.y = ny;
     a.z = nz;
     if (BLOCKS[world.getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z))]?.solid) {
+      // 标靶：箭命中触发 1s 全向红石脉冲（MC）
+      if (!a.kind) strikeTarget(world, Math.floor(a.x), Math.floor(a.y), Math.floor(a.z));
       // 恶魂爆裂火球：撞墙即爆（MC）
       if (a.kind === 'ghast') explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 10, hurtRadius: 3 });
       // 凋灵骷髅弹：撞墙即爆 + 爆圈玩家中凋零 DOT（MC 凋灵弹幕）
@@ -660,10 +785,10 @@ function tickArrows(
         explodeAt(world, a.x, a.y, a.z, playerPos, onAttackPlayer, { radius: 2, maxDamage: 8, hurtRadius: 3 });
         if (Math.hypot(playerPos.x - a.x, playerPos.y - a.y, playerPos.z - a.z) < 3.5) survivalStats.wither = 5;
       }
-      // 末影珍珠：落点传送玩家 + 2 点伤害（MC）
+      // 末影珍珠：落点传送玩家 + 5 点伤害（MC 2.5 心）
       if (a.kind === 'pearl') {
         pearlTeleport.pending = { x: Math.floor(a.x) + 0.5, y: Math.ceil(a.y) + 0.01, z: Math.floor(a.z) + 0.5 };
-        onAttackPlayer(2);
+        onAttackPlayer(5);
       }
       arrows.splice(i, 1);
       continue;
@@ -686,7 +811,10 @@ function tickArrows(
       if (hitMob) {
         if (a.kind === 'pearl') {
           pearlTeleport.pending = { x: Math.floor(a.x) + 0.5, y: Math.ceil(a.y) + 0.01, z: Math.floor(a.z) + 0.5 };
-          onAttackPlayer(2);
+          onAttackPlayer(5);
+        } else if (hitMob.type === 'enderman') {
+          // 末影人：弹射物命中前必瞬移闪避，箭永远伤不到（MC）
+          teleportEnderman(world, hitMob);
         } else if (hitMob.type === 'wither' && hitMob.hp < MOB_DEFS.wither.hp / 2) {
           // 凋灵半血以下免疫箭矢（MC 规则：弹开不掉血）
         } else {
@@ -798,6 +926,55 @@ function tickDragon(world: World, m: Mob, dt: number, playerPos: { x: number; y:
   }
 }
 
+/** 幻翼三态飞行（MC）：高空绕玩家盘旋 → 俯冲攻击（命中 4 伤，MC 普通 2 心）→ 拉升回高空；自管理飞行（无重力碰撞） */
+function tickPhantom(m: Mob, dt: number, playerPos: { x: number; y: number; z: number }, onAttackPlayer: (d: number) => void): void {
+  m.attackCd = Math.max(0, m.attackCd - dt);
+  const def = MOB_DEFS.phantom;
+  if (m.phantomPhase === 'dive') {
+    // 俯冲：直扑玩家；贴近命中（或玩家跑远）则拉升回高空
+    const dx = playerPos.x - m.x;
+    const dy = playerPos.y + 0.9 - m.y;
+    const dz = playerPos.z - m.z;
+    const d = Math.hypot(dx, dy, dz);
+    const sp = 14;
+    if (d < 1.4) {
+      if (m.attackCd <= 0) {
+        m.attackCd = def.attackCd;
+        onAttackPlayer(def.damage);
+      }
+      m.phantomPhase = 'climb';
+    } else if (d > 48) {
+      m.phantomPhase = 'climb';
+    } else {
+      m.x += (dx / d) * sp * dt;
+      m.y += (dy / d) * sp * dt;
+      m.z += (dz / d) * sp * dt;
+    }
+    return;
+  }
+  if (m.phantomPhase === 'climb') {
+    // 拉升：回到高空后恢复盘旋（MC 掠过后拉起）
+    m.y += 7 * dt;
+    if (m.y >= playerPos.y + 22) {
+      m.phantomPhase = 'circle';
+      m.phaseTimer = 6 + Math.random() * 6;
+    }
+    return;
+  }
+  // 盘旋：绕玩家半径 12、高度 +22±3（MC 高空盘旋等待俯冲窗口）
+  m.phantomPhase = 'circle';
+  m.phantomAngle = (m.phantomAngle ?? 0) + dt * 1.3;
+  m.phaseTimer = (m.phaseTimer ?? 8) - dt;
+  const tx = playerPos.x + Math.cos(m.phantomAngle) * 12;
+  const tz = playerPos.z + Math.sin(m.phantomAngle) * 12;
+  const ty = playerPos.y + 22 + Math.sin(m.phantomAngle * 2.3) * 3;
+  const k = Math.min(1, dt * 3);
+  m.x += (tx - m.x) * k;
+  m.y += (ty - m.y) * k;
+  m.z += (tz - m.z) * k;
+  if (m.phaseTimer <= 0) m.phantomPhase = 'dive';
+}
+
 /** 每帧推进：生成/AI/攻击/箭/燃烧/清理；lureFood = 玩家手持的繁殖食物（引诱用） */
 export function tickMobs(
   world: World,
@@ -812,6 +989,28 @@ export function tickMobs(
     spawnTimer = SPAWN_INTERVAL;
     // 夜晚刷敌对（60%），白天刷被动（20%）
     if (night ? Math.random() < 0.6 : Math.random() < 0.2) trySpawn(world, playerPos.x, playerPos.z);
+  }
+
+  // 失眠追踪（MC 幻翼前置）：时钟自然跨日（t 由 ~1 绕回 0）累计 1 天；睡觉（夜晚时钟直接回拨到日出 0）清零
+  const ct = worldClock.t;
+  if (lastClockT > 0.9 && ct < 0.1) phantomState.insomniaDays += 1;
+  else if (ct < lastClockT - 0.2) phantomState.insomniaDays = 0;
+  lastClockT = ct;
+
+  // 幻翼（MC 失眠惩罚）：失眠 ≥3 天的夜晚，玩家头顶高空来袭 1-3 只（仅主世界，场上限 3 只）
+  phantomState.timer -= dt;
+  if (night && world.terrain.kind !== 'nether' && world.terrain.kind !== 'end' && phantomState.insomniaDays >= 3 && phantomState.timer <= 0) {
+    phantomState.timer = 30 + Math.random() * 30;
+    const count = mobs.filter((m) => m.type === 'phantom').length;
+    const n = Math.min(3 - count, 1 + Math.floor(Math.random() * 3));
+    for (let k = 0; k < n; k++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = 8 + Math.random() * 8;
+      const p = spawnMobAt('phantom', playerPos.x + Math.cos(ang) * r, playerPos.y + 20 + Math.random() * 6, playerPos.z + Math.sin(ang) * r);
+      p.phantomPhase = 'circle';
+      p.phantomAngle = Math.random() * Math.PI * 2;
+      p.phaseTimer = 6 + Math.random() * 6;
+    }
   }
 
   tickArrows(world, dt, playerPos, onAttackPlayer);
@@ -847,8 +1046,8 @@ export function tickMobs(
       tickDragon(world, m, dt, playerPos, onAttackPlayer);
       continue;
     }
-    // 白天自燃（需露天且头部不在水中）
-    if (!night && def.burnsAtDay && exposedToSky(world, m)) {
+    // 白天自燃（需露天且头部不在水中；本地正在下雨则不烧——MC 只认雨，雪/干旱群系不保护）
+    if (!night && def.burnsAtDay && !rainingAt(world, m) && exposedToSky(world, m)) {
       m.hp -= BURN_DAMAGE * dt;
       if (m.hp <= 0) {
         mobs.splice(i, 1);
@@ -861,6 +1060,28 @@ export function tickMobs(
     const dist = Math.hypot(dx, dz);
     let mx = 0;
     let mz = 0;
+
+    // 距离消失（MC 简版）：敌对 >64 立即消失；32-64 持续远离 20-40s 随机刻消失；驯服/村民（非敌对）/Boss/铁傀儡不消失
+    if (def.hostile && !m.tamed && m.type !== 'wither' && m.type !== 'shulker' && m.type !== 'iron_golem') {
+      if (dist > 64) {
+        mobs.splice(i, 1);
+        continue;
+      }
+      if (dist > 32) {
+        m.despawnTimer = (m.despawnTimer ?? 20 + Math.random() * 20) - dt;
+        if (m.despawnTimer <= 0) {
+          mobs.splice(i, 1);
+          continue;
+        }
+      } else {
+        m.despawnTimer = undefined;
+      }
+    }
+    // 幻翼：三态自管理飞行（盘旋/俯冲/拉升；无重力碰撞，白天自燃走上方通用判定）
+    if (m.type === 'phantom') {
+      tickPhantom(m, dt, playerPos, onAttackPlayer);
+      continue;
+    }
 
     // 末影人水触掉血（MC：不论是否激怒；掉血即激怒并瞬移逃离）
     if (m.type === 'enderman' && isWaterId(world.getBlock(Math.floor(m.x), Math.floor(m.y), Math.floor(m.z)))) {
@@ -890,8 +1111,8 @@ export function tickMobs(
         mx = (fx / fd) * def.speed * 1.5;
         mz = (fz / fd) * def.speed * 1.5;
       }
-    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0)) && (m.type !== 'enderman' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'piglin' || ((m.aggroTimer ?? 0) > 0 || !wearsGoldArmor()))) {
-      // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼/末影人未被激怒时中立）
+    } else if (def.hostile && (m.type !== 'spider' || night) && (m.type !== 'zombified_piglin' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'wolf' || (!m.tamed && (m.aggroTimer ?? 0) > 0)) && (m.type !== 'enderman' || (m.aggroTimer ?? 0) > 0) && (m.type !== 'piglin' || ((m.aggroTimer ?? 0) > 0 || !wearsGoldArmor())) && (m.type !== 'iron_golem' || (m.aggroTimer ?? 0) > 0)) {
+      // 敌对 AI（蜘蛛白天中立；僵尸猪灵/野狼/末影人未被激怒时中立；铁傀儡只对激怒它的玩家出手）
       if (m.type === 'slime') {
         // 史莱姆：蹦跳前进（MC 标志移动）——着地蓄力，起跳带冲量，滞空惯性
         if (m.onGround) {
@@ -994,8 +1215,32 @@ export function tickMobs(
           m.arrowCd = def.attackCd;
           spawnArrow(m, playerPos, 'ghast');
         }
-      } else if (m.type === 'skeleton' || m.type === 'blaze') {
-        // 保持 8-14 距离并远程射击（骷髅箭 / 烈焰人火球）
+      } else if (m.type === 'blaze') {
+        // 烈焰人：保持 8-14 距离；MC 节奏——蓄力停顿 0.5s 后快速三连发，发完进入冷却
+        if (dist > 14 && dist > 0.01) {
+          mx = (dx / dist) * def.speed;
+          mz = (dz / dist) * def.speed;
+        } else if (dist < 8 && dist > 0.01) {
+          mx = (-dx / dist) * def.speed;
+          mz = (-dz / dist) * def.speed;
+        }
+        if ((m.burstLeft ?? 0) > 0) {
+          m.burstCd = (m.burstCd ?? 0) - dt;
+          if (m.burstCd <= 0) {
+            m.burstLeft = (m.burstLeft ?? 1) - 1;
+            m.burstCd = 0.15; // 三连发间隔（MC 快速连射）
+            spawnArrow(m, playerPos, 'fireball');
+            if ((m.burstLeft ?? 0) <= 0) m.arrowCd = def.attackCd; // 三连发完进入冷却
+          }
+        } else {
+          m.arrowCd -= dt;
+          if (dist < def.attackRange && m.arrowCd <= 0) {
+            m.burstLeft = 3;
+            m.burstCd = 0.5; // 蓄力停顿（MC 烈焰人起燃）
+          }
+        }
+      } else if (m.type === 'skeleton') {
+        // 保持 8-14 距离并射箭
         if (dist > 14 && dist > 0.01) {
           mx = (dx / dist) * def.speed;
           mz = (dz / dist) * def.speed;
@@ -1006,7 +1251,7 @@ export function tickMobs(
         m.arrowCd -= dt;
         if (dist < def.attackRange && m.arrowCd <= 0) {
           m.arrowCd = def.attackCd;
-          spawnArrow(m, playerPos, m.type === 'blaze' ? 'fireball' : undefined);
+          spawnArrow(m, playerPos, undefined);
         }
       } else if (m.type === 'creeper') {
         if (m.ignite >= 0) {
@@ -1033,12 +1278,41 @@ export function tickMobs(
           m.attackCd = def.attackCd;
           // 凋灵骷髅命中附加凋零 DOT（MC 凋零效果 5 秒）
           if (m.type === 'wither_skeleton') survivalStats.wither = 5;
-          onAttackPlayer(def.damage);
+          // 铁傀儡高伤 7-14 随机（MC 普通 7-21 取低段）
+          onAttackPlayer(m.type === 'iron_golem' ? 7 + Math.floor(Math.random() * 8) : def.damage);
         }
       }
     } else {
       // 驯服的狼：护主（攻击玩家刚打过的目标）→ 跟随（远了传送跟上，MC）
       let handled = false;
+      // 铁傀儡：猎杀 24 格内威胁村庄的敌对怪（MC 村庄守卫；未被玩家激怒时），无目标则锚定村庄游走
+      if (m.type === 'iron_golem') {
+        let target: Mob | null = null;
+        let best = 24;
+        for (const o of mobs) {
+          if (o === m || !GOLEM_TARGETS.includes(o.type)) continue;
+          const od = Math.hypot(o.x - m.x, o.z - m.z);
+          if (od < best) {
+            best = od;
+            target = o;
+          }
+        }
+        if (target) {
+          handled = true;
+          const tx = target.x - m.x;
+          const tz = target.z - m.z;
+          const td = Math.hypot(tx, tz);
+          if (td > 0.01) {
+            mx = (tx / td) * def.speed;
+            mz = (tz / td) * def.speed;
+          }
+          m.attackCd -= dt;
+          if (m.attackCd <= 0 && td < def.attackRange && Math.abs(target.y - m.y) < 2.5) {
+            m.attackCd = def.attackCd;
+            damageMob(target, 7 + Math.floor(Math.random() * 8), undefined, 0, world); // 高伤 7-14（MC 普通 7-21 取低段）
+          }
+        }
+      }
       if (m.type === 'wolf' && m.tamed) {
         handled = true;
         const target =
@@ -1083,6 +1357,14 @@ export function tickMobs(
           m.grazeTimer = 30 + Math.random() * 30;
         }
       }
+      // 鸡下蛋：成年鸡每 5-10 分钟一个（MC），落在脚下
+      if (m.type === 'chicken' && !m.baby) {
+        m.eggTimer = (m.eggTimer ?? 300 + Math.random() * 300) - dt;
+        if (m.eggTimer <= 0) {
+          m.eggTimer = 300 + Math.random() * 300;
+          spawnMaterialDrop('egg', m.x, m.y + 0.2, m.z, 1);
+        }
+      }
       if (handled) {
         // 驯狼分支已处理移动
       } else if ((m.loveTimer ?? 0) > 0) {
@@ -1118,8 +1400,8 @@ export function tickMobs(
       ) {
         mx = (dx / dist) * def.speed;
         mz = (dz / dist) * def.speed;
-      } else if (m.type === 'villager' && m.homeX !== undefined && m.homeZ !== undefined) {
-        // 村民锚定村庄：走太远就回家，近处正常游走
+      } else if ((m.type === 'villager' || m.type === 'iron_golem') && m.homeX !== undefined && m.homeZ !== undefined) {
+        // 村民/铁傀儡锚定村庄：走太远就回家，近处正常游走
         const hx = m.homeX - m.x;
         const hz = m.homeZ - m.z;
         const hd = Math.hypot(hx, hz);
@@ -1154,6 +1436,19 @@ export function tickMobs(
       }
     }
 
+    // 击退冲量（击退附魔）：独立于行为移动的位移，指数衰减
+    if (m.kbx || m.kbz) {
+      m.x += (m.kbx ?? 0) * dt;
+      collideAxis(world, m, 0, (m.kbx ?? 0) * dt, HALF_W, HEIGHT);
+      m.z += (m.kbz ?? 0) * dt;
+      collideAxis(world, m, 2, (m.kbz ?? 0) * dt, HALF_W, HEIGHT);
+      const decay = Math.exp(-8 * dt);
+      m.kbx = (m.kbx ?? 0) * decay;
+      if (Math.abs(m.kbx) < 0.1) m.kbx = 0;
+      m.kbz = (m.kbz ?? 0) * decay;
+      if (Math.abs(m.kbz) < 0.1) m.kbz = 0;
+    }
+
     // 移动 + 碰撞（与玩家同一套物理；烈焰人悬浮无重力）
     m.x += mx * dt;
     const hitX = collideAxis(world, m, 0, mx * dt, HALF_W, HEIGHT);
@@ -1169,15 +1464,25 @@ export function tickMobs(
       m.velY = 0;
     } else {
       m.velY = Math.max(m.velY - GRAVITY * dt, -50);
+      if (m.type === 'chicken' && m.velY < -2) m.velY = -2; // 鸡缓降（MC：扑翼飘落，落地不摔伤）
       const dy = m.velY * dt;
       m.y += dy;
       const hitY = collideAxis(world, m, 1, dy, HALF_W, HEIGHT);
       if (hitY) {
-        if (dy < 0) m.onGround = true;
+        if (dy < 0) {
+          m.onGround = true;
+          // 摔落伤害（与玩家同公式：>3 格每格 1 点；鸡/幻翼/飞行者免疫，落水不摔伤）
+          if (!FALL_IMMUNE.includes(m.type) && (m.fallDist ?? 0) > 3 && !isWaterId(world.getBlock(Math.floor(m.x), Math.floor(m.y), Math.floor(m.z)))) {
+            if (damageMob(m, Math.floor((m.fallDist ?? 0) - 3), undefined, 0, world)) continue; // 摔死
+          }
+          m.fallDist = 0;
+        }
         m.velY = 0;
       } else if (dy !== 0) {
         m.onGround = false;
       }
+      // 滞空累计下落距离（上升抵扣，与玩家 fallDist 同语义）
+      if (!m.onGround) m.fallDist = Math.max(0, (m.fallDist ?? 0) - m.velY * dt);
     }
 
     if (m.y < -10) {
@@ -1229,10 +1534,20 @@ export function setDragonDeathHandler(h: (world: World) => void): void {
   dragonDeathHandler = h;
 }
 
-export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }, lootBonus = 0, world?: World): boolean {
+export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z: number }, lootBonus = 0, world?: World, knockback = 0): boolean {
   mob.hp -= damage;  if (attackerPos) {
     lastPlayerTarget.mob = mob;
     lastPlayerTarget.at = performance.now() / 1000;
+  }
+  // 击退附魔：远离攻击者的水平冲量 + 小浮空（MC；Boss/铁傀儡/潜影贝免疫击退）
+  if (knockback > 0 && attackerPos && !['wither', 'ender_dragon', 'iron_golem', 'shulker'].includes(mob.type)) {
+    const dx = mob.x - attackerPos.x;
+    const dz = mob.z - attackerPos.z;
+    const d = Math.hypot(dx, dz) || 1;
+    const power = knockback * 6; // MC 击退 I 约 3-4 格
+    mob.kbx = (dx / d) * power;
+    mob.kbz = (dz / d) * power;
+    if (mob.onGround) mob.velY = 4;
   }
   // 僵尸猪灵：受伤激怒自身与 32 格内同伴（MC 群体仇恨）
   if (mob.type === 'zombified_piglin') {
@@ -1256,6 +1571,14 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   if (mob.type === 'enderman') {
     mob.aggroTimer = 30;
     if (world && Math.random() < 0.6) teleportEnderman(world, mob);
+  }
+  // 铁傀儡：玩家攻击它则仇恨玩家（MC 中立守卫反击）
+  if (mob.type === 'iron_golem' && attackerPos) mob.aggroTimer = 40;
+  // 玩家攻击村民：32 格内铁傀儡仇恨玩家（MC 村庄守卫护村）
+  if (mob.type === 'villager' && attackerPos) {
+    for (const m of mobs) {
+      if (m.type === 'iron_golem' && Math.hypot(m.x - mob.x, m.z - mob.z) <= 32) m.aggroTimer = 40;
+    }
   }
   if (mob.hp > 0) {
     // 被动生物受击逃跑
@@ -1293,7 +1616,7 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   }
   // 末影龙：击杀结算（龙蛋 + 返回门激活，lib/endfight.ts）
   if (mob.type === 'ender_dragon' && world) dragonDeathHandler?.(world);
-  useGameStore.getState().addXp(mob.type === 'slime' ? 1 : XP_MOB[mob.type]); // 小史莱姆 1（MC）
+  useGameStore.getState().addXp(mob.type === 'slime' ? 1 : (XP_MOB[mob.type] ?? 5)); // 小史莱姆 1（MC）；新物种未登记经验时按 5 兜底
   const i = mobs.indexOf(mob);
   if (i >= 0) mobs.splice(i, 1);
   return true;

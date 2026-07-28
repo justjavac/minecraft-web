@@ -132,13 +132,13 @@ describe('末影之眼投掷', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5); // ≥0.2 → 掉落
     let x0 = 0;
     let x1 = 0;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       tickMobs(w, 0.1, { x: 8.5, y: 62, z: 8.5 }, () => undefined);
       if (i === 0 && arrows[0]) x0 = arrows[0].x;
       if (arrows[0]) x1 = arrows[0].x;
     }
     expect(x1).toBeGreaterThan(x0); // 朝 +x（要塞方向）飞
-    expect(arrows).toHaveLength(0); // 1.5s 后结算消失
+    expect(arrows).toHaveLength(0); // 约 3s 后结算消失
     expect(itemDrops.some((d) => d.drop.kind === 'material' && d.drop.material === 'eye_of_ender')).toBe(true);
   });
 
@@ -146,7 +146,7 @@ describe('末影之眼投掷', () => {
     const w = setup();
     fireEyeOfEnder({ x: 8.5, y: 62, z: 8.5 }, 100, 8.5);
     vi.spyOn(Math, 'random').mockReturnValue(0.1); // <0.2 → 碎裂
-    for (let i = 0; i < 20; i++) tickMobs(w, 0.1, { x: 8.5, y: 62, z: 8.5 }, () => undefined);
+    for (let i = 0; i < 40; i++) tickMobs(w, 0.1, { x: 8.5, y: 62, z: 8.5 }, () => undefined);
     expect(arrows).toHaveLength(0);
     expect(itemDrops.some((d) => d.drop.kind === 'material' && d.drop.material === 'eye_of_ender')).toBe(false);
   });

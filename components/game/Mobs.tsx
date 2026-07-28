@@ -65,6 +65,17 @@ const shulkerLidGeo = new BoxGeometry(0.8, 0.35, 0.8);
 const slimeBodyGeo = new BoxGeometry(1.2, 1.2, 1.2);
 const slimeEyeGeo = new BoxGeometry(0.14, 0.14, 0.04);
 const slimeMouthGeo = new BoxGeometry(0.32, 0.09, 0.04);
+// 幻翼：扁平翼膜 + 小身板（MC 鳐形）
+const phantomBodyGeo = new BoxGeometry(0.9, 0.25, 0.5);
+const phantomWingGeo = new BoxGeometry(1.6, 0.08, 0.6);
+const phantomTailGeo = new BoxGeometry(0.3, 0.06, 0.5);
+const phantomEyeGeo = new BoxGeometry(0.1, 0.08, 0.02);
+// 铁傀儡：高大人形部件（MC 2.7 格村庄守卫）
+const golemLegGeo = new BoxGeometry(0.26, 1.1, 0.3);
+const golemBodyGeo = new BoxGeometry(0.85, 1.0, 0.5);
+const golemArmGeo = new BoxGeometry(0.24, 1.1, 0.26);
+const golemHeadGeo = new BoxGeometry(0.5, 0.45, 0.45);
+const golemVineGeo = new BoxGeometry(0.14, 0.3, 0.04);
 
 type MobMats = Record<string, Material>;
 
@@ -113,6 +124,12 @@ function buildMobMats(mats: AtlasMaterials): MobMats {
     shulkerBullet: l('#c9a0e8'),
     slimeOuter: l('#7ecb6a'),
     slimeDark: l('#2a5a28'),
+    phantomBody: l('#3d4652'), // 幻翼：灰蓝黑
+    phantomWing: l('#5a6673'),
+    phantomEye: l('#a8e8c0'),
+    golemIron: l('#c9c4b8'), // 铁傀儡：铁灰
+    golemIronDark: l('#a09a8c'),
+    golemVine: l('#5d7a3a'), // 藤蔓斑（MC 铁傀儡青苔纹）
     chicken: l('#e8e8e8'),
     beak: l('#e8a030'),
     robe: l('#7a5230'),
@@ -366,6 +383,29 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       if (mob?.tamed) addPart(g, collarGeo, mats.collar, 0, 0.62, 0.28);
       break;
     }
+    case 'phantom': {
+      // 幻翼：扁平灰身 + 双翼展开微翘 + 尾鳍（MC 鳐形；盘旋姿态由整体朝向表达）
+      addPart(g, phantomBodyGeo, mats.phantomBody, 0, 0.1, 0);
+      addPart(g, phantomEyeGeo, mats.phantomEye, -0.18, 0.18, 0.26);
+      addPart(g, phantomEyeGeo, mats.phantomEye, 0.18, 0.18, 0.26);
+      const lw = addPart(g, phantomWingGeo, mats.phantomWing, -1.1, 0.15, -0.1);
+      lw.rotation.z = 0.18;
+      const rw = addPart(g, phantomWingGeo, mats.phantomWing, 1.1, 0.15, -0.1);
+      rw.rotation.z = -0.18;
+      addPart(g, phantomTailGeo, mats.phantomWing, 0, 0.12, -0.5);
+      break;
+    }
+    case 'iron_golem':
+      // 铁傀儡：铁灰高大人形（约 2.5 格）+ 垂手长臂 + 大鼻子 + 藤蔓斑（MC 村庄守卫）
+      addPart(g, golemLegGeo, mats.golemIron, -0.2, 0.55, 0);
+      addPart(g, golemLegGeo, mats.golemIron, 0.2, 0.55, 0);
+      addPart(g, golemBodyGeo, mats.golemIron, 0, 1.6, 0);
+      addPart(g, golemArmGeo, mats.golemIronDark, -0.56, 1.45, 0);
+      addPart(g, golemArmGeo, mats.golemIronDark, 0.56, 1.45, 0);
+      addPart(g, golemHeadGeo, mats.golemIron, 0, 2.3, 0);
+      addPart(g, snoutGeo, mats.golemIronDark, 0, 2.2, 0.25);
+      addPart(g, golemVineGeo, mats.golemVine, 0.3, 1.7, 0.26);
+      break;
   }
   return g;
 }
@@ -376,7 +416,7 @@ const arrowDir = new Vector3();
 const seenScratch = new Set<string>();
 const seenArrowsScratch = new Set<number>();
 /** 敌对生物类型（朝向玩家；其余朝移动方向）。模块级常量，避免每生物每帧分配数组字面量 */
-const HOSTILE_TYPES: readonly MobType[] = ['zombie', 'skeleton', 'spider', 'creeper'];
+const HOSTILE_TYPES: readonly MobType[] = ['zombie', 'skeleton', 'spider', 'creeper', 'phantom', 'iron_golem'];
 
 /** 生物渲染与 AI 驱动（仅生存模式；网格按 id 复用） */
 export function Mobs() {

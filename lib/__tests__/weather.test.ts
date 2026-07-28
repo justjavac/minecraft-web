@@ -1,7 +1,7 @@
 // 天气状态机：切换序列合法 + 雷暴闪电脉冲 + 压暗系数
 
 import { describe, expect, it } from 'vitest';
-import { tickWeather, weatherDim, type WeatherState } from '../weather';
+import { precipForBiome, tickWeather, weatherDim, type WeatherState } from '../weather';
 
 const mk = (): WeatherState => ({ kind: 'clear', timer: 10, flash: 0, nextFlash: 2 });
 
@@ -42,5 +42,28 @@ describe('天气状态机', () => {
     expect(weatherDim('clear')).toBe(1);
     expect(weatherDim('rain')).toBe(0.6);
     expect(weatherDim('thunder')).toBe(0.35);
+  });
+});
+
+describe('群系降水（MC：干旱无降水、寒冷降雪、雪线以上降雪）', () => {
+  it('干旱群系无降水', () => {
+    expect(precipForBiome('desert')).toBe('none');
+    expect(precipForBiome('badlands')).toBe('none');
+    expect(precipForBiome('savanna')).toBe('none');
+  });
+  it('寒冷群系降雪', () => {
+    expect(precipForBiome('snowy')).toBe('snow');
+    expect(precipForBiome('ice_spikes')).toBe('snow');
+    expect(precipForBiome('taiga')).toBe('snow');
+  });
+  it('下界群系无天气', () => {
+    expect(precipForBiome('nether')).toBe('none');
+    expect(precipForBiome('soul_sand_valley')).toBe('none');
+  });
+  it('温带群系下雨，雪线以上降雪', () => {
+    expect(precipForBiome('plains')).toBe('rain');
+    expect(precipForBiome('jungle')).toBe('rain');
+    expect(precipForBiome('mountains', 100, 90)).toBe('snow'); // y≥雪线
+    expect(precipForBiome('mountains', 70, 90)).toBe('rain'); // 山麓下雨
   });
 });

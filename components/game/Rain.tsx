@@ -7,7 +7,7 @@ import { useFrame } from '@react-three/fiber';
 import { BufferAttribute, BufferGeometry, LineBasicMaterial, type LineSegments } from 'three';
 import { BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
 import { getActiveWorld } from '@/lib/game';
-import { weather } from '@/lib/weather';
+import { weather, precipAt } from '@/lib/weather';
 
 const MAX_DROPS = 900; // 雷暴密度
 const RAIN_DROPS = 450; // 普通雨密度
@@ -42,6 +42,14 @@ export function Rain() {
     const cx = camera.position.x;
     const cy = camera.position.y;
     const cz = camera.position.z;
+    // 本地降水（MC：干旱群系无降水、寒冷群系与雪线以上下雪）
+    const precip = world ? precipAt(world.terrain, weather.kind, Math.floor(cx), Math.floor(cy), Math.floor(cz)) : 'none';
+    if (precip === 'none') {
+      lines.visible = false;
+      rainState.seeded = false;
+      return;
+    }
+    const snow = precip === 'snow';
     if (world) {
       const head = world.getBlock(Math.floor(cx), Math.floor(cy), Math.floor(cz));
       if (isWaterId(head) || isLavaId(head)) {
@@ -60,7 +68,10 @@ export function Rain() {
     lines.visible = true;
 
     const count = weather.kind === 'thunder' ? MAX_DROPS : RAIN_DROPS;
-    rainMat.opacity = weather.kind === 'thunder' ? 0.6 : 0.45;
+    // 雪：白色、更慢、更短（雪片观感），横向飘移
+    rainMat.color.set(snow ? '#eef4fb' : '#8fb3d9');
+    rainMat.opacity = snow ? 0.8 : weather.kind === 'thunder' ? 0.6 : 0.45;
+    const streak = snow ? 0.08 : STREAK;
     const dt = Math.min(delta, 0.05);
     // 首次（或雨后重开）时在相机周围撒满
     if (!rainState.seeded) {
@@ -69,13 +80,15 @@ export function Rain() {
         drops[i * 4] = cx + (Math.random() * 2 - 1) * RADIUS;
         drops[i * 4 + 1] = cy - BOTTOM + Math.random() * (TOP + BOTTOM);
         drops[i * 4 + 2] = cz + (Math.random() * 2 - 1) * RADIUS;
-        drops[i * 4 + 3] = 18 + Math.random() * 6;
+        drops[i * 4 + 3] = snow ? 2.5 + Math.random() * 1.5 : 18 + Math.random() * 6;
       }
     }
+    const t = performance.now() / 1000;
     for (let i = 0; i < MAX_DROPS; i++) {
       const di = i * 4;
       if (i < count) {
         drops[di + 1] -= drops[di + 3] * dt;
+        if (snow) drops[di] += Math.sin(t * 1.5 + i) * 0.35 * dt; // 雪片横向飘移
         // 回收：落出下界或偏离相机过远
         const dx = drops[di] - cx;
         const dz = drops[di + 2] - cz;
@@ -92,7 +105,7 @@ export function Rain() {
       rainPos[pi + 1] = vy;
       rainPos[pi + 2] = drops[di + 2];
       rainPos[pi + 3] = drops[di];
-      rainPos[pi + 4] = vy + STREAK;
+      rainPos[pi + 4] = vy + streak;
       rainPos[pi + 5] = drops[di + 2];
     }
     rainAttr.needsUpdate = true;

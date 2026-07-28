@@ -102,10 +102,12 @@ describe('金甲豁免与群体仇恨', () => {
     useGameStore.setState({ armorSlots: { ...emptyArmorSlots(), boots: { durability: armorDef('gold', 'boots').durability, material: 'gold' } } });
     expect(wearsGoldArmor()).toBe(true);
     const w2 = worldWithPack();
+    // 钉住游荡（豁免期不追击；游荡随机走位会造成距离抖动误判）
+    for (const m of mobs) { m.wanderTimer = 100; m.wanderMoving = false; }
     const d0 = Math.hypot(mobs[0].x - player.x, mobs[0].z - player.z);
     for (let i = 0; i < 10; i++) tickMobs(w2, 0.2, player, () => undefined);
     const d1 = Math.hypot(mobs[0].x - player.x, mobs[0].z - player.z);
-    expect(d1).toBeGreaterThanOrEqual(d0 - 2); // 不明显逼近（游荡容差）
+    expect(d1).toBeGreaterThanOrEqual(d0 - 0.5); // 豁免则不逼近（物理抖动容差 0.5）
   });
 
   it('打一只猪灵，32 格内同伴群体仇恨（MC）；金甲玩家被打也会反击', () => {

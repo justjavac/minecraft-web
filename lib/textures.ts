@@ -202,6 +202,76 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
       ctx.fillRect(dx + sx, dy + sy, 1, 1);
     }
   },
+  // 鸡蛋：白色椭圆蛋 + 左上高光（materials.ts egg 图标）
+  [ICON_TILE_START + 19]: (ctx, dx, dy) => {
+    ctx.fillStyle = '#e8e4d8';
+    ctx.fillRect(dx + 6, dy + 3, 4, 1);
+    ctx.fillRect(dx + 5, dy + 4, 6, 2);
+    ctx.fillRect(dx + 4, dy + 6, 8, 5);
+    ctx.fillRect(dx + 5, dy + 11, 6, 1);
+    ctx.fillRect(dx + 6, dy + 12, 4, 1);
+    ctx.fillStyle = '#c8c4b4'; // 右下阴影
+    ctx.fillRect(dx + 10, dy + 6, 2, 5);
+    ctx.fillRect(dx + 8, dy + 11, 3, 1);
+    ctx.fillRect(dx + 8, dy + 12, 2, 1);
+    ctx.fillStyle = '#ffffff'; // 高光
+    ctx.fillRect(dx + 6, dy + 4, 2, 2);
+  },
+  // 河豚：黄绿色带刺圆鱼（materials.ts pufferfish 图标）
+  [ICON_TILE_START + 20]: (ctx, dx, dy) => {
+    ctx.fillStyle = '#b8b040'; // 圆身
+    ctx.fillRect(dx + 5, dy + 3, 6, 1);
+    ctx.fillRect(dx + 4, dy + 4, 8, 2);
+    ctx.fillRect(dx + 3, dy + 6, 10, 4);
+    ctx.fillRect(dx + 4, dy + 10, 8, 2);
+    ctx.fillRect(dx + 5, dy + 12, 6, 1);
+    ctx.fillStyle = '#d8d870'; // 腹部亮色
+    ctx.fillRect(dx + 4, dy + 9, 8, 1);
+    ctx.fillRect(dx + 5, dy + 10, 6, 1);
+    ctx.fillStyle = '#e8e8c8'; // 周身尖刺
+    ctx.fillRect(dx + 6, dy + 2, 1, 1);
+    ctx.fillRect(dx + 9, dy + 2, 1, 1);
+    ctx.fillRect(dx + 2, dy + 7, 1, 1);
+    ctx.fillRect(dx + 13, dy + 7, 1, 1);
+    ctx.fillRect(dx + 3, dy + 4, 1, 1);
+    ctx.fillRect(dx + 12, dy + 4, 1, 1);
+    ctx.fillRect(dx + 6, dy + 13, 1, 1);
+    ctx.fillRect(dx + 9, dy + 13, 1, 1);
+    ctx.fillStyle = '#26221a'; // 眼
+    ctx.fillRect(dx + 5, dy + 6, 2, 2);
+    ctx.fillStyle = '#8a7828'; // 尾鳍
+    ctx.fillRect(dx + 12, dy + 6, 2, 1);
+    ctx.fillRect(dx + 13, dy + 5, 1, 1);
+    ctx.fillRect(dx + 13, dy + 9, 1, 1);
+    ctx.fillRect(dx + 12, dy + 9, 2, 1);
+  },
+  // 蜘蛛眼：暗红眼 + 黑色瞳仁（materials.ts spider_eye 图标）
+  [ICON_TILE_START + 21]: (ctx, dx, dy) => {
+    ctx.fillStyle = '#8a1e1e';
+    ctx.fillRect(dx + 4, dy + 5, 8, 1);
+    ctx.fillRect(dx + 3, dy + 6, 10, 4);
+    ctx.fillRect(dx + 4, dy + 10, 8, 1);
+    ctx.fillStyle = '#5a1010'; // 边缘深色
+    ctx.fillRect(dx + 3, dy + 6, 1, 4);
+    ctx.fillRect(dx + 12, dy + 6, 1, 4);
+    ctx.fillRect(dx + 4, dy + 10, 8, 1);
+    ctx.fillStyle = '#1a0a0a'; // 瞳仁
+    ctx.fillRect(dx + 7, dy + 6, 3, 4);
+    ctx.fillStyle = '#c84838'; // 高光
+    ctx.fillRect(dx + 5, dy + 6, 2, 1);
+  },
+  // 金粒：不规则小金块 + 高光（materials.ts gold_nugget 图标）
+  [ICON_TILE_START + 22]: (ctx, dx, dy) => {
+    ctx.fillStyle = '#e8c83a';
+    ctx.fillRect(dx + 5, dy + 7, 6, 4);
+    ctx.fillRect(dx + 6, dy + 6, 4, 1);
+    ctx.fillRect(dx + 7, dy + 11, 3, 1);
+    ctx.fillStyle = '#b0901f'; // 右下阴影
+    ctx.fillRect(dx + 10, dy + 7, 1, 4);
+    ctx.fillRect(dx + 7, dy + 11, 3, 1);
+    ctx.fillStyle = '#f8e878'; // 高光
+    ctx.fillRect(dx + 6, dy + 7, 2, 1);
+  },
 };
 
 /** atlas 画布的 dataURL（HUD 图标裁剪用），build 完成后可用 */
@@ -357,7 +427,7 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     drawTile(i, (i % ATLAS_COLS) * cellPx, Math.floor(i / ATLAS_COLS) * cellPx);
   }
 
-  // 图标格（ICON_TILE_START..+15）：工作台/熔炉先铺木板/圆石底座，再叠加绘制
+  // 图标格（ICON_TILE_START..+22）：工作台/熔炉先铺木板/圆石底座，再叠加绘制
   ctx.imageSmoothingEnabled = false;
   for (let k = 0; k < ICON_TILE_COUNT; k++) {
     const cell = ICON_TILE_START + k;

@@ -4,7 +4,7 @@ import { Vector3 } from 'three';
 import { AIR, BLOCKS, BLOCK_BY_KEY, CRAFTING_TABLE, DIRT, FURNACE, GRASS, isColumnPlantId, WHEAT_CROP_0, type BlockId } from './blocks';
 import { dropFurnaceContents, FOODS } from './furnace';
 import { dropBrewingContents, POTIONS } from './brewing';
-import { effects } from './effects';
+import { effects, effectLvls } from './effects';
 import { isFarmlandId, isWheatCropId } from './crops';
 import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, pearlTeleport, playerPosition, worldClock } from './game';
 import { setGrowthDropHandler } from './growth';
@@ -15,12 +15,12 @@ import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { interactBeacon } from './beacon';
 import { trySummonWither } from './wither';
 import { pistonIdFor } from './pistons';
-import { cycleRepeaterDelay, isComparatorId, isRepeaterId, toggleComparatorMode, toggleLever } from './redstone';
+import { cycleRepeaterDelay, isComparatorId, isRepeaterId, observerIdFor, pressButton, toggleComparatorMode, toggleLever, tuneNoteBlock } from './redstone';
 import { XP_ORE } from './xp';
-import { BREED_FOOD, barterWith, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, woolBlockId } from './mobs';
+import { BREED_FOOD, barterWith, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, mobs, woolBlockId } from './mobs';
 import { fillPortalFrame, nearestStronghold } from './stronghold';
 import { bobber, castBobber, reelIn } from './fishing';
-import { MATERIAL_INFO } from './materials';
+import { MATERIAL_INFO, materialTile } from './materials';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
 import { useGameStore, MAX_HEALTH } from './store';
@@ -98,15 +98,22 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
     const heldPick = held?.kind === 'tool' && TOOLS[held.tool].kind === 'pickaxe' ? TOOLS[held.tool].tier : null;
     const needTier = def.pickTier ?? (def.needsPick ? 0 : null);
     const tierOk = needTier === null || (heldPick !== null && TIER_ORDER.indexOf(heldPick) >= needTier);
+    // 精准采集：掉方块自身而非加工产物（MC；与时运互斥，需镐/层级规则不变）
+    const silk = held?.kind === 'tool' && (held.ench?.silk_touch ?? 0) > 0;
     if (def.drop) {
       // 矿石类：镐达标才掉材料（如钻石矿需铁镐以上）；时运附魔加掉、矿物掉经验（MC）
       if (tierOk) {
-        const [min, max] = def.drop.count;
-        const fortune = held?.kind === 'tool' ? (held.ench?.fortune ?? 0) : 0;
-        const bonus = fortune > 0 ? Math.floor(Math.random() * (fortune + 1)) : 0;
-        spawnMaterialDrop(def.drop.material, x + 0.5, y + 0.4, z + 0.5, min + Math.floor(Math.random() * (max - min + 1)) + bonus);
-        const xpRange = XP_ORE[def.drop.material];
-        if (xpRange) s.addXp(xpRange[0] + Math.floor(Math.random() * (xpRange[1] - xpRange[0] + 1)));
+        if (silk && def.cat === 'ore') {
+          // 精准采集：矿石掉矿石方块自身（石头系/深层矿，MC），不掉经验也不吃时运
+          spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
+        } else {
+          const [min, max] = def.drop.count;
+          const fortune = held?.kind === 'tool' ? (held.ench?.fortune ?? 0) : 0;
+          const bonus = fortune > 0 ? Math.floor(Math.random() * (fortune + 1)) : 0;
+          spawnMaterialDrop(def.drop.material, x + 0.5, y + 0.4, z + 0.5, min + Math.floor(Math.random() * (max - min + 1)) + bonus);
+          const xpRange = XP_ORE[def.drop.material];
+          if (xpRange) s.addXp(xpRange[0] + Math.floor(Math.random() * (xpRange[1] - xpRange[0] + 1)));
+        }
       }
     } else if (isWheatCropId(oldId)) {
       // 小麦收割：成熟（第 7 阶段）掉 1 小麦 + 0-2 种子；未熟只掉 1 种子
@@ -125,7 +132,8 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
       if (Math.random() < 0.1) spawnMaterialDrop('flint', x + 0.5, y + 0.4, z + 0.5, 1);
       else spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
     } else if (tierOk) {
-      spawnBlockDrop(def.dropBlock ?? oldId, x + 0.5, y + 0.4, z + 0.5);
+      // 精准采集：跳过 dropBlock 转换掉自身（石头掉石头而非圆石，MC）
+      spawnBlockDrop(silk ? oldId : (def.dropBlock ?? oldId), x + 0.5, y + 0.4, z + 0.5);
     }
     // 熔炉被破坏：炉内容物一并掉落
     if (oldId === FURNACE) dropFurnaceContents(`${x},${y},${z}`, x, y, z);
@@ -136,6 +144,53 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
       dropStorageContents(`${x},${y},${z}`, x, y, z);
     }
   }
+}
+
+/**
+ * 投掷鸡蛋：与末影珍珠同手感的抛物线（速度 15 + 抬升 1.5、轻重力 4/s²），同步步进模拟至命中实心块碎裂；
+ * 碎裂出粒子，1/8 概率在碎裂点孵出 1 只小鸡（MC；幼体 90s 长成，同繁殖）。
+ * 投射物无独立实体（渲染机制在 mobs/Mobs，非本模块），飞行过程不可见。返回碎裂点（未命中/出界 null）。
+ */
+export function throwEgg(world: World, origin: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }): { x: number; y: number; z: number } | null {
+  const d = Math.max(Math.hypot(dir.x, dir.y, dir.z), 0.01);
+  let x = origin.x;
+  let y = origin.y;
+  let z = origin.z;
+  const vx = (dir.x / d) * 15;
+  let vy = (dir.y / d) * 15 + 1.5;
+  const vz = (dir.z / d) * 15;
+  const DT = 0.05;
+  for (let t = 0; t < 5; t += DT) {
+    const px = x;
+    const py = y;
+    const pz = z;
+    vy -= 4 * DT;
+    x += vx * DT;
+    y += vy * DT;
+    z += vz * DT;
+    const bx = Math.floor(x);
+    const by = Math.floor(y);
+    const bz = Math.floor(z);
+    // 出界/未加载：直接消失（读块会触发隐式生成，卡顿）
+    if (by < 0 || !world.chunks.has(`${bx >> 4},${bz >> 4}`)) return null;
+    if (!BLOCKS[world.getBlock(bx, by, bz)]?.solid) continue;
+    breakParticles.push({ x: bx, y: by, z: bz, tile: materialTile('egg') });
+    // MC：1/8 概率孵出小鸡（另有 1/256 孵 4 只，从简）
+    if (Math.random() < 1 / 8) {
+      mobs.push({
+        id: -Math.floor(Math.random() * 1e9), // 负 id，避免与自然刷怪的自增 id 撞车
+        type: 'chicken',
+        x: px, y: py, z: pz, // 碎裂前一格（空中自由位），由 mob 物理自然落地
+        velY: 0, hp: MOB_DEFS.chicken.hp, attackCd: 0, onGround: false,
+        wanderDir: 0, wanderTimer: 0, wanderMoving: false,
+        fleeTimer: 0, fleeFromX: 0, fleeFromZ: 0,
+        arrowCd: 1, ignite: -1,
+        baby: true, growUp: 90,
+      });
+    }
+    return { x: px, y: py, z: pz };
+  }
+  return null;
 }
 
 /** 从准星射线放置当前热键栏选中的方块；手持食物则进食；命中工作台/熔炉则打开对应界面。返回是否成功放置 */
@@ -177,14 +232,17 @@ export function tryPlace(): boolean {
         return false;
       }
     }
-    // 手持药水右键：饮用（水瓶/粗制药水无效果）
+    // 手持药水右键：饮用（水瓶/粗制药水无效果；II 级治疗瞬回 4 心，MC）
     if (held?.kind === 'material' && POTIONS[held.material]) {
       const pot = POTIONS[held.material];
       if (!pot.effect) {
         s.setNotice('没什么味道…');
       } else {
-        if (pot.effect === 'healing') s.setHealth(Math.min(MAX_HEALTH, s.health + 4));
-        else effects[pot.effect] = pot.duration;
+        if (pot.effect === 'healing') s.setHealth(Math.min(MAX_HEALTH, s.health + (pot.lvl === 2 ? 8 : 4)));
+        else {
+          effects[pot.effect] = pot.duration;
+          if (pot.effect === 'speed' || pot.effect === 'strength' || pot.effect === 'regen') effectLvls[pot.effect] = pot.lvl ?? 1;
+        }
         s.consumeMaterial(held.material, 1);
         playSound('place');
       }
@@ -220,6 +278,20 @@ export function tryPlace(): boolean {
         return false;
       }
     }
+    // 手持鸡蛋右键：投掷，命中碎裂、1/8 概率孵出小鸡（MC）
+    if (held?.kind === 'material' && held.material === 'egg') {
+      if (s.consumeMaterial('egg', 1)) {
+        camera.getWorldDirection(dir);
+        throwEgg(
+          world,
+          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
+          { x: dir.x, y: dir.y, z: dir.z },
+        );
+        playSound('place');
+        lastPlace = now;
+        return false;
+      }
+    }
     // 手持末影之眼右键：投掷，朝最近要塞方向直飞（MC 定位要塞）；瞄准空门框架时除外（走下方嵌眼）
     if (held?.kind === 'material' && held.material === 'eye_of_ender') {
       camera.getWorldDirection(dir);
@@ -237,7 +309,7 @@ export function tryPlace(): boolean {
         return false;
       }
     }
-    // 手持钓竿右键：无浮标抛竿 / 有浮标收竿（咬钩窗口收竿得渔获 + 2 经验，MC）
+    // 手持钓竿右键：无浮标抛竿 / 有浮标收竿（咬钩窗口收竿得渔获 + 1-6 经验，MC）
     if (held?.kind === 'tool' && held.tool === 'fishing_rod') {
       if (!bobber.current) {
         camera.getWorldDirection(dir);
@@ -251,7 +323,7 @@ export function tryPlace(): boolean {
         if (got) {
           s.addStack({ kind: 'material', material: got.material }, got.count);
           s.setNotice(`钓到了${MATERIAL_INFO[got.material]?.name ?? got.material}！`);
-          s.addXp(2); // MC 钓鱼经验 1-6
+          s.addXp(1 + Math.floor(Math.random() * 6)); // MC 钓鱼经验 1-6
           playSound('place');
         }
         s.damageHeldTool(1); // MC 钓鱼每次收竿扣 1 耐久
@@ -341,6 +413,18 @@ export function tryPlace(): boolean {
     if (held?.kind === 'material' && held.material === 'ender_pearl') {
       camera.getWorldDirection(dir);
       fireEnderPearl(
+        { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
+        { x: dir.x, y: dir.y, z: dir.z },
+      );
+      playSound('place');
+      lastPlace = now;
+      return false;
+    }
+    // 手持鸡蛋右键：投掷孵鸡（MC 创造不耗蛋）
+    if (held?.kind === 'material' && held.material === 'egg') {
+      camera.getWorldDirection(dir);
+      throwEgg(
+        world,
         { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
         { x: dir.x, y: dir.y, z: dir.z },
       );
@@ -546,10 +630,11 @@ export function tryPlace(): boolean {
     lastPlace = now;
     return false;
   }
-  // TNT：右键点燃（MC 打火石点燃），生成引信实体而非放置
-  if (hitId === BLOCK_BY_KEY.tnt.id) {
+  // TNT：仅手持打火石右键点燃（MC；红石信号引爆见 redstone.ts），生成引信实体而非放置
+  if (hitId === BLOCK_BY_KEY.tnt.id && heldSlot?.kind === 'material' && heldSlot.material === 'flint_and_steel') {
     world.setBlock(bx, by, bz, AIR);
     igniteTnt(bx, by, bz);
+    playSound('place');
     lastPlace = now;
     return true;
   }
@@ -557,6 +642,19 @@ export function tryPlace(): boolean {
   if (hitId === BLOCK_BY_KEY.lever.id || hitId === BLOCK_BY_KEY.lever_on.id) {
     toggleLever(world, bx, by, bz);
     playSound('place');
+    lastPlace = now;
+    return true;
+  }
+  // 按钮：右键按下，石 1s / 木 1.5s 供电脉冲（MC）
+  if (pressButton(world, bx, by, bz)) {
+    playSound('place');
+    lastPlace = now;
+    return true;
+  }
+  // 音符盒：右键调音（0-23 半音循环并试听，MC）
+  if (hitId === BLOCK_BY_KEY.note_block.id) {
+    const semitone = tuneNoteBlock(bx, by, bz);
+    s.setNotice(`音符盒：${semitone} 半音`);
     lastPlace = now;
     return true;
   }
@@ -671,6 +769,13 @@ export function tryPlace(): boolean {
     const sticky = id === BLOCK_BY_KEY.piston_sticky_n.id;
     const facing = ay >= ax && ay >= az ? (dir.y > 0 ? 5 : 4) : ax >= az ? (dir.x > 0 ? 3 : 1) : dir.z > 0 ? 0 : 2;
     id = pistonIdFor(sticky, facing);
+  } else if (id === BLOCK_BY_KEY.observer_n.id) {
+    // 侦测器：检测面（“脸”）朝玩家放置方向即面向玩家（MC），输出口在背面；朝向计算与活塞一致
+    const ax = Math.abs(dir.x);
+    const ay = Math.abs(dir.y);
+    const az = Math.abs(dir.z);
+    const facing = ay >= ax && ay >= az ? (dir.y > 0 ? 5 : 4) : ax >= az ? (dir.x > 0 ? 3 : 1) : dir.z > 0 ? 0 : 2;
+    id = observerIdFor(facing);
   } else if (id === BLOCK_BY_KEY.repeater_n.id) {
     // 中继器：输出方向 = 玩家视线水平朝向（MC：面向放置方向）
     id = BLOCK_BY_KEY[`repeater_${Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 'e' : 'w') : dir.z > 0 ? 's' : 'n'}`].id;

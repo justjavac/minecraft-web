@@ -4,10 +4,9 @@ import { useMemo, useState } from 'react';
 import { BLOCKS } from '@/lib/blocks';
 import { armorDefOf } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
-import { mulberry32 } from '@/lib/noise';
 import { useGameStore } from '@/lib/store';
 import { TOOLS, type ToolDef } from '@/lib/tools';
-import { ENCHANTS, enchantsFor, levelFromXp, type EnchOffer } from '@/lib/xp';
+import { ENCHANTS, levelFromXp, rollOffers } from '@/lib/xp';
 import {
   Dialog,
   DialogContent,
@@ -28,25 +27,7 @@ function kindOfTool(def: ToolDef): ItemKind {
   return 'dig';
 }
 
-/** 为选中物品生成 3 个附魔选项（选中即定型，不重摇） */
-function rollOffers(seed: number, kind: ItemKind, playerLevel: number): EnchOffer[] {
-  const pool = enchantsFor(kind);
-  const rand = mulberry32(seed);
-  const offers: EnchOffer[] = [];
-  const used = new Set<string>();
-  for (let n = 0; n < 3 && pool.length > 0; n++) {
-    const def = pool[Math.floor(rand() * pool.length)];
-    if (used.has(def.key)) continue;
-    used.add(def.key);
-    // 等级随玩家等级上探（MC：等级越高越容易出高等级附魔）
-    const cap = Math.min(def.maxLvl, Math.max(1, Math.ceil(playerLevel / 5)));
-    const lvl = 1 + Math.floor(rand() * cap);
-    offers.push({ ench: def.key, lvl, lapis: lvl, levels: lvl });
-  }
-  return offers;
-}
-
-const enchName = (o: EnchOffer): string => `${ENCHANTS[o.ench].name} ${['', 'I', 'II', 'III', 'IV', 'V'][o.lvl]}`;
+const enchName = (o: { ench: keyof typeof ENCHANTS; lvl: number }): string => `${ENCHANTS[o.ench].name} ${['', 'I', 'II', 'III', 'IV', 'V'][o.lvl]}`;
 
 /** 附魔台界面：选工具/装备 → 三选一附魔（耗青金石与整级经验） */
 export function EnchantingDialog() {
@@ -70,7 +51,13 @@ export function EnchantingDialog() {
     return null;
   }, [selected, slots]);
 
-  const offers = useMemo(() => (kind && selected !== null ? rollOffers((selected + 1) * 0x9e37 ^ rollSeed, kind, Math.max(1, level)) : []), [kind, selected, rollSeed, level]);
+  const selectedSlot = selected !== null ? slots[selected] : null;
+  const currentEnch = selectedSlot && (selectedSlot.kind === 'tool' || selectedSlot.kind === 'armor') ? selectedSlot.ench : undefined;
+  // 已有附魔参与摇项（精准采集与时运互斥，见 lib/xp.ts rollOffers）
+  const offers = useMemo(
+    () => (kind && selected !== null ? rollOffers((selected + 1) * 0x9e37 ^ rollSeed, kind, Math.max(1, level), currentEnch) : []),
+    [kind, selected, rollSeed, level, currentEnch],
+  );
 
   return (
     <Dialog
@@ -90,7 +77,7 @@ export function EnchantingDialog() {
           {selected !== null && slots[selected] && (
             <div className="space-y-2 rounded-md border p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm">可选附魔（每项：青金石 = 等级 = 附魔等级）</span>
+                <span className="text-sm">可选附魔（消耗 = 附魔等级的青金石与经验，封顶 3）</span>
                 <button
                   className="text-xs text-muted-foreground underline"
                   onClick={() => setRollSeed((n) => n + 1)}

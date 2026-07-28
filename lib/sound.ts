@@ -111,6 +111,27 @@ export function playSound(group: SoundGroup, volume = 1): void {
     .catch(() => {});
 }
 
+/** 音符盒音高：半音 0-24 → 频率 Hz（C4=261.63 起每半音 ×2^(1/12)，MC 音符盒 24 半音两八度循环） */
+export function noteFreq(semitone: number): number {
+  return 261.63 * Math.pow(2, semitone / 12);
+}
+
+/** 音符盒「叮」：正弦振荡器 + 指数衰减包络（合成音，同 boom 的 WebAudio 思路；无用户手势时静默） */
+export function noteBlock(semitone: number, volume = 1): void {
+  const ac = audioCtx();
+  if (!ac) return;
+  const osc = ac.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = noteFreq(semitone);
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(useGameStore.getState().settings.volume * volume, ac.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.6);
+  osc.connect(gain);
+  gain.connect(ac.destination);
+  osc.start();
+  osc.stop(ac.currentTime + 0.6);
+}
+
 // 首次手势（点击/按键）时创建/恢复 AudioContext 并补做预载，减少第一次播放的延迟
 if (typeof window !== 'undefined') {
   const onGesture = () => {

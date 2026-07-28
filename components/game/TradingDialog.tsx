@@ -38,6 +38,7 @@ export function TradingDialog() {
   const hotbarSlots = useGameStore((s) => s.hotbarSlots);
   const mainSlots = useGameStore((s) => s.mainSlots);
   const executeMobTrade = useGameStore((s) => s.executeMobTrade);
+  const tradeStockLeft = useGameStore((s) => s.tradeStockLeft);
 
   const prof = tradeMob !== null ? professionOf(tradeMob) : null;
   const trades = prof ? TRADES[prof] : [];
@@ -58,10 +59,11 @@ export function TradingDialog() {
         <div className="space-y-2">
           {trades.map((t, i) => {
             const afford = canAfford(allSlots, t);
+            const left = tradeMob !== null ? tradeStockLeft(i) : 0;
             return (
               <button
                 key={i}
-                disabled={!afford}
+                disabled={!afford || left <= 0}
                 onClick={() => executeMobTrade(i)}
                 className="flex w-full items-center justify-between rounded border border-emerald-600/40 bg-emerald-900/20 px-3 py-2 text-left disabled:opacity-40"
               >
@@ -74,6 +76,7 @@ export function TradingDialog() {
                 <span className="flex items-center gap-2">
                   <ItemCell item={t.get} />
                   <span className="text-xs text-green-400">+{t.xp}xp</span>
+                  <span className="text-xs text-amber-400">{left > 0 ? `剩 ${left}` : '明日补货'}</span>
                 </span>
               </button>
             );

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { COBBLE, LOG, PLANKS, STONE } from '../blocks';
 import {
   clearFurnaces,
+  FOODS,
+  FUELS,
   getFurnace,
   putIntoFurnace,
   SMELT_TIME,
@@ -70,6 +72,32 @@ describe('熔炉', () => {
     expect(f.output).toBeNull();
     expect(slots[0]).toEqual({ kind: 'block', id: STONE, count: 3 });
   });
+
+  it('取出经验按实际取出件数结算（取不出不给，MC）', async () => {
+    const { useGameStore } = await import('../store');
+    const f = getFurnace('9,9,9');
+    useGameStore.setState({ worldMode: 'survival', furnaceOpen: '9,9,9', hotbarSlots: emptySlots(), xpTotal: 0 });
+    // 全空热键栏：5 件全取出 → 5 XP
+    f.output = { item: `block:${STONE}`, count: 5 };
+    useGameStore.getState().furnaceTakeOutput();
+    expect(useGameStore.getState().xpTotal).toBe(5);
+    expect(f.output).toBeNull();
+    // 热键栏全满（不可合并）：一件取不出 → 0 XP（修复前按整组给 4 XP，可无限刷）
+    const full = emptySlots().map(() => ({ kind: 'block', id: COBBLE, count: 64 }) as Slot);
+    f.output = { item: `block:${STONE}`, count: 4 };
+    useGameStore.setState({ hotbarSlots: full, xpTotal: 0 });
+    useGameStore.getState().furnaceTakeOutput();
+    expect(useGameStore.getState().xpTotal).toBe(0);
+    expect(f.output?.count).toBe(4);
+    // 部分可合并（已有 62 石头堆叠）：只取出 2 件 → 2 XP，剩余留炉
+    const partial = emptySlots().map(() => ({ kind: 'block', id: COBBLE, count: 64 }) as Slot);
+    partial[0] = { kind: 'block', id: STONE, count: 62 };
+    useGameStore.setState({ hotbarSlots: partial, xpTotal: 0 });
+    useGameStore.getState().furnaceTakeOutput();
+    expect(useGameStore.getState().xpTotal).toBe(2);
+    expect(f.output?.count).toBe(2);
+    useGameStore.setState({ furnaceOpen: null });
+  });
 });
 
 describe('进食', () => {
@@ -91,5 +119,37 @@ describe('进食', () => {
     expect(useGameStore.getState().eatSelectedFood()).toBe(true);
     expect(useGameStore.getState().hotbarSlots[0]).toBeNull();
     expect(useGameStore.getState().eatSelectedFood()).toBe(false); // 空槽不可吃
+  });
+
+  it('腐肉可食用（MC：饥饿 4、饱和 0.8 ÷4 缩放 0.2）', async () => {
+    expect(FOODS.rotten_flesh).toEqual({ name: '腐肉', hunger: 4, saturation: 0.2 });
+    const { useGameStore } = await import('../store');
+    useGameStore.setState({
+      worldMode: 'survival',
+      health: 20,
+      hunger: 10,
+      saturation: 0,
+      hotbarSlots: [{ kind: 'material', material: 'rotten_flesh', count: 1 }, ...emptySlots().slice(1)],
+      selectedSlot: 0,
+    });
+    expect(useGameStore.getState().eatSelectedFood()).toBe(true);
+    const s = useGameStore.getState();
+    expect(s.hunger).toBe(14); // 10 + 4
+    expect(s.saturation).toBeCloseTo(0.2, 5);
+    expect(s.hotbarSlots[0]).toBeNull();
+  });
+});
+
+describe('燃料', () => {
+  beforeEach(() => clearFurnaces());
+
+  it('烈焰棒可作燃料（MC 120 秒，一根烧 12 件）', () => {
+    expect(FUELS['material:blaze_rod']).toBe(120);
+    const f = getFurnace('5,10,5');
+    f.input = { item: `block:${COBBLE}`, count: 1 };
+    f.fuel = { item: 'material:blaze_rod', count: 1 };
+    tickFurnaces(SMELT_TIME);
+    expect(f.output).toEqual({ item: `block:${STONE}`, count: 1 });
+    expect(f.burnLeft).toBeCloseTo(120 - SMELT_TIME, 1);
   });
 });
