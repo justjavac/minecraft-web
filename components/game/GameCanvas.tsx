@@ -29,7 +29,8 @@ async function detectKind(): Promise<RendererKind> {
     : undefined;
   if (!gpu) return 'webgl';
   try {
-    const adapter = await gpu.requestAdapter();
+    // 驱动异常时 requestAdapter 也可能挂起——超时按不支持处理，走 WebGL
+    const adapter = await Promise.race([gpu.requestAdapter(), new Promise((resolve) => setTimeout(() => resolve(null), 3000))]);
     return adapter ? 'webgpu' : 'webgl';
   } catch {
     return 'webgl';
@@ -61,12 +62,15 @@ export function GameCanvas() {
         key={kind} // 渲染器切换时整体重建
         gl={
           kind === 'webgpu'
-            ? // WebGPU：动态加载 three/webgpu；初始化失败时回退 WebGL 并触发材质降级
+            ? // WebGPU：动态加载 three/webgpu；初始化失败或超时（驱动异常时 init 会挂起）时回退 WebGL 并触发材质降级
               (async (props) => {
                 try {
                   const { WebGPURenderer } = await import('three/webgpu');
                   const renderer = new WebGPURenderer({ canvas: props.canvas as HTMLCanvasElement, antialias: false });
-                  await renderer.init();
+                  await Promise.race([
+                    renderer.init(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('WebGPU 初始化超时（5s）')), 5000)),
+                  ]);
                   return renderer;
                 } catch (err) {
                   console.warn('[renderer] WebGPU 初始化失败，回退到 WebGL', err);
