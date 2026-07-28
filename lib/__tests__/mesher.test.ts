@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCKS, STONE, WATER, GLASS } from '../blocks';
-import { buildChunkGeometry } from '../mesher';
-import { VOID_TERRAIN } from '../noise';
+import { buildChunkGeometry, chunkBiomes } from '../mesher';
+import { createTerrain, VOID_TERRAIN, type Terrain } from '../noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, World } from '../world';
 
 function voidWorld(): World {
@@ -96,5 +96,41 @@ describe('mesher 面剔除', () => {
     const ys2 = [...g2.water.positions].filter((_, i) => i % 3 === 1);
     expect(Math.max(...ys2)).toBeCloseTo(5.875); // 只有上层水的顶面，且同样下沉
     expect(ys2.some((y) => y > 5.875)).toBe(false);
+  });
+});
+
+describe('chunkBiomes 群系列缓存', () => {
+  it('缓存只缓存查询结果：重复/重叠列不重复求值，结果与直算一致', () => {
+    // 包一层计数 terrain，统计 biomeAt 实际求值次数
+    const base = createTerrain('biome-cache');
+    let calls = 0;
+    const counting: Terrain = {
+      ...base,
+      biomeAt: (x, z) => {
+        calls++;
+        return base.biomeAt(x, z);
+      },
+    };
+    const w = new World('biome-cache', undefined, counting);
+    // 未走缓存的参照：同一真实地形直接逐列求值
+    const ref = new World('biome-cache');
+    const refBiomes = chunkBiomes(ref, 3, -2);
+
+    const a = chunkBiomes(w, 3, -2);
+    expect(calls).toBe(18 * 18); // 首次 324 列全算
+    const b = chunkBiomes(w, 3, -2);
+    expect(calls).toBe(18 * 18); // 第二次全命中缓存，零新增求值
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
+    // 与未缓存路径结果一致（缓存不改群系判定）
+    expect(Buffer.from(a).equals(Buffer.from(refBiomes))).toBe(true);
+    // 相邻 chunk：环带重叠 2×18 列命中缓存，只有 16×18 新列求值
+    chunkBiomes(w, 4, -2);
+    expect(calls).toBe(18 * 18 + 16 * 18);
+  });
+
+  it('同种子不同世界实例群系数组一致（缓存按地形实例隔离）', () => {
+    const a = chunkBiomes(new World('same-seed'), 1, 1);
+    const b = chunkBiomes(new World('same-seed'), 1, 1);
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
   });
 });

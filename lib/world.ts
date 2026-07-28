@@ -16,14 +16,9 @@ import { applyStructures } from './structures';
 import { applyStronghold } from './stronghold';
 import { HUGE_MUSHROOM_MAX_H, TREE_MAX_H, writeHugeMushroom, writeTree } from './trees';
 
-export const CHUNK_SIZE = 16;
-export const WORLD_HEIGHT = 128;
-export const CHUNK_VOLUME = CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT;
-
-export const localIndex = (x: number, y: number, z: number): number =>
-  (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
-
-export const chunkKey = (cx: number, cz: number): string => `${cx},${cz}`;
+// 网格常量定义在叶子模块 lib/grid.ts（worker 端经 mesher 引用时不会拖入本模块的依赖链）；此处再导出保持既有引用兼容
+export { CHUNK_SIZE, WORLD_HEIGHT, CHUNK_VOLUME, localIndex, chunkKey } from './grid';
+import { CHUNK_SIZE, WORLD_HEIGHT, CHUNK_VOLUME, localIndex, chunkKey } from './grid';
 
 /** 树形/巨蘑菇最大外扩格数（金合欢斜干 1 + 5×5 冠 2；巨蘑菇伞盖 2），跨 chunk 一致所需的环宽 */
 const TREE_RING = 3;
@@ -302,10 +297,16 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
       if (data[aboveI] !== AIR) continue;
       // 甘蔗：岸线（脚下即海平面）四邻同高有水，宿主为草/土/沙/灰化土/菌丝（MC 一致）
       if (h === SEA_LEVEL && (surf === GRASS || surf === DIRT || surf === SAND || surf === PODZOL || surf === MYCELIUM)) {
-        const nearWater =
-          x > 0 && x < CHUNK_SIZE - 1 && z > 0 && z < CHUNK_SIZE - 1 &&
-          (data[localIndex(x + 1, h, z)] === WATER || data[localIndex(x - 1, h, z)] === WATER ||
-            data[localIndex(x, h, z + 1)] === WATER || data[localIndex(x, h, z - 1)] === WATER);
+        // 邻格是否有水：chunk 内直接读数据；跨界邻格不能读（生成期触发邻 chunk 隐式生成会链式扩散），
+        // 按地形推断——邻列低于海平面且水面未封冻，同高格即是水（消除 chunk 边界的规则空缺线）
+        const waterBeside = (dx: number, dz: number): boolean => {
+          const lx = x + dx;
+          const lz = z + dz;
+          if (lx >= 0 && lx < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) return data[localIndex(lx, h, lz)] === WATER;
+          const nh = cachedHeightAt(wx + dx, wz + dz);
+          return nh >= 0 && nh < SEA_LEVEL && !BIOME_SURFACE[cachedBiomeAt(wx + dx, wz + dz)].waterTop;
+        };
+        const nearWater = waterBeside(1, 0) || waterBeside(-1, 0) || waterBeside(0, 1) || waterBeside(0, -1);
         if (nearWater && hash2(seedHash ^ 0xca3e11, wx, wz) < 0.3) {
           const ch = 1 + Math.floor(hash2(seedHash ^ 0xca3f22, wx, wz) * 3);
           for (let i = 0; i < ch && h + 1 + i < WORLD_HEIGHT; i++) data[localIndex(x, h + 1 + i, z)] = K('sugar_cane');
@@ -377,10 +378,14 @@ export function generateChunk(terrain: Terrain, cx: number, cz: number, data: Ui
           if (surf !== SAND) break;
           if (r < 0.02) {
             // 仙人掌：四邻同高须为空（MC 贴墙不长），高 1-3
-            const clear =
-              x > 0 && x < CHUNK_SIZE - 1 && z > 0 && z < CHUNK_SIZE - 1 &&
-              data[localIndex(x + 1, h + 1, z)] === AIR && data[localIndex(x - 1, h + 1, z)] === AIR &&
-              data[localIndex(x, h + 1, z + 1)] === AIR && data[localIndex(x, h + 1, z - 1)] === AIR;
+            // 跨界邻格同样按地形推断：邻列地表不高于本列，同高侧格即是空（消除边界规则空缺线）
+            const airBeside = (dx: number, dz: number): boolean => {
+              const lx = x + dx;
+              const lz = z + dz;
+              if (lx >= 0 && lx < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) return data[localIndex(lx, h + 1, lz)] === AIR;
+              return cachedHeightAt(wx + dx, wz + dz) <= h;
+            };
+            const clear = airBeside(1, 0) && airBeside(-1, 0) && airBeside(0, 1) && airBeside(0, -1);
             if (!clear) break;
             const ch = 1 + Math.floor(pick * 3);
             for (let i = 0; i < ch && h + 1 + i < WORLD_HEIGHT; i++) data[localIndex(x, h + 1 + i, z)] = K('cactus');
@@ -495,6 +500,11 @@ export class World {
     return this.getChunk(x >> 4, z >> 4).data[localIndex(x & 15, y, z & 15)];
   }
 
+  /** 该方块坐标所属 chunk 是否已加载（只读查询，不像 getBlock 那样隐式触发生成） */
+  isChunkLoaded(x: number, z: number): boolean {
+    return this.chunks.has(chunkKey(x >> 4, z >> 4));
+  }
+
   setBlock(x: number, y: number, z: number, id: number): void {
     if (y < 0 || y >= WORLD_HEIGHT) return;
     const cx = x >> 4;
@@ -564,8 +574,12 @@ export class World {
     return it.value;
   }
 
-  /** 以 (x, z) 为中心确保半径内 chunk 已生成（每次最多生成 budget 个，由近及远），卸载半径外的 chunk */
-  updateAround(x: number, z: number, radius: number, budget = 8): void {
+  /**
+   * 以 (x, z) 为中心确保半径内 chunk 已生成（毫秒时间片由近及远生成，超时留给下一帧），卸载半径外的 chunk。
+   * budgetMs 为本次调用的生成预算：至少生成 1 个（保证持续推进），此后每生成一个检查一次超时。
+   * 返回本轮后仍缺失的 chunk 数（0 = 周围已铺满，调用方据此判定初始加载完成）
+   */
+  updateAround(x: number, z: number, radius: number, budgetMs = 6): number {
     const pcx = Math.floor(x / CHUNK_SIZE);
     const pcz = Math.floor(z / CHUNK_SIZE);
     // 收集缺失的 chunk，按距离由近及远分批生成，避免单帧卡顿
@@ -577,13 +591,17 @@ export class World {
       }
     }
     missing.sort((a, b) => a[0] - b[0]);
-    for (const [, cx, cz] of missing.slice(0, budget)) {
+    const start = performance.now();
+    let done = 0;
+    for (const [, cx, cz] of missing) {
       try {
         this.getChunk(cx, cz);
       } catch (err) {
         // 单个 chunk 生成异常不堵死调度：下个周期还会重试，其余 chunk 照常生成
         console.error(`chunk ${cx},${cz} 生成失败`, err);
       }
+      done++;
+      if (performance.now() - start >= budgetMs) break;
     }
 
     const toRemove: string[] = [];
@@ -601,5 +619,6 @@ export class World {
       this.chunks.delete(key);
       this.generation++;
     }
+    return missing.length - done;
   }
 }

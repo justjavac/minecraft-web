@@ -18,25 +18,58 @@ const NEIGHBORS = [
   [0, -1],
 ] as const;
 
+// BFS 队列：模块级复用（曾为每次 recomputeLight/recomputeSky 分配 3×CHUNK_VOLUME×2 的 Int16Array ≈ 384KB）。
+// lights 的全部调用点（getChunk / applySavedChunk / flushLight → cascadeLight）都在主线程且同步执行到底，
+// 无并发、无嵌套重入，模块级单份安全。
+// 惰性初始化：world ↔ lights 循环依赖，加载期就读 CHUNK_VOLUME 会在 world 先加载时踩 TDZ
+let qx: Int16Array | null = null;
+let qy: Int16Array | null = null;
+let qz: Int16Array | null = null;
+let qh = 0;
+let qt = 0;
+
+/** 开一轮新 BFS：重置头尾指针，首次调用时分配队列 */
+function qreset(): void {
+  if (!qx || !qy || !qz) {
+    qx = new Int16Array(CHUNK_VOLUME * 2);
+    qy = new Int16Array(CHUNK_VOLUME * 2);
+    qz = new Int16Array(CHUNK_VOLUME * 2);
+  }
+  qh = 0;
+  qt = 0;
+}
+
+/** 入队；满则倍增扩容（同格可因多次升值重复入队，理论需求 >CHUNK_VOLUME×2，越界写会被静默丢弃导致光照偏低） */
+function qpush(x: number, y: number, z: number): void {
+  if (qt === qx!.length) {
+    const n = qx!.length * 2;
+    const nx = new Int16Array(n);
+    nx.set(qx!);
+    qx = nx;
+    const ny = new Int16Array(n);
+    ny.set(qy!);
+    qy = ny;
+    const nz = new Int16Array(n);
+    nz.set(qz!);
+    qz = nz;
+  }
+  qx![qt] = x;
+  qy![qt] = y;
+  qz![qt] = z;
+  qt++;
+}
+
 /** 重算一个 chunk 的光照（光源 + 邻居边界面接力；不透明方块阻挡） */
 export function recomputeLight(world: World, chunk: Chunk): void {
   const light = chunk.light;
   light.fill(0);
 
-  // 环形 BFS 队列
-  const qx = new Int16Array(CHUNK_VOLUME * 2);
-  const qy = new Int16Array(CHUNK_VOLUME * 2);
-  const qz = new Int16Array(CHUNK_VOLUME * 2);
-  let qh = 0;
-  let qt = 0;
+  qreset();
   const push = (x: number, y: number, z: number, v: number): void => {
     const i = localIndex(x, y, z);
     if (light[i] >= v) return;
     light[i] = v;
-    qx[qt] = x;
-    qy[qt] = y;
-    qz[qt] = z;
-    qt++;
+    qpush(x, y, z);
   };
 
   // 种子 1：本 chunk 内的光源方块
@@ -81,9 +114,9 @@ export function recomputeLight(world: World, chunk: Chunk): void {
 
   // BFS 衰减传播
   while (qh < qt) {
-    const x = qx[qh];
-    const y = qy[qh];
-    const z = qz[qh];
+    const x = qx![qh];
+    const y = qy![qh];
+    const z = qz![qh];
     qh++;
     const v = light[localIndex(x, y, z)];
     if (v <= 1) continue;
@@ -104,12 +137,7 @@ export function recomputeSky(world: World, chunk: Chunk): void {
   const sky = chunk.sky;
   sky.fill(0);
 
-  // 环形 BFS 队列
-  const qx = new Int16Array(CHUNK_VOLUME * 2);
-  const qy = new Int16Array(CHUNK_VOLUME * 2);
-  const qz = new Int16Array(CHUNK_VOLUME * 2);
-  let qh = 0;
-  let qt = 0;
+  qreset();
 
   // 1) 垂直直降：每列自天顶 15，直到碰到第一个不透明方块（同时入队供侧面渗透）
   for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -118,10 +146,7 @@ export function recomputeSky(world: World, chunk: Chunk): void {
         const i = localIndex(x, y, z);
         if (BLOCKS[chunk.data[i]]?.opaque) break;
         sky[i] = 15;
-        qx[qt] = x;
-        qy[qt] = y;
-        qz[qt] = z;
-        qt++;
+        qpush(x, y, z);
       }
     }
   }
@@ -131,10 +156,7 @@ export function recomputeSky(world: World, chunk: Chunk): void {
     const i = localIndex(x, y, z);
     if (sky[i] >= v) return;
     sky[i] = v;
-    qx[qt] = x;
-    qy[qt] = y;
-    qz[qt] = z;
-    qt++;
+    qpush(x, y, z);
   };
   for (const [dx, dz] of NEIGHBORS) {
     const n = world.chunks.get(chunkKey(chunk.cx + dx, chunk.cz + dz));
@@ -166,9 +188,9 @@ export function recomputeSky(world: World, chunk: Chunk): void {
     }
   }
   while (qh < qt) {
-    const x = qx[qh];
-    const y = qy[qh];
-    const z = qz[qh];
+    const x = qx![qh];
+    const y = qy![qh];
+    const z = qz![qh];
     qh++;
     const v = sky[localIndex(x, y, z)];
     if (v <= 1) continue;

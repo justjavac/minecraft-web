@@ -29,7 +29,7 @@ import { clearFishing } from '@/lib/fishing';
 import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
 import { tickSaplings, clearSaplings } from '@/lib/saplings';
-import { clearRedstone, tickRedstone } from '@/lib/redstone';
+import { clearRedstone, rescanSources, tickRedstone } from '@/lib/redstone';
 import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
@@ -39,6 +39,10 @@ import { ChunkMesh } from './ChunkMesh';
 
 /** 非主世界 chunk 在 IndexedDB 中的键前缀（与主世界存档隔离） */
 const dimPrefix = (d: Dimension): string => (d === 'nether' ? 'n:' : d === 'end' ? 'e:' : '');
+
+/** chunk 生成时间片预算（毫秒/帧）：初始加载期放大预算全速铺满，游玩期小预算消除 >50ms 长任务 */
+const GEN_BUDGET_LOAD = 24;
+const GEN_BUDGET_PLAY = 6;
 
 /** 创建某维度的世界实例（下界/末地用各自地形与独立种子） */
 function makeDimWorld(d: Dimension, seedStr: string, saved?: Map<string, Uint16Array>): World {
@@ -122,7 +126,8 @@ export function WorldRenderer() {
   /** 各维度的模块状态（位置/容器/熔炉），切换时暂存/恢复 */
   const dimStateRef = useRef<Partial<Record<Dimension, DimState>>>({});
   const firstLoadRef = useRef(true);
-  const lastUpdate = useRef(0);
+  /** 初始加载中（出生点周围尚未铺满）：updateAround 用大预算全速生成；铺满后转游玩小预算 */
+  const initialLoadRef = useRef(true);
   const lastFluid = useRef(0);
   const lastGeneration = useRef(-1);
 
@@ -217,6 +222,7 @@ export function WorldRenderer() {
         };
         worldRef.current = w;
         setActiveWorld(w);
+        initialLoadRef.current = true; // 新维度/新世界：先全速铺满出生点周围
         setWorld(w);
         setMaterials(mats);
         useGameStore.getState().setLoadError(null);
@@ -286,17 +292,17 @@ export function WorldRenderer() {
       drained++;
     }
     const now = performance.now();
-    if (now - lastUpdate.current > 250) {
-      lastUpdate.current = now;
-      try {
-        w.updateAround(
-          playerPosition.x,
-          playerPosition.z,
-          useGameStore.getState().settings.renderDistance,
-        );
-      } catch (err) {
-        console.error('chunk 调度失败（下帧重试）', err);
-      }
+    // 每帧按时间片调度 chunk 生成：加载期大预算全速铺满，游玩期 6ms 防止成批生成叠出长任务
+    try {
+      const remaining = w.updateAround(
+        playerPosition.x,
+        playerPosition.z,
+        useGameStore.getState().settings.renderDistance,
+        initialLoadRef.current ? GEN_BUDGET_LOAD : GEN_BUDGET_PLAY,
+      );
+      if (remaining === 0) initialLoadRef.current = false;
+    } catch (err) {
+      console.error('chunk 调度失败（下帧重试）', err);
     }
     if (now - lastFluid.current > 400) {
       lastFluid.current = now;
@@ -305,10 +311,16 @@ export function WorldRenderer() {
         tickSaplings(w, 0.4); // 内部按 2s 累计触发生长/凋零
         tickCrops(w, 0.4); // 同上节奏推进小麦生长
         tickGrowth(w, 0.4); // 柱状作物随机刻（仙人掌/甘蔗/竹子）
-        tickRedstone(w, 0.4); // 中继器延迟翻转结算
+        rescanSources(w); // 重扫新加载 chunk 的电源（换维度/读档后恢复供能）
       } catch (err) {
         console.error('世界 tick 失败（下帧重试）', err);
       }
+    }
+    // 红石 tick 每帧实时结算：中继器延迟翻转、按钮/侦测器/标靶脉冲（0.1s 级）、压力板检测
+    try {
+      tickRedstone(w, Math.min(delta, 0.05));
+    } catch (err) {
+      console.error('红石 tick 失败（下帧重试）', err);
     }
     // 熔炉烧炼不做暂停门控（与流体/作物一致）：打开熔炉界面会解锁指针，门控会让烧炼整个冻结
     tickFurnaces(Math.min(delta, 0.05));

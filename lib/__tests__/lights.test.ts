@@ -73,4 +73,21 @@ describe('方块光照', () => {
     expect(under).toBeLessThan(15); // 平台下方变暗
     expect(under).toBeGreaterThan(0); // 侧面仍有渗透光
   });
+
+  it('队列模块级复用后多次级联结果一致（无跨调用状态泄漏）', () => {
+    // 多光源 + 障碍墙：制造含升降值的复杂 BFS，走完整级联后快照光照
+    const build = (): { light: Uint8Array; sky: Uint8Array } => {
+      const w = new World('q-reuse', undefined, VOID_TERRAIN);
+      for (const [x, y, z] of [[2, 10, 2], [13, 20, 7], [7, 30, 13]] as const) w.setBlock(x, y, z, BLOCK_BY_KEY.torch.id);
+      for (let i = 0; i < 8; i++) w.setBlock(4 + i, 15, 8, STONE);
+      flushLight(w);
+      const c = w.getChunk(0, 0);
+      return { light: new Uint8Array(c.light), sky: new Uint8Array(c.sky) };
+    };
+    const a = build();
+    build(); // 中间插入另一次完整级联（复用同一模块级队列）
+    const b = build();
+    expect(Buffer.from(b.light).equals(Buffer.from(a.light))).toBe(true);
+    expect(Buffer.from(b.sky).equals(Buffer.from(a.sky))).toBe(true);
+  });
 });

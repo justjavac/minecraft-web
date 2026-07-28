@@ -2,8 +2,10 @@
 
 import { AIR, atlasUV, BLOCKS, isWaterId, WATER, WATER_FLOW_1, type BlockDef } from './blocks';
 import { FOLIAGE_TINT_KEYS, FOLIAGE_TINT_RATIO, GRASS_TINT_KEYS, GRASS_TINT_RATIO } from './biomes';
-import { BIOME_LIST, biomeIndex } from './noise';
-import { CHUNK_SIZE, WORLD_HEIGHT, type Chunk, type World } from './world';
+import { BIOME_LIST, biomeIndex, type Terrain } from './noise';
+// 常量取叶子模块 grid（保持 worker 包最小）；Chunk/World 仅类型引用（编译期擦除，不产生模块边）
+import { CHUNK_SIZE, WORLD_HEIGHT } from './grid';
+import type { Chunk, World } from './world';
 
 export interface GeometryData {
   positions: Float32Array;
@@ -494,10 +496,38 @@ export function chunkBiomes(world: World, cx: number, cz: number): Uint8Array {
   const biomes = new Uint8Array(18 * 18);
   for (let z = -1; z <= CHUNK_SIZE; z++) {
     for (let x = -1; x <= CHUNK_SIZE; x++) {
-      biomes[(z + 1) * 18 + (x + 1)] = biomeIndex(world.terrain.biomeAt(cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z));
+      biomes[(z + 1) * 18 + (x + 1)] = cachedBiomeIndex(world.terrain, cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z);
     }
   }
   return biomes;
+}
+
+/**
+ * 群系列查询缓存：biomeAt 每次含 heightAt+classify 约 20+ 次噪声求值，而建网的 18×18 群系环
+ * 在相邻 chunk 间大量重叠（同列跨 chunk 重复求值），按 (x,z) 列缓存查询结果（不改生成逻辑，种子确定性不变）。
+ * 按 Terrain 实例隔离（WeakMap：换维度/弃档的旧地形随 GC 回收），LRU 上限防止飞行时无界增长
+ */
+const BIOME_CACHE_MAX = 8192;
+const biomeCache = new WeakMap<Terrain, Map<string, number>>();
+
+function cachedBiomeIndex(terrain: Terrain, x: number, z: number): number {
+  let m = biomeCache.get(terrain);
+  if (!m) {
+    m = new Map();
+    biomeCache.set(terrain, m);
+  }
+  const k = `${x},${z}`;
+  const hit = m.get(k);
+  if (hit !== undefined) {
+    // LRU：命中提到最新位置（Map 保持插入序）
+    m.delete(k);
+    m.set(k, hit);
+    return hit;
+  }
+  const v = biomeIndex(terrain.biomeAt(x, z));
+  m.set(k, v);
+  if (m.size > BIOME_CACHE_MAX) m.delete(m.keys().next().value!);
+  return v;
 }
 
 const FULL_AO = [3, 3, 3, 3];
