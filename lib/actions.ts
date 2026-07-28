@@ -323,6 +323,69 @@ export function tryPlace(): boolean {
       }
     }
   }
+  // 创造模式同样可用：射箭/末影珍珠/末影之眼/钓鱼（MC 创造不消耗弹药与材料；不扣耐久）
+  if (s.worldMode === 'creative') {
+    const held = s.hotbarSlots[s.selectedSlot];
+    // 手持弓右键：射箭（创造不耗箭，MC）
+    if (held?.kind === 'tool' && held.tool === 'bow') {
+      camera.getWorldDirection(dir);
+      firePlayerArrow(
+        { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
+        { x: dir.x, y: dir.y, z: dir.z },
+      );
+      playSound('place');
+      lastPlace = now;
+      return false;
+    }
+    // 手持末影珍珠右键：投掷，落点传送（MC）
+    if (held?.kind === 'material' && held.material === 'ender_pearl') {
+      camera.getWorldDirection(dir);
+      fireEnderPearl(
+        { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
+        { x: dir.x, y: dir.y, z: dir.z },
+      );
+      playSound('place');
+      lastPlace = now;
+      return false;
+    }
+    // 手持末影之眼右键：投掷定位要塞（MC；瞄准空门框架除外）
+    if (held?.kind === 'material' && held.material === 'eye_of_ender') {
+      camera.getWorldDirection(dir);
+      const aim = raycastBlock(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
+      const aimFrame = aim !== null && world.getBlock(aim.block[0], aim.block[1], aim.block[2]) === BLOCK_BY_KEY.end_portal_frame.id;
+      if (!aimFrame) {
+        const spot = nearestStronghold(world.seedHash, playerPosition.x, playerPosition.z);
+        fireEyeOfEnder(
+          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
+          spot.x,
+          spot.z,
+        );
+        playSound('place');
+        lastPlace = now;
+        return false;
+      }
+    }
+    // 手持钓竿右键：抛竿/收竿（MC 创造也能钓鱼；渔获入包）
+    if (held?.kind === 'tool' && held.tool === 'fishing_rod') {
+      if (!bobber.current) {
+        camera.getWorldDirection(dir);
+        castBobber(
+          { x: camera.position.x, y: camera.position.y - 0.2, z: camera.position.z },
+          { x: dir.x, y: dir.y, z: dir.z },
+        );
+        playSound('place');
+      } else {
+        const got = reelIn();
+        if (got) {
+          s.addStack({ kind: 'material', material: got.material }, got.count);
+          s.setNotice(`钓到了${MATERIAL_INFO[got.material]?.name ?? got.material}！`);
+          playSound('place');
+        }
+      }
+      lastPlace = now;
+      return false;
+    }
+  }
   camera.getWorldDirection(dir);
   const hit = raycastBlock(
     world,

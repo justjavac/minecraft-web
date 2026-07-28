@@ -2,7 +2,7 @@
 // 策略：页面 network-first（保证新版本及时生效）；纹理 network-first（atlas 会随版本变化，旧缓存会错位）；
 // 其余静态资源 cache-first（JS chunk 带内容哈希，安全长缓存）
 
-const CACHE = 'kimi-mc-v3';
+const CACHE = 'kimi-mc-v4';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

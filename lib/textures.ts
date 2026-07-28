@@ -244,8 +244,19 @@ export interface AtlasMaterials {
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`加载贴图失败: ${src}`));
+    // 超时兜底：网络挂起时 onload/onerror 都可能长时间不触发，15s 后按失败处理（走 loadError 界面而非无限转圈）
+    const timer = setTimeout(() => {
+      img.src = '';
+      reject(new Error(`加载贴图超时（15s）: ${src}`));
+    }, 15000);
+    img.onload = () => {
+      clearTimeout(timer);
+      resolve(img);
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error(`加载贴图失败: ${src}`));
+    };
     img.src = src;
   });
 }
@@ -265,6 +276,10 @@ export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMa
   if (!p) {
     p = build(kind);
     cache.set(kind, p);
+    // 失败不缓存：拒绝的 promise 留在 cache 会让「重试」永远命中同一失败（贴图加载失败的恢复路径）
+    p.catch(() => {
+      if (cache.get(kind) === p) cache.delete(kind);
+    });
   }
   return p;
 }

@@ -96,12 +96,13 @@ export function interactBeacon(
 /** 每 tick：校验激活信标的金字塔仍在（损坏则失效），范围内玩家刷新所选效果（MC 每 4s 施加 11s，简化为持续刷新 5s） */
 export function tickBeacons(world: World, px: number, py: number, pz: number): void {
   for (const [key, b] of activeBeacons) {
-    if (world.getBlock(b.x, b.y, b.z) !== BLOCK_BY_KEY.beacon.id || scanPyramid(world, b.x, b.y, b.z) === 0) {
+    const level = world.getBlock(b.x, b.y, b.z) !== BLOCK_BY_KEY.beacon.id ? 0 : scanPyramid(world, b.x, b.y, b.z);
+    if (level === 0) {
       activeBeacons.delete(key);
       beaconVersion.v++;
       continue;
     }
-    const r = BEACON_RANGE[scanPyramid(world, b.x, b.y, b.z)];
+    const r = BEACON_RANGE[level];
     // MC：水平半径 r，垂直向下 r、向上直到建筑限高
     if (Math.abs(px - b.x - 0.5) <= r && Math.abs(pz - b.z - 0.5) <= r && py >= b.y - r) {
       effects[b.effect] = Math.max(effects[b.effect], 5);

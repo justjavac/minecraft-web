@@ -66,11 +66,24 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function db(): Promise<IDBPDatabase> {
   if (!dbPromise) {
+    // 多 tab 同时打开时旧连接会阻塞 upgrade（onblocked 永久挂起，世界加载无限转圈）——blocked 时提示并 10s 超时
     dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(d) {
         d.createObjectStore('meta');
         d.createObjectStore('chunks');
       },
+      blocked() {
+        console.warn('[存档] IndexedDB 被其他标签页阻塞——请关闭多余的游戏标签页');
+      },
+    });
+    // 兜底：10s 未打开则按失败处理（走 loadError 界面而非无限挂起）
+    dbPromise = Promise.race([
+      dbPromise,
+      new Promise<IDBPDatabase>((_, reject) => setTimeout(() => reject(new Error('存档数据库打开超时（可能被其他标签页阻塞）')), 10000)),
+    ]);
+    // 失败后允许下次重试（否则 poolFailed 永久卡死）
+    dbPromise.catch(() => {
+      dbPromise = null;
     });
   }
   return dbPromise;
