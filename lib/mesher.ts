@@ -1,6 +1,6 @@
 // chunk 网格化：隐藏面剔除 + 逐顶点环境光遮蔽（AO）+ atlas UV + 群系草色顶点色，输出纯数据（不依赖 three，可单测）
 
-import { AIR, ATLAS_COLS, ATLAS_ROWS, BLOCKS, isWaterId, WATER, WATER_FLOW_1, type BlockDef } from './blocks';
+import { AIR, atlasUV, BLOCKS, isWaterId, WATER, WATER_FLOW_1, type BlockDef } from './blocks';
 import { FOLIAGE_TINT_KEYS, FOLIAGE_TINT_RATIO, GRASS_TINT_KEYS, GRASS_TINT_RATIO } from './biomes';
 import { BIOME_LIST, biomeIndex } from './noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, type Chunk, type World } from './world';
@@ -97,8 +97,6 @@ class GeometryBuilder {
 
   addFace(x: number, y: number, z: number, face: Face, tile: number, ao: readonly number[], topY = 1, light = 0, sky = 1, tint?: readonly [number, number, number]): void {
     const ndx = this.positions.length / 3;
-    const col = tile % ATLAS_COLS;
-    const row = Math.floor(tile / ATLAS_COLS);
     for (let i = 0; i < 4; i++) {
       const c = face.corners[i];
       // 水面顶边可下沉（topY < 1 时顶面顶点 y 用 topY）
@@ -109,9 +107,8 @@ class GeometryBuilder {
         // 独立 water strip 纹理：单帧 v∈[0,1/32]（动画由纹理 offset 驱动）
         this.uvs.push(c.uv[0], c.uv[1] / 32);
       } else {
-        // CanvasTexture flipY=true：atlas 第 0 行在 v 顶部
-        const u = (col + c.uv[0]) / ATLAS_COLS;
-        const v = 1 - (row + 1 - c.uv[1]) / ATLAS_ROWS;
+        // CanvasTexture flipY=true：atlas 第 0 行在 v 顶部；格内 uv 含 PAD 挤出偏移
+        const [u, v] = atlasUV(tile, c.uv[0], c.uv[1]);
         this.uvs.push(u, v);
       }
       const b = Math.max(AO_CURVE[ao[i]] * sky * faceShade(face.dir), light);
@@ -139,8 +136,6 @@ class GeometryBuilder {
   /** 单面（朝上）补面：楼梯前缘顶面等专用，区域 [x0,z0]-[x1,z1] */
   addFlatTop(x: number, y: number, z: number, rect: [number, number, number, number], tile: number, ao: readonly number[], light = 0, sky = 1): void {
     const [x0, z0, x1, z1] = rect;
-    const col = tile % ATLAS_COLS;
-    const row = Math.floor(tile / ATLAS_COLS);
     const corners: [number, number, number, number][] = [
       [x0, z0, 0, 1],
       [x1, z0, 1, 1],
@@ -151,7 +146,7 @@ class GeometryBuilder {
     for (const [px, pz, u, v] of corners) {
       this.positions.push(x + px, y, z + pz);
       this.normals.push(0, 1, 0);
-      this.uvs.push((col + u) / ATLAS_COLS, 1 - (row + 1 - v) / ATLAS_ROWS);
+      this.uvs.push(...atlasUV(tile, u, v));
       const b = Math.max(AO_CURVE[ao[3]] * sky, light);
       this.colors.push(b, b, b);
     }
@@ -162,8 +157,6 @@ class GeometryBuilder {
   /** 单面（朝下）补面：倒置楼梯的前缘底面，区域 [x0,z0]-[x1,z1] */
   addFlatBottom(x: number, y: number, z: number, rect: [number, number, number, number], tile: number, ao: readonly number[], light = 0, sky = 1): void {
     const [x0, z0, x1, z1] = rect;
-    const col = tile % ATLAS_COLS;
-    const row = Math.floor(tile / ATLAS_COLS);
     const corners: [number, number, number, number][] = [
       [x0, z0, 0, 0],
       [x0, z1, 0, 1],
@@ -174,7 +167,7 @@ class GeometryBuilder {
     for (const [px, pz, u, v] of corners) {
       this.positions.push(x + px, y, z + pz);
       this.normals.push(0, -1, 0);
-      this.uvs.push((col + u) / ATLAS_COLS, 1 - (row + 1 - v) / ATLAS_ROWS);
+      this.uvs.push(...atlasUV(tile, u, v));
       const b = Math.max(AO_CURVE[ao[0]] * sky, light);
       this.colors.push(b, b, b);
     }
@@ -196,8 +189,6 @@ class GeometryBuilder {
       if (cull(face.dir)) continue;
       const d = face.dir;
       const tile = d[1] === 1 ? def.top : d[1] === -1 ? def.bottom : def.side;
-      const col = tile % ATLAS_COLS;
-      const row = Math.floor(tile / ATLAS_COLS);
       const [light, sky] = lightFor(d);
       const ndx = this.positions.length / 3;
       for (let i = 0; i < 4; i++) {
@@ -207,8 +198,7 @@ class GeometryBuilder {
         const pz = d[2] === 0 ? (c.pos[2] === 0 ? minZ : maxZ) : d[2] === 1 ? maxZ : minZ;
         this.positions.push(x + px, y + py, z + pz);
         this.normals.push(d[0], d[1], d[2]);
-        const u = (col + c.uv[0]) / ATLAS_COLS;
-        const v = 1 - (row + 1 - c.uv[1]) / ATLAS_ROWS;
+        const [u, v] = atlasUV(tile, c.uv[0], c.uv[1]);
         this.uvs.push(u, v);
         const b = Math.max(AO_CURVE[ao[i]] * sky, light);
         this.colors.push(b, b, b);
@@ -223,8 +213,6 @@ class GeometryBuilder {
 
   /** 花草十字面片（双面成对发射以兼容 FrontSide 材质，朝上法线满亮度；可偏移/缩放用于墙上火把） */
   addCross(x: number, y: number, z: number, tile: number, light = 0.04, ox = 0, oz = 0, scale = 1, tint?: readonly [number, number, number]): void {
-    const col = tile % ATLAS_COLS;
-    const row = Math.floor(tile / ATLAS_COLS);
     const lo = 0.5 - 0.4 * scale;
     const hi = 0.5 + 0.4 * scale;
     const quads: [number, number, number, number][][] = [
@@ -238,7 +226,7 @@ class GeometryBuilder {
         for (const [px, py, pz, u] of q) {
           this.positions.push(x + px, y + py, z + pz);
           this.normals.push(0, 1, 0);
-          this.uvs.push((col + u) / ATLAS_COLS, 1 - (row + 1 - (py as number)) / ATLAS_ROWS);
+          this.uvs.push(...atlasUV(tile, u, py as number));
           if (tint) this.colors.push(light * tint[0], light * tint[1], light * tint[2]);
           else this.colors.push(light, light, light);
         }

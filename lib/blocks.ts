@@ -29,6 +29,24 @@ export const ICON_TILE_COUNT = 19;
 /** atlas 总行数（pack 格 + 图标格） */
 export const ATLAS_ROWS = Math.ceil((ICON_TILE_START + ICON_TILE_COUNT) / ATLAS_COLS);
 
+/** atlas 格间挤出比例（内容宽度的 1/8；mipmap 防跨格混色——格内容四周向外复制该比例） */
+export const ATLAS_PAD_RATIO = 0.125;
+/** atlas 逻辑格距比例（1 + 2×挤出） */
+export const ATLAS_CELL_RATIO = 1 + ATLAS_PAD_RATIO * 2;
+
+/**
+ * 格内 uv（0..1，v 向上）→ atlas UV（含挤出偏移，分辨率无关）。
+ * 无挤出时与原公式一致：u=(col+u)/COLS，v=1-(row+1-v)/ROWS。
+ */
+export function atlasUV(tile: number, u: number, v: number): [number, number] {
+  const col = tile % ATLAS_COLS;
+  const row = Math.floor(tile / ATLAS_COLS);
+  return [
+    (col * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + u) / (ATLAS_COLS * ATLAS_CELL_RATIO),
+    1 - (row * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + (1 - v)) / (ATLAS_ROWS * ATLAS_CELL_RATIO),
+  ];
+}
+
 // ——— 贴图格注册：stem 即 pack 文件名（scripts/build-pack.ts 据此从贴图包提取为 pack/<格号>.png）———
 const tileStems: string[] = [];
 const tileIndex = new Map<string, number>();

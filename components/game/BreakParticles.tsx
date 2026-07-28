@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { BoxGeometry, Mesh, MeshBasicMaterial, Vector3, type Group } from 'three';
-import { ATLAS_COLS, ATLAS_ROWS, BLOCKS } from '@/lib/blocks';
+import { ATLAS_CELL_RATIO, ATLAS_COLS, ATLAS_PAD_RATIO, ATLAS_ROWS, BLOCKS } from '@/lib/blocks';
 import { breakParticles, getActiveWorld, type BreakParticleEvent } from '@/lib/game';
 import { getAtlasMaterials, tilePx } from '@/lib/textures';
 import { useRendererKind } from './renderer-kind';
@@ -135,10 +135,11 @@ function spawn(e: BreakParticleEvent): void {
     const cx = Math.floor(Math.random() * (tilePx - crop));
     const cy = Math.floor(Math.random() * (tilePx - crop));
     const map = (p.mesh.material as MeshBasicMaterial).map!;
-    map.repeat.set(crop / tilePx / ATLAS_COLS, crop / tilePx / ATLAS_ROWS);
+    // atlas 格距含挤出（CELL_RATIO），子区偏移/比例换算到内容区
+    map.repeat.set((crop / tilePx) / (ATLAS_COLS * ATLAS_CELL_RATIO), (crop / tilePx) / (ATLAS_ROWS * ATLAS_CELL_RATIO));
     map.offset.set(
-      (col + cx / tilePx) / ATLAS_COLS,
-      1 - (row + (cy + crop) / tilePx) / ATLAS_ROWS,
+      (col * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + cx / tilePx) / (ATLAS_COLS * ATLAS_CELL_RATIO),
+      1 - (row * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + (cy + crop) / tilePx) / (ATLAS_ROWS * ATLAS_CELL_RATIO),
     );
     if (++spawned >= PARTICLES_PER_BREAK) break;
   }

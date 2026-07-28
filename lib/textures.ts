@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import {
   ATLAS_COLS,
+  ATLAS_PAD_RATIO,
   ATLAS_ROWS,
   ICON_TILE_COUNT,
   ICON_TILE_START,
@@ -270,13 +271,7 @@ export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMa
 
 async function build(kind: RendererKind): Promise<AtlasMaterials> {
   const pack = loadCustomPack();
-  const canvas = document.createElement('canvas');
-  canvas.width = ATLAS_COLS * tilePx;
-  canvas.height = ATLAS_ROWS * tilePx;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
-
-  // 整格覆盖贴图（按 stem 匹配）：设置里导入的包（localStorage）> 内置默认 pack/（Faithful 32x）
+  // 先定分辨率（自定义包 > 默认 32），再建画布（格距含挤出）
   const custom: Partial<Record<string, HTMLImageElement>> = {};
   if (pack) {
     tilePx = pack.tilePx;
@@ -288,20 +283,30 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   } else {
     tilePx = DEFAULT_TILE_PX;
   }
+  // 整格覆盖贴图（按 stem 匹配）：设置里导入的包（localStorage）> 内置默认 pack/（Faithful 32x）
 
   // 预载全部贴图：默认从单文件 atlas 裁格（一次请求）；导入包按 stem 整格覆盖
   const atlas = await loadImage('/textures/atlas.png');
+  // atlas 格距 = 内容 + 两侧挤出（mipmap 防跨格混色；挤出比例 1/8）
+  const padPx = Math.max(1, Math.round(tilePx * ATLAS_PAD_RATIO));
+  const cellPx = tilePx + padPx * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = ATLAS_COLS * cellPx;
+  canvas.height = ATLAS_ROWS * cellPx;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
   const drawTile = (i: number, dx: number, dy: number) => {
     const stem = TILE_STEMS[i];
     const img = custom[stem];
     let sx = 0;
     let sy = 0;
+    // 内容画在格中心（dx+pad, dy+pad）
     if (img) {
-      ctx.drawImage(img, dx, dy, tilePx, tilePx);
+      ctx.drawImage(img, dx + padPx, dy + padPx, tilePx, tilePx);
     } else {
       sx = (i % ATLAS_COLS) * DEFAULT_TILE_PX;
       sy = Math.floor(i / ATLAS_COLS) * DEFAULT_TILE_PX;
-      ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx, dy, tilePx, tilePx);
+      ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx + padPx, dy + padPx, tilePx, tilePx);
     }
     // 灰度贴图染绿：multiply 上色后按原图 alpha 裁回（树叶镂空不被填色）。
     // 必须 clip 到本格——destination-in 会把源图透明区外的整个画布清掉
@@ -309,36 +314,68 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     if (tint) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(dx, dy, tilePx, tilePx);
+      ctx.rect(dx + padPx, dy + padPx, tilePx, tilePx);
       ctx.clip();
       ctx.globalCompositeOperation = 'multiply';
       ctx.fillStyle = tint;
-      ctx.fillRect(dx, dy, tilePx, tilePx);
+      ctx.fillRect(dx + padPx, dy + padPx, tilePx, tilePx);
       ctx.globalCompositeOperation = 'destination-in';
-      if (img) ctx.drawImage(img, dx, dy, tilePx, tilePx);
-      else ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx, dy, tilePx, tilePx);
+      if (img) ctx.drawImage(img, dx + padPx, dy + padPx, tilePx, tilePx);
+      else ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx + padPx, dy + padPx, tilePx, tilePx);
       ctx.restore();
     }
+    // 挤出：四边 1px 拉伸到 pad 宽 + 四角复制（同画布复制，防 mipmap 跨格混色）
+    const P = padPx;
+    const T = tilePx;
+    const cx = dx + P;
+    const cy = dy + P;
+    ctx.drawImage(canvas, cx, cy, T, 1, cx, dy, T, P); // 上边
+    ctx.drawImage(canvas, cx, cy + T - 1, T, 1, cx, cy + T, T, P); // 下边
+    ctx.drawImage(canvas, cx, cy, 1, T, dx, cy, P, T); // 左边
+    ctx.drawImage(canvas, cx + T - 1, cy, 1, T, cx + T, cy, P, T); // 右边
+    ctx.drawImage(canvas, cx, cy, 1, 1, dx, dy, P, P); // 四角
+    ctx.drawImage(canvas, cx + T - 1, cy, 1, 1, cx + T, dy, P, P);
+    ctx.drawImage(canvas, cx, cy + T - 1, 1, 1, dx, cy + T, P, P);
+    ctx.drawImage(canvas, cx + T - 1, cy + T - 1, 1, 1, cx + T, cy + T, P, P);
   };
   for (let i = 0; i < TILE_STEMS.length; i++) {
-    drawTile(i, (i % ATLAS_COLS) * tilePx, Math.floor(i / ATLAS_COLS) * tilePx);
+    drawTile(i, (i % ATLAS_COLS) * cellPx, Math.floor(i / ATLAS_COLS) * cellPx);
   }
 
   // 图标格（ICON_TILE_START..+15）：工作台/熔炉先铺木板/圆石底座，再叠加绘制
   ctx.imageSmoothingEnabled = false;
   for (let k = 0; k < ICON_TILE_COUNT; k++) {
     const cell = ICON_TILE_START + k;
-    const dx = (cell % ATLAS_COLS) * tilePx;
-    const dy = Math.floor(cell / ATLAS_COLS) * tilePx;
+    const dx = (cell % ATLAS_COLS) * cellPx;
+    const dy = Math.floor(cell / ATLAS_COLS) * cellPx;
     const baseStem = k <= 1 || k === 16 ? 'oak_planks' : k === 2 ? 'cobblestone' : null;
     if (baseStem) drawTile(tileOf(baseStem), dx, dy);
+    else {
+      // 无底座图标也要挤出（先画内容再补边）
+    }
     // 叠加绘制（工作台/熔炉/装备/食物图标）按 16px 坐标系编写，随分辨率缩放
     const overlay = TEXTURE_OVERLAYS[cell];
     if (overlay) {
       ctx.save();
+      ctx.translate(dx + padPx, dy + padPx);
       ctx.scale(tilePx / 16, tilePx / 16);
-      overlay(ctx, (cell % ATLAS_COLS) * 16, Math.floor(cell / ATLAS_COLS) * 16);
+      overlay(ctx, 0, 0);
       ctx.restore();
+      // 叠加后对图标格做同样的挤出（无底座时图标即全部内容）
+      if (!baseStem) {
+        const P = padPx;
+        const T = tilePx;
+        const cx = dx + P;
+        const cy = dy + P;
+        ctx.drawImage(canvas, cx, cy, T, 1, cx, dy, T, P);
+        ctx.drawImage(canvas, cx, cy + T - 1, T, 1, cx, cy + T, T, P);
+        ctx.drawImage(canvas, cx, cy, 1, T, dx, cy, P, T);
+        ctx.drawImage(canvas, cx + T - 1, cy, 1, T, cx + T, cy, P, T);
+        ctx.drawImage(canvas, cx, cy, 1, 1, dx, dy, P, P);
+        ctx.drawImage(canvas, cx + T - 1, cy, 1, 1, cx + T, dy, P, P);
+        ctx.drawImage(canvas, cx, cy + T - 1, 1, 1, dx, cy + T, P, P);
+        ctx.drawImage(canvas, cx + T - 1, cy + T - 1, 1, 1, cx + T, cy + T, P, P);
+      }
     }
   }
 
@@ -347,6 +384,7 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   // minFilter 走 mipmap（Nearest 双线性）：近处保持像素风，远处消除闪烁/摩尔纹
   texture.minFilter = THREE.NearestMipmapLinearFilter;
   texture.generateMipmaps = true;
+  texture.anisotropy = 16; // 高各向异性：斜视地表不糊（配合格间挤出，杜绝跨格混色条纹）
   texture.colorSpace = THREE.SRGBColorSpace;
   atlasDataUrl = canvas.toDataURL();
 
