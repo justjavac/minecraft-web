@@ -57,6 +57,7 @@ export function tickTnt(
         radius: 4,
         maxDamage: 32, // TNT 贴脸约 16 心（普通难度），取一半刻度对齐苦力怕 22
         hurtRadius: 7,
+        tnt: true, // TNT 爆炸 100% 掉落（MC 1.14+）
       });
     }
   }

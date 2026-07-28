@@ -1,6 +1,6 @@
 // 末影人：瞬移、受击激怒与瞬移闪避、对视激怒、水触掉血、末影珍珠投掷传送
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tryPlace } from '../actions';
 import { BLOCK_BY_KEY, WATER } from '../blocks';
 import { cameraRef, pearlTeleport, setActiveWorld } from '../game';
@@ -94,6 +94,21 @@ describe('末影人', () => {
     expect(mobs[0].x !== x || mobs[0].z !== z).toBe(true); // 瞬移离开了水
   });
 
+  it('箭命中末影人：不扣血，命中前瞬移闪避（MC 弹射物免疫）', () => {
+    const w = setup();
+    floor(w);
+    mobs.push(mkEnderman(8.5, 40, 8.5));
+    // random 固定 0.9：不刷怪、游走静止，瞬移落点确定（+6.4 格 → 14,14）
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    arrows.push({ id: 998, x: 5.5, y: 41, z: 8.5, vx: 15, vy: 0, vz: 0, age: 0, fromPlayer: true });
+    for (let i = 0; i < 10 && arrows.length > 0; i++) tickMobs(w, 0.1, { x: 30.5, y: 40, z: 30.5 }, () => undefined);
+    rnd.mockRestore();
+    expect(arrows.length).toBe(0);
+    expect(mobs[0].hp).toBe(40); // 不掉血
+    expect(mobs[0].x).toBe(14.5); // 瞬移闪避（落点由 mock random 确定）
+    expect(mobs[0].z).toBe(14.5);
+  });
+
   it('激怒后追击玩家（距离缩短）', () => {
     const w = setup();
     floor(w);
@@ -107,7 +122,7 @@ describe('末影人', () => {
 });
 
 describe('末影珍珠', () => {
-  it('右键投掷：消耗珍珠、落点传送玩家 + 2 伤害', async () => {
+  it('右键投掷：消耗珍珠、落点传送玩家 + 5 伤害（MC 2.5 心）', async () => {
     const slots: Slot[] = [null, ...emptySlots().slice(1)];
     slots[0] = { kind: 'material', material: 'ender_pearl', count: 2 };
     const w = setup(slots);
@@ -123,7 +138,7 @@ describe('末影珍珠', () => {
     let dmg = 0;
     for (let i = 0; i < 80 && pearlTeleport.pending === null; i++) tickMobs(w, 0.1, { x: 8.5, y: 40, z: 8.5 }, (d) => (dmg += d));
     expect(pearlTeleport.pending).not.toBeNull();
-    expect(dmg).toBe(2); // MC 珍珠摔落伤害
+    expect(dmg).toBe(5); // MC 珍珠传送伤害（2.5 心）
     const slot0 = useGameStore.getState().hotbarSlots[0];
     expect(slot0?.kind === 'material' && slot0.count).toBe(1);
   });

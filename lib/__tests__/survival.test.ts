@@ -1,12 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyArmorSlots } from '../armor';
 import { STONE } from '../blocks';
 import { dayFactorAt, hurtState, worldClock } from '../game';
 import { clearDrops, itemDrops } from '../items';
-import { clearMobs, damageMob, mobInReach, mobs, arrows, tickMobs, trySpawn, type Mob, type MobType } from '../mobs';
+import { MATERIAL_INFO } from '../materials';
+import { clearMobs, damageMob, mobInReach, mobs, arrows, tickMobs, trySpawn, MOB_DEFS, type Mob, type MobType } from '../mobs';
 import { VOID_TERRAIN } from '../noise';
 import { MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '../store';
 import { emptySlots } from '../slots';
+import { weather } from '../weather';
 import { World } from '../world';
 
 function resetStore(): void {
@@ -157,6 +159,22 @@ describe('僵尸', () => {
     expect(mobs.length).toBe(0);
   });
 
+  it('雨天白天不燃烧，转晴恢复（MC：雨/雷暴中亡灵不烧）', () => {
+    const w = floorWorld();
+    mobs.push(mkMob({ id: 6, type: 'zombie', x: 30, y: 10, z: 30, hp: 10 }));
+    worldClock.t = 0.25; // 正午
+    weather.kind = 'rain';
+    try {
+      for (let i = 0; i < 10; i++) tickMobs(w, 0.1, { x: 0, y: 10, z: 0 }, () => {});
+      expect(mobs[0]?.hp).toBe(10); // 雨天不烧
+      weather.kind = 'clear';
+      for (let i = 0; i < 10; i++) tickMobs(w, 0.1, { x: 0, y: 10, z: 0 }, () => {});
+      expect(mobs[0]?.hp).toBeLessThan(10); // 转晴恢复燃烧
+    } finally {
+      weather.kind = 'clear';
+    }
+  });
+
   it('mobInReach 命中视线上的僵尸，背后不中、隔墙不中', () => {
     const w = floorWorld();
     mobs.push(mkMob({ id: 4, type: 'zombie', x: 0.5, y: 10, z: 3 }));
@@ -195,6 +213,20 @@ describe('更多生物', () => {
     clearDrops();
     expect(damageMob(mobs[0], 4)).toBe(true);
     expect(itemDrops.some((d) => d.drop.kind === 'material' && d.drop.material === 'raw_pork')).toBe(true);
+    clearDrops();
+  });
+
+  it('杀僵尸掉 0-2 腐肉（MC；材料已注册）', () => {
+    expect(MOB_DEFS.zombie.drops).toContainEqual({ material: 'rotten_flesh', count: [0, 2] });
+    expect(MATERIAL_INFO.rotten_flesh.name).toBe('腐肉');
+    mobs.push(mkMob({ id: 15, type: 'zombie', x: 1, y: 10, z: 1, hp: 1 }));
+    clearDrops();
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.99); // 数量区间 [0,2] 取满
+    expect(damageMob(mobs[0], 4)).toBe(true);
+    rnd.mockRestore();
+    const flesh = itemDrops.filter((d) => d.drop.kind === 'material' && d.drop.material === 'rotten_flesh');
+    expect(flesh).toHaveLength(1);
+    expect(flesh[0].count).toBe(2);
     clearDrops();
   });
 

@@ -81,6 +81,16 @@ describe('不可推与上限', () => {
     expect(w2.getBlock(4, 31, 4)).toBe(K('chest'));
   });
 
+  it('远古残骸可推（MC；不按镐层级误判为黑曜石类）', () => {
+    const w = setup();
+    w.setBlock(4, 30, 4, pistonIdFor(false, 4));
+    w.setBlock(4, 31, 4, K('ancient_debris'));
+    power(w, 3, 30, 4, true);
+    expect(w.getBlock(4, 31, 4)).toBe(HEAD());
+    expect(w.getBlock(4, 32, 4)).toBe(K('ancient_debris')); // 被推上一格
+    expect(isExtended(w, 4, 30, 4)).toBe(true);
+  });
+
   it('12 格内无空位推不出（MC 上限）', () => {
     const w = setup();
     w.setBlock(4, 30, 4, pistonIdFor(false, 4));

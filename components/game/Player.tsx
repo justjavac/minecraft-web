@@ -7,13 +7,14 @@ import { Euler, PerspectiveCamera, Vector3 } from 'three';
 import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
 import { breakBlock, tryPlace } from '@/lib/actions';
 import { isFarmlandId, isWheatCropId } from '@/lib/crops';
+import { effectiveDigTime } from '@/lib/dig';
 import { cameraRef, debugInfo, digState, getActiveWorld, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput } from '@/lib/game';
 import { otherDimension } from '@/lib/dimension';
 import { END_SPAWN } from '@/lib/end';
 import { isPortalId } from '@/lib/portal';
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
-import { checkEndermanStare, damageMob, mobInReach, mobs } from '@/lib/mobs';
+import { arrows, checkEndermanStare, damageMob, mobInReach, mobs, type Arrow } from '@/lib/mobs';
 import { crystalInReach, hitCrystal, tickCrystals } from '@/lib/endfight';
 import { tickFishing } from '@/lib/fishing';
 import { SEA_LEVEL, type Biome } from '@/lib/noise';
@@ -21,8 +22,8 @@ import { aabbFree, collideAxis, type Aabb } from '@/lib/physics';
 import { playSound } from '@/lib/sound';
 import { useGameStore } from '@/lib/store';
 import { resetSurvivalMem, tickSurvival, type SurvivalMem } from '@/lib/survival';
-import { effects, tickEffects } from '@/lib/effects';
-import { tickBeacons } from '@/lib/beacon';
+import { effects, effectLvls, tickEffects } from '@/lib/effects';
+import { beaconTiers, tickBeacons } from '@/lib/beacon';
 import { TOOLS } from '@/lib/tools';
 import { WORLD_HEIGHT, type World } from '@/lib/world';
 
@@ -78,6 +79,25 @@ function findSpawn(world: World): { x: number; y: number; z: number } {
     y++;
   }
   return { x: bx + 0.5, y, z: bz + 0.5 };
+}
+
+/** 准星 reach 内最近的恶魂爆裂球（近战可打回的；已打回的视为玩家弹射物不再判定） */
+function fireballInReach(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, reach: number): Arrow | null {
+  let best: Arrow | null = null;
+  let bestT = reach;
+  for (const a of arrows) {
+    if (a.kind !== 'ghast' || a.fromPlayer) continue;
+    const t = (a.x - ox) * dx + (a.y - oy) * dy + (a.z - oz) * dz;
+    if (t < 0 || t > bestT) continue;
+    const px = ox + dx * t;
+    const py = oy + dy * t;
+    const pz = oz + dz * t;
+    if (Math.hypot(a.x - px, a.y - py, a.z - pz) < 1.2) {
+      best = a;
+      bestT = t;
+    }
+  }
+  return best;
 }
 
 export function Player() {
@@ -238,6 +258,20 @@ export function Player() {
     if (!world) return;
     const dt = Math.min(delta, 0.05);
 
+    // 开发环境调试钩子（自动化实测用；生产构建不暴露）
+    if (process.env.NODE_ENV === 'development') {
+      (window as unknown as { __mc?: unknown }).__mc = {
+        pos: { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z },
+        camera: state.camera,
+        scene: state.scene,
+        gl: state.gl,
+        fps: debugInfo.fps,
+        store: useGameStore,
+        world,
+        touch: touchInput,
+      };
+    }
+
     // FOV 设置变化时同步到相机
     if (appliedFov.current !== fov) {
       appliedFov.current = fov;
@@ -326,7 +360,7 @@ export function Player() {
     let mx = fx * f - fz * r;
     let mz = fz * f + fx * r;
     const mLen = Math.hypot(mx, mz);
-    const speed = (flying ? FLY_SPEED : inFluid ? WALK_SPEED * (inLava ? 0.4 : 0.6) : WALK_SPEED) * (effects.speed > 0 ? 1.2 : 1); // 迅捷药水 +20%
+    const speed = (flying ? FLY_SPEED : inFluid ? WALK_SPEED * (inLava ? 0.4 : 0.6) : WALK_SPEED) * (effects.speed > 0 ? 1 + 0.2 * Math.max(effectLvls.speed, beaconTiers.get('speed') ?? 1) : 1); // 迅捷药水 +20%/级（II 级 +40%）
     // 摇杆为模拟量：mLen ≤ 1 时保留力度，超过 1（键盘对角线）才归一化
     const scale = mLen > 1 ? speed / mLen : speed;
     mx *= scale;
@@ -390,7 +424,7 @@ export function Player() {
       } else if (!gliding) {
         velY.current = Math.max(velY.current - GRAVITY * dt, -50);
         if (space && onGround.current) {
-          velY.current = JUMP_VEL * (effects.jumpBoost > 0 ? 1.2 : 1); // 跳跃提升（信标）：约 1.8 格高（MC 跳跃 I）
+          velY.current = JUMP_VEL * (effects.jumpBoost > 0 ? 1 + 0.2 * (beaconTiers.get('jumpBoost') ?? 1) : 1); // 跳跃提升（信标）：I 级约 1.8 格（MC 跳跃 I），II 级更高
           onGround.current = false;
           if (gs.worldMode === 'survival') survivalStats.exhaustion += 0.05; // MC：跳跃消耗
         }
@@ -450,13 +484,13 @@ export function Player() {
     } else {
       lavaAcc.current = 0;
     }
-    // 虚空伤害：掉出世界底部持续掉血（MC y<-64；本世界 y<-16，2 点/秒——末地掉岛即此结局）
+    // 虚空伤害：掉出世界底部持续掉血（MC y<-64；本世界 y<-16，2 点/秒——末地掉岛即此结局；MC 虚空伤害不吃护甲）
     if (p.y < -16 && gs.worldMode === 'survival' && !gs.dead) {
       voidAcc.current += dt * 2;
       const vd = Math.floor(voidAcc.current);
       if (vd > 0) {
         voidAcc.current -= vd;
-        gs.damagePlayer(vd);
+        gs.damagePlayer(vd, { bypassArmor: true });
       }
     } else {
       voidAcc.current = 0;
@@ -478,6 +512,18 @@ export function Player() {
         const d = new Vector3();
         cam.getWorldDirection(d);
         checkEndermanStare(world, cam.position.x, cam.position.y, cam.position.z, d.x, d.y, d.z);
+      }
+    }
+
+    // 打回的恶魂爆裂球：接近恶魂即秒杀（MC：反射火球对恶魂 1000 伤害）。
+    // mobs 的通用玩家弹射物命中只有 9 伤且判定盒 0.55（恶魂 MC 体型 4×4×4），这里按体型放宽提前结算
+    for (let i = arrows.length - 1; i >= 0; i--) {
+      const a = arrows[i];
+      if (a.kind !== 'ghast' || !a.fromPlayer) continue;
+      const ghast = mobs.find((m) => m.type === 'ghast' && Math.hypot(m.x - a.x, m.y + 1.5 - a.y, m.z - a.z) < 3);
+      if (ghast) {
+        damageMob(ghast, 1000, playerPosition, 0, world);
+        arrows.splice(i, 1);
       }
     }
 
@@ -567,6 +613,24 @@ export function Player() {
     if (digHeld.current || touchInput.dig) {
       let attacked = false;
       if (gs.worldMode === 'survival' && attackCd.current <= 0) {
+        // 恶魂爆裂球：挥击打回（MC 标志玩法）——沿视线掉头反飞，命中恶魂即秒杀（结算见下方每帧检查）
+        const fb = fireballInReach(
+          camera.position.x, camera.position.y, camera.position.z,
+          rayDir.x, rayDir.y, rayDir.z,
+          REACH,
+        );
+        if (fb) {
+          attackCd.current = 0.25;
+          const sp = Math.hypot(fb.vx, fb.vy, fb.vz); // 保持原速，掉头飞向视线方向（MC 反射球）
+          fb.vx = rayDir.x * sp;
+          fb.vy = rayDir.y * sp;
+          fb.vz = rayDir.z * sp;
+          fb.age = 0; // 重置寿命，保证能飞回远处恶魂
+          fb.fromPlayer = true; // 视为玩家弹射物：不再伤玩家、可命中生物（tickArrows 规则）
+          playSound('dig_choppy', 0.8);
+          survivalStats.exhaustion += 0.1; // MC：攻击消耗
+          attacked = true;
+        } else {
         const mob = mobInReach(
           world,
           camera.position.x, camera.position.y, camera.position.z,
@@ -577,7 +641,7 @@ export function Player() {
           const held = gs.hotbarSlots[gs.selectedSlot];
           const tool = held?.kind === 'tool' ? TOOLS[held.tool] : null;
           attackCd.current = tool?.attackCd ?? 0.25; // MC 拳头 4 攻速，剑 1.6
-          damageMob(mob, (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? (held.ench?.sharpness ?? 0) * 0.5 : 0) + (effects.strength > 0 ? 2 : 0), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0); // 拳头 1 点（半心），锋利 +0.5/级，力量药水 +2，抢夺加掉落
+          damageMob(mob, (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? (held.ench?.sharpness ?? 0) * 0.5 : 0) + (effects.strength > 0 ? 2 * Math.max(effectLvls.strength, beaconTiers.get('strength') ?? 1) : 0), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0, world, held?.kind === 'tool' ? (held.ench?.knockback ?? 0) : 0); // 拳头 1 点（半心），锋利 +0.5/级，力量药水 +2/级（II 级 +4），抢夺加掉落，击退附魔击退目标
           if (tool) gs.damageHeldTool(tool.kind === 'sword' ? 1 : 2); // MC：剑耗 1，工具作武器耗 2
           playSound('dig_choppy', 0.8);
           survivalStats.exhaustion += 0.1; // MC：攻击消耗
@@ -592,6 +656,7 @@ export function Player() {
             });
             attacked = true;
           }
+        }
         }
       }
       if (attacked) {
@@ -621,19 +686,9 @@ export function Player() {
             digState.target = null;
             digState.progress = 0;
           } else {
-            const digTime = BLOCKS[blockId]?.digTime ?? 1;
-            // 持有对应工具时按倍率加速（MC：木 2x 石 4x；效率附魔再 +30%/级）
+            // MC 挖掘时间：工具类型匹配时切硬度×1.5 基值（需镐方块 = digTime×0.3）再除工具倍率；效率附魔仅匹配生效（lib/dig.ts）
             const held = gs.hotbarSlots[gs.selectedSlot];
-            let speedMul = 1;
-            if (held?.kind === 'tool') {
-              const def = TOOLS[held.tool];
-              if (def.kind !== 'sword' && BLOCKS[blockId]?.tool === def.kind) {
-                speedMul = def.speed;
-              }
-              speedMul *= 1 + 0.3 * (held.ench?.efficiency ?? 0);
-            }
-            if (effects.haste > 0) speedMul *= 1.3; // 急迫（信标）：挖掘 +30%（MC 急迫 I +20%，与效率附魔同风格取 30%）
-            digState.progress += (dt * speedMul) / digTime;
+            digState.progress += dt / effectiveDigTime(blockId, held, effects.haste > 0 ? (beaconTiers.get('haste') ?? 1) : 0);
             if (digState.progress >= 1) {
               breakBlock(world, bx, by, bz);
               if (gs.worldMode === 'survival') {

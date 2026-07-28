@@ -107,4 +107,16 @@ describe('流体传播', () => {
     tickFluids(w, 128);
     expect(w.getBlock(4, 11, 4)).toBe(WATER); // MC：2×2 无限水成源
   });
+
+  it('加载区边缘倒水：不向未加载 chunk 传播，不触发隐式生成', () => {
+    const w = new World('fluid-edge', undefined, VOID_TERRAIN);
+    w.getChunk(0, 0);
+    for (let x = 0; x <= 15; x++) w.setBlock(x, 10, 8, STONE); // 地板让水横向扩散
+    w.setBlock(15, 11, 8, WATER); // chunk 东缘的水源，东侧 (1,0) 未加载
+    for (let i = 0; i < 8; i++) tickFluids(w, 128);
+    expect(w.chunks.size).toBe(1); // 邻格读取/扩散都没有隐式生成新 chunk
+    expect(w.chunks.has('1,0')).toBe(false);
+    // 已加载区域内照常扩散
+    expect(waterLevel(w.getBlock(14, 11, 8))).toBe(1);
+  });
 });

@@ -1,7 +1,7 @@
 // 生存数值 tick：掉落伤害 / 溺水 / 消耗度 / 回血（MC 规则，纯逻辑可单测）
 
 import { survivalStats } from './game';
-import { effects } from './effects';
+import { effectLvls, effects } from './effects';
 import { MAX_HEALTH, MAX_HUNGER } from './store';
 
 export interface SurvivalEnv {
@@ -35,7 +35,8 @@ export interface SurvivalSnapshotLite {
 }
 
 export interface SurvivalActions {
-  damagePlayer: (amount: number) => void;
+  /** 造成伤害；bypassArmor 标记不吃护甲的伤害（摔落/溺水/凋零，MC） */
+  damagePlayer: (amount: number, opts?: { bypassArmor?: boolean }) => void;
   setHealth: (v: number) => void;
   setHunger: (v: number) => void;
   setSaturation: (v: number) => void;
@@ -49,44 +50,44 @@ export function tickSurvival(
 ): void {
   if (s.worldMode !== 'survival') return;
 
-  // 掉落伤害：空中累计下落距离，着地结算（>3 格起，MC 公式 floor(dist-3)）
+  // 掉落伤害：空中累计下落距离，着地结算（>3 格起，MC 公式 floor(dist-3)；MC 摔落不吃护甲）
   if (!env.flying && !env.inWater && !env.onGround && env.velY < 0) {
     mem.fallDist -= env.velY * env.dt;
   }
   if (env.onGround || env.inWater || env.flying) {
     if (env.onGround && !env.inWater && !env.flying && mem.fallDist > 3) {
-      actions.damagePlayer(Math.floor(mem.fallDist - 3));
+      actions.damagePlayer(Math.floor(mem.fallDist - 3), { bypassArmor: true });
     }
     mem.fallDist = 0;
   }
 
-  // 溺水：MC 氧气 15 秒，耗尽后每秒 2 点伤害
-  if (env.headInWater && !env.flying) {
+  // 溺水：MC 氧气 15 秒，耗尽后每秒 2 点伤害（MC 溺水不吃护甲）；水肺效果期内不耗氧气
+  if (env.headInWater && !env.flying && effects.waterBreath <= 0) {
     mem.air -= env.dt;
     if (mem.air <= 0) {
-      actions.damagePlayer(2);
+      actions.damagePlayer(2, { bypassArmor: true });
       mem.air = 1;
     }
   } else {
     mem.air = 15;
   }
 
-  // 凋零：凋灵骷髅命中附加的 5 秒 DOT（MC 凋零效果，每秒 1 点）
+  // 凋零：凋灵骷髅命中附加的 5 秒 DOT（MC 凋零效果，每秒 1 点，不吃护甲）
   if (survivalStats.wither > 0) {
     survivalStats.wither -= env.dt;
     mem.witherTick += env.dt;
     if (mem.witherTick >= 1) {
       mem.witherTick = 0;
-      actions.damagePlayer(1);
+      actions.damagePlayer(1, { bypassArmor: true });
     }
   } else {
     mem.witherTick = 0;
   }
 
-  // 再生药水：效果期内每 2 秒回 1 点生命（MC 再生 I）
+  // 再生药水：效果期内回血（MC：I 级每 2 秒 1 点，II 级每 1 秒 1 点）
   if (effects.regen > 0) {
     mem.regenPotionTick += env.dt;
-    if (mem.regenPotionTick >= 2 && s.health < MAX_HEALTH) {
+    if (mem.regenPotionTick >= (effectLvls.regen >= 2 ? 1 : 2) && s.health < MAX_HEALTH) {
       mem.regenPotionTick = 0;
       actions.setHealth(Math.min(MAX_HEALTH, s.health + 1));
     }

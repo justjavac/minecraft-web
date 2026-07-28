@@ -28,7 +28,7 @@ describe('远古残骸', () => {
     const def = BLOCKS[K('ancient_debris')];
     expect(def.tool).toBe('pickaxe');
     expect(def.pickTier).toBe(3); // 钻镐以上，且防爆（explosion.ts 规则）
-    expect(def.digTime).toBeGreaterThanOrEqual(30);
+    expect(def.digTime).toBe(150); // MC 硬度 30 × 5（钻镐 150×0.3/8 = 5.6s，与 MC 一致）
   });
 
   it('下界矿脉：y8-22 存在远古残骸（埋于下界岩）', () => {

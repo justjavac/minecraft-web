@@ -6,22 +6,34 @@ import { addStackToSlots, type Slot } from './slots';
 export interface PotionDef {
   name: string;
   /** 饮用效果（null = 无效果的基础药水；键名与 lib/effects.ts 一致） */
-  effect: 'speed' | 'strength' | 'healing' | 'fireRes' | 'regen' | null;
+  effect: 'speed' | 'strength' | 'healing' | 'fireRes' | 'regen' | 'waterBreath' | null;
   /** 效果持续秒数（治疗为瞬发，0） */
   duration: number;
+  /** II 级增强版（荧石粉酿造；缺省 I 级） */
+  lvl?: 2;
 }
 
 export const POTIONS: Record<string, PotionDef> = {
   water_bottle: { name: '水瓶', effect: null, duration: 0 },
   awkward: { name: '粗制药水', effect: null, duration: 0 },
   speed: { name: '迅捷药水', effect: 'speed', duration: 180 },
+  speed_ext: { name: '迅捷药水（延长）', effect: 'speed', duration: 480 }, // MC 3:00 → 8:00
+  speed_2: { name: '迅捷药水 II', effect: 'speed', duration: 90, lvl: 2 },
   strength: { name: '力量药水', effect: 'strength', duration: 180 },
+  strength_ext: { name: '力量药水（延长）', effect: 'strength', duration: 480 },
+  strength_2: { name: '力量药水 II', effect: 'strength', duration: 90, lvl: 2 },
   healing: { name: '治疗药水', effect: 'healing', duration: 0 },
+  healing_2: { name: '治疗药水 II', effect: 'healing', duration: 0, lvl: 2 }, // 瞬回 4 心（MC）
   fire_res: { name: '抗火药水', effect: 'fireRes', duration: 180 },
+  fire_res_ext: { name: '抗火药水（延长）', effect: 'fireRes', duration: 480 }, // 抗火无 II 级（MC）
   regeneration: { name: '再生药水', effect: 'regen', duration: 30 },
+  regeneration_ext: { name: '再生药水（延长）', effect: 'regen', duration: 80 },
+  regeneration_2: { name: '再生药水 II', effect: 'regen', duration: 15, lvl: 2 },
+  water_breathing: { name: '水肺药水', effect: 'waterBreath', duration: 180 },
+  water_breathing_ext: { name: '水肺药水（延长）', effect: 'waterBreath', duration: 480 }, // 水肺无 II 级（MC）
 };
 
-/** 酿造配方：'<药水>+<材料>' → 药水（MC 核心链：水瓶→粗制→效果药） */
+/** 酿造配方：'<药水>+<材料>' → 药水（MC 核心链：水瓶→粗制→效果药；红石延时 ×8/3、荧石粉 II 级时长减半） */
 export const BREWING: Record<string, string> = {
   'water_bottle+nether_wart': 'awkward',
   'awkward+sugar': 'speed',
@@ -29,12 +41,23 @@ export const BREWING: Record<string, string> = {
   'awkward+glistering_melon': 'healing',
   'awkward+magma_cream': 'fire_res',
   'awkward+ghast_tear': 'regeneration',
+  'awkward+pufferfish': 'water_breathing',
+  // 二级酿造：红石粉延时（MC：延时版与增强版互不兼容，故无 ext+荧石粉 / 2+红石）
+  'speed+redstone': 'speed_ext',
+  'strength+redstone': 'strength_ext',
+  'fire_res+redstone': 'fire_res_ext',
+  'regeneration+redstone': 'regeneration_ext',
+  'water_breathing+redstone': 'water_breathing_ext',
+  'speed+glowstone_dust': 'speed_2',
+  'strength+glowstone_dust': 'strength_2',
+  'healing+glowstone_dust': 'healing_2',
+  'regeneration+glowstone_dust': 'regeneration_2',
 };
 
 export const BREW_TIME = 20; // MC 20 秒一轮
 export const FUEL_USES = 20; // 一份烈焰粉酿 20 轮（MC）
 
-const INGREDIENTS = ['nether_wart', 'sugar', 'blaze_powder', 'glistering_melon', 'magma_cream'];
+const INGREDIENTS = ['nether_wart', 'sugar', 'blaze_powder', 'glistering_melon', 'magma_cream', 'ghast_tear', 'pufferfish', 'redstone', 'glowstone_dust'];
 
 export interface BrewStack {
   item: string;
@@ -42,7 +65,7 @@ export interface BrewStack {
 }
 
 export interface BrewState {
-  /** 材料槽（地狱疣/糖/烈焰粉/闪烁的西瓜片/岩浆膏） */
+  /** 材料槽（酿造材料，见 INGREDIENTS） */
   ingredient: BrewStack | null;
   /** 燃料槽（烈焰粉） */
   fuel: BrewStack | null;

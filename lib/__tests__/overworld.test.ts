@@ -156,13 +156,15 @@ describe('标志植被生成', () => {
           // 只对底段（下方非甘蔗）断言：岸的四邻同层必有水
           if (y > 0 && data[localIndex(x, y - 1, z)] === K('sugar_cane')) continue;
           cane++;
+          // 邻格可能在相邻 chunk（边界列现在也允许长甘蔗），按世界坐标跨 chunk 读
+          const wx = cx * 16 + x;
+          const wz = cz * 16 + z;
           const below = y - 1;
           const near =
-            x > 0 && x < 15 && z > 0 && z < 15 &&
-            (data[localIndex(x + 1, below, z)] === BLOCK_BY_KEY.water.id ||
-              data[localIndex(x - 1, below, z)] === BLOCK_BY_KEY.water.id ||
-              data[localIndex(x, below, z + 1)] === BLOCK_BY_KEY.water.id ||
-              data[localIndex(x, below, z - 1)] === BLOCK_BY_KEY.water.id);
+            w.getBlock(wx + 1, below, wz) === BLOCK_BY_KEY.water.id ||
+            w.getBlock(wx - 1, below, wz) === BLOCK_BY_KEY.water.id ||
+            w.getBlock(wx, below, wz + 1) === BLOCK_BY_KEY.water.id ||
+            w.getBlock(wx, below, wz - 1) === BLOCK_BY_KEY.water.id;
           expect(near).toBe(true);
         }
       }

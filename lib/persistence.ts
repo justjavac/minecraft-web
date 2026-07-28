@@ -137,6 +137,29 @@ export async function saveChunk(key: string, data: Uint16Array): Promise<void> {
   await d.put('chunks', data, key);
 }
 
+/** 屠龙标记的 meta 键：按世界种子隔离（与非主世界 chunk 的 'n:'/'e:' 前缀同风格；清档随 meta 一并清除） */
+const dragonSlainKey = (seed: string): string => `e:dragon-slain:${seed}`;
+
+/** 记录末影龙已被击杀（击杀即写入，防刷新页面后龙复活而返回门已激活的矛盾态） */
+export async function saveDragonSlain(seed: string): Promise<void> {
+  try {
+    const d = await db();
+    await d.put('meta', true, dragonSlainKey(seed));
+  } catch (err) {
+    console.warn('屠龙标记写入失败', err);
+  }
+}
+
+/** 读取末影龙是否已被击杀（进末地时恢复；无记录或读取失败按未击杀） */
+export async function loadDragonSlain(seed: string): Promise<boolean> {
+  try {
+    const d = await db();
+    return ((await d.get('meta', dragonSlainKey(seed))) as boolean | undefined) === true;
+  } catch {
+    return false;
+  }
+}
+
 /** 把世界里所有被修改过的 chunk 写入 IndexedDB 并清除标记；同时更新 meta（位置/时刻/模式/生存数值）。
  * keyPrefix 用于下界存档隔离（下界 chunk 键加 'n:' 前缀） */
 export async function saveModifiedChunks(world: World, extras: SaveExtras = {}, keyPrefix = ''): Promise<void> {

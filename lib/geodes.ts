@@ -1,6 +1,6 @@
-// 紫水晶洞：地下三层球壳（平滑玄武岩 → 方解石 → 紫水晶），内腔长晶簇；区域级确定性，跨 chunk 一致
+// 紫水晶洞：地下三层球壳（平滑玄武岩 → 方解石 → 紫水晶），内腔掏空、贴壳长晶簇；区域级确定性，跨 chunk 一致
 
-import { BLOCK_BY_KEY } from './blocks';
+import { AIR, BLOCK_BY_KEY } from './blocks';
 import { hash2, type Terrain } from './noise';
 import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
 
@@ -16,7 +16,7 @@ interface GeodeSpot {
 }
 
 /** 该区域是否有紫水晶洞（约 1/24 区域，中心 y 12-28） */
-function geodeAt(seedHash: number, rx: number, rz: number): GeodeSpot | null {
+export function geodeAt(seedHash: number, rx: number, rz: number): GeodeSpot | null {
   const r0 = hash2(seedHash ^ 0x9e0d1a, rx, rz);
   if (r0 >= 1 / 24) return null;
   return {
@@ -47,8 +47,17 @@ export function applyGeodes(seedHash: number, terrain: Terrain, cx: number, cz: 
     for (let drz = -1; drz <= 1; drz++) {
       const g = geodeAt(seedHash, rx + drx, rz + drz);
       if (!g) continue;
-      // 整球埋在地下才生成（露出水底的不要）
-      if (terrain.heightAt(g.x, g.z) < g.y + R_OUT + 2) continue;
+      // 整球埋在地下才生成（露出山坡/海床的不要）：球心加外壳轴向四端点都须低于地表，
+      // 只查球心一列会让半径 5.5 的球边缘露出山坡
+      const RB = Math.ceil(R_OUT);
+      let exposed = false;
+      for (const [ox, oz] of [[0, 0], [RB, 0], [-RB, 0], [0, RB], [0, -RB]] as const) {
+        if (terrain.heightAt(g.x + ox, g.z + oz) < g.y + R_OUT + 2) {
+          exposed = true;
+          break;
+        }
+      }
+      if (exposed) continue;
       const r = Math.ceil(R_OUT);
       for (let dx = -r; dx <= r; dx++) {
         for (let dy = -r; dy <= r; dy++) {
@@ -66,9 +75,9 @@ export function applyGeodes(seedHash: number, terrain: Terrain, cx: number, cz: 
             } else if (d > R_IN - 1.2) {
               // 紫水晶内壳：约 1/5 为母岩（MC 比例）
               put(data, cx, cz, x, y, z, cellR < 0.2 ? budding : amethyst);
-            } else if (d > R_IN - 2.2) {
-              // 内腔：贴壳面约 1/6 长晶簇，其余留空
-              if (cellR < 0.16) put(data, cx, cz, x, y, z, cluster);
+            } else {
+              // 内腔掏空：贴壳环带约 1/6 长晶簇，核心与其余各格为空气（不掏就是实心石球）
+              put(data, cx, cz, x, y, z, d > R_IN - 2.2 && cellR < 0.16 ? cluster : AIR);
             }
           }
         }

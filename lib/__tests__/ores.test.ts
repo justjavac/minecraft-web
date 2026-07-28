@@ -41,6 +41,8 @@ describe('矿石定义', () => {
     }
     expect(BLOCK_BY_KEY.coal_ore.pickTier).toBe(0);
     expect(BLOCK_BY_KEY.iron_ore.pickTier).toBe(1);
+    expect(BLOCK_BY_KEY.gold_ore.pickTier).toBe(2); // MC：金矿需铁镐
+    expect(BLOCK_BY_KEY.emerald_ore.pickTier).toBe(2); // MC：绿宝石矿需铁镐
     expect(BLOCK_BY_KEY.diamond_ore.pickTier).toBe(2);
     expect(BLOCK_BY_KEY.obsidian.pickTier).toBe(3);
   });
@@ -78,6 +80,28 @@ describe('镐层级门控掉落', () => {
     clearDrops();
     breakBlock(worldWith(BLOCK_BY_KEY.deepslate_iron_ore.id), 4, 4, 4);
     expect(itemDrops[0]?.drop).toEqual({ kind: 'material', material: 'raw_iron' });
+  });
+
+  it('镐挖石头掉圆石（MC：无精准采集不掉石头自身）', () => {
+    holdTool('wooden_pickaxe');
+    breakBlock(worldWith(STONE), 4, 4, 4);
+    expect(itemDrops.length).toBe(1);
+    expect(itemDrops[0].drop).toEqual({ kind: 'block', blockId: BLOCK_BY_KEY.cobble.id });
+  });
+
+  it('金矿/绿宝石矿需铁镐（tier 2）：石镐无掉落，铁镐掉材料', () => {
+    holdTool('stone_pickaxe');
+    breakBlock(worldWith(BLOCK_BY_KEY.gold_ore.id), 4, 4, 4);
+    expect(itemDrops.length).toBe(0);
+    breakBlock(worldWith(BLOCK_BY_KEY.emerald_ore.id), 4, 4, 4);
+    expect(itemDrops.length).toBe(0);
+
+    holdTool('iron_pickaxe');
+    breakBlock(worldWith(BLOCK_BY_KEY.gold_ore.id), 4, 4, 4);
+    expect(itemDrops[0]?.drop).toEqual({ kind: 'material', material: 'raw_gold' });
+    clearDrops();
+    breakBlock(worldWith(BLOCK_BY_KEY.emerald_ore.id), 4, 4, 4);
+    expect(itemDrops[0]?.drop).toEqual({ kind: 'material', material: 'emerald' });
   });
 });
 

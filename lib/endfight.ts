@@ -1,10 +1,11 @@
-// 末影龙战：末影水晶（柱顶实体，为龙回血、击毁爆炸）、龙已被击杀标记、击杀结算（龙蛋 + 返回门激活）
-// 依赖方向：本文件 import mobs 的回调注入点（setDragonDeathHandler），不反向被 import，无循环
+// 末影龙战：末影水晶（柱顶实体，为龙回血、击毁爆炸）、龙已被击杀标记（IndexedDB 持久化）、击杀结算（龙蛋 + 返回门激活）
+// 与 mobs 互有 import（本文件用 setDragonDeathHandler 注入回调、mobs 数组纠错；mobs 用 endCrystals/hitCrystal）——仅函数内使用，模块加载期不触 TDZ
 
 import { BLOCK_BY_KEY } from './blocks';
 import { endPillars } from './end';
 import { explodeAt } from './explosion';
-import { setDragonDeathHandler } from './mobs';
+import { mobs, setDragonDeathHandler } from './mobs';
+import { loadDragonSlain, saveDragonSlain } from './persistence';
 import type { World } from './world';
 
 const K = (key: string) => BLOCK_BY_KEY[key].id;
@@ -22,23 +23,31 @@ export const endCrystals: EndCrystal[] = [];
 /** 水晶列表变更版本号（渲染组件重建用） */
 export const crystalVersion = { v: 0 };
 
-/** 龙是否已被击杀（内存态：杀死后重进末地不再生成龙，祭坛保持激活；页面刷新后按世界方块状态重新开战） */
+/** 龙是否已被击杀（杀死后重进末地不再生成龙，祭坛保持激活；经 lib/persistence.ts 持久化，刷新页面后读档恢复） */
 export const dragonState = { slain: false };
 
-/** 进入末地时初始化：未屠龙则每根柱顶放一颗水晶；惰性注册击杀回调（避免模块加载期触发循环依赖 TDZ） */
+/** 进入末地时初始化：未屠龙则每根柱顶放一颗水晶；惰性注册击杀回调（避免模块加载期触发循环依赖 TDZ）。
+ *  返回的 Promise 在读档恢复屠龙标记后落定：已屠龙则清掉刚放的水晶与调用方在恢复前误生成的龙（World.tsx 不等恢复就生成龙，这里纠错） */
 let handlerRegistered = false;
-export function initEndFight(world: World): void {
+export function initEndFight(world: World): Promise<void> {
   if (!handlerRegistered) {
     setDragonDeathHandler(onDragonKilled);
     handlerRegistered = true;
   }
   endCrystals.length = 0;
   crystalVersion.v++;
-  if (dragonState.slain) return;
+  if (dragonState.slain) return Promise.resolve();
   for (const p of endPillars(world.seedHash)) {
     endCrystals.push({ x: p.x + 0.5, y: p.top + 1.2, z: p.z + 0.5, alive: true });
   }
   crystalVersion.v++;
+  return loadDragonSlain(world.seed).then((slain) => {
+    if (!slain || dragonState.slain) return;
+    dragonState.slain = true;
+    endCrystals.length = 0;
+    crystalVersion.v++;
+    for (let i = mobs.length - 1; i >= 0; i--) if (mobs[i].type === 'ender_dragon') mobs.splice(i, 1);
+  });
 }
 
 export function clearEndFight(): void {
@@ -91,9 +100,10 @@ export function tickCrystals(dragon: { x: number; y: number; z: number; hp: numb
   if (near) dragon.hp = Math.min(200, dragon.hp + 1);
 }
 
-/** 击杀结算（damageMob 注入回调）：标记屠龙、清空水晶、祭坛激活——中心 3×3 变返回门（end_portal），中心柱顶放龙蛋（MC） */
+/** 击杀结算（damageMob 注入回调）：标记屠龙并写入存档（刷新不复活）、清空水晶、祭坛激活——中心 3×3 变返回门（end_portal），中心柱顶放龙蛋（MC） */
 function onDragonKilled(world: World): void {
   dragonState.slain = true;
+  void saveDragonSlain(world.seed);
   endCrystals.length = 0;
   crystalVersion.v++;
   const ay = world.terrain.heightAt(0, 0);

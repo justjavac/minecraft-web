@@ -3,6 +3,7 @@
 import { AIR, BLOCKS, BLOCK_BY_KEY, FURNACE, isLavaId, isWaterId, tileOf } from './blocks';
 import { dropFurnaceContents } from './furnace';
 import { breakParticles } from './game';
+import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { boom, playSound } from './sound';
 import { dropStorageContents } from './storage';
 import { useGameStore } from './store';
@@ -16,6 +17,8 @@ export interface ExplodeOptions {
   maxDamage: number;
   /** 伤害判定半径 */
   hurtRadius: number;
+  /** TNT 爆炸：被破坏方块 100% 掉落（MC 1.14+）；缺省按 1/radius 概率掉落（苦力怕/恶魂/凋灵） */
+  tnt?: boolean;
 }
 
 /** 防爆方块：基岩/强化深板岩/黑曜石类（MC 爆炸抗性） */
@@ -55,8 +58,21 @@ export function explodeAt(
           if (s.storageOpen === key) s.setStorageOpen(null);
           if (s.furnaceOpen === key) s.setFurnaceOpen(null);
           world.setBlock(bx, by, bz, AIR);
-          // TNT 被波及：转为点燃实体连锁引爆（MC 一致）
-          if (id === BLOCK_BY_KEY.tnt.id) igniteTnt(bx, by, bz);
+          // TNT 被波及：转为点燃实体连锁引爆（MC 一致，不再掉方块）
+          if (id === BLOCK_BY_KEY.tnt.id) {
+            igniteTnt(bx, by, bz);
+          } else {
+            // 爆炸掉落（MC 1.14+）：TNT 100% 掉落，其他爆炸按 1/威力概率；防爆方块在上面已跳过
+            const def = BLOCKS[id];
+            if (def && Math.random() < (opts.tnt ? 1 : 1 / R)) {
+              if (def.drop) {
+                const [min, max] = def.drop.count;
+                spawnMaterialDrop(def.drop.material, bx + 0.5, by + 0.4, bz + 0.5, min + Math.floor(Math.random() * (max - min + 1)));
+              } else {
+                spawnBlockDrop(def.dropBlock ?? id, bx + 0.5, by + 0.4, bz + 0.5);
+              }
+            }
+          }
         }
       }
     }

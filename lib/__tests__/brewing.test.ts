@@ -65,6 +65,77 @@ describe('酿造循环', () => {
     expect(b.potions[1]?.item).toBe('speed');
   });
 
+  it('恶魂之泪可入材料槽：粗制 + 恶魂之泪 → 再生药水（MC）', () => {
+    const b = getBrew('13,14,15');
+    // 此前 INGREDIENTS 缺 ghast_tear，材料放不进槽（死配方）
+    expect(putIntoBrewing([mat('ghast_tear')], 0, b).to).toBe('ingredient');
+    b.fuel = { item: 'blaze_powder', count: 1 };
+    b.potions[0] = { item: 'awkward', count: 1 };
+    for (let i = 0; i < BREW_TIME; i++) tickBrewing(1);
+    expect(b.potions[0]?.item).toBe('regeneration');
+  });
+
+  it('河豚入材料槽：粗制 + 河豚 → 水肺药水（MC）', () => {
+    const b = getBrew('16,17,18');
+    expect(putIntoBrewing([mat('pufferfish')], 0, b).to).toBe('ingredient');
+    b.fuel = { item: 'blaze_powder', count: 1 };
+    b.potions[0] = { item: 'awkward', count: 1 };
+    for (let i = 0; i < BREW_TIME; i++) tickBrewing(1);
+    expect(b.potions[0]?.item).toBe('water_breathing');
+    expect(POTIONS.water_breathing).toMatchObject({ effect: 'waterBreath', duration: 180 });
+  });
+
+  it('二级酿造：红石延时 ×8/3、荧石粉 II 级（MC）', () => {
+    // 红石/荧石粉可入材料槽（各用一台，避免材料槽互占）
+    expect(putIntoBrewing([mat('redstone')], 0, getBrew('19,20,21')).to).toBe('ingredient');
+    expect(putIntoBrewing([mat('glowstone_dust')], 0, getBrew('25,26,27')).to).toBe('ingredient');
+    // 延时配方（3 分钟 → 8 分钟）
+    expect(BREWING['speed+redstone']).toBe('speed_ext');
+    expect(BREWING['strength+redstone']).toBe('strength_ext');
+    expect(BREWING['fire_res+redstone']).toBe('fire_res_ext');
+    expect(BREWING['regeneration+redstone']).toBe('regeneration_ext');
+    expect(BREWING['water_breathing+redstone']).toBe('water_breathing_ext');
+    // 增强配方（时长减半，治疗瞬发无时长）
+    expect(BREWING['speed+glowstone_dust']).toBe('speed_2');
+    expect(BREWING['strength+glowstone_dust']).toBe('strength_2');
+    expect(BREWING['healing+glowstone_dust']).toBe('healing_2');
+    expect(BREWING['regeneration+glowstone_dust']).toBe('regeneration_2');
+    // 抗火/水肺无 II 级、瞬发治疗无延时（MC）
+    expect(BREWING['fire_res+glowstone_dust']).toBeUndefined();
+    expect(BREWING['water_breathing+glowstone_dust']).toBeUndefined();
+    expect(BREWING['healing+redstone']).toBeUndefined();
+    // 数值：180 → 480（×8/3）；II 级 90（减半）；再生 30 → 80 / 15
+    expect(POTIONS.speed_ext.duration).toBe(480);
+    expect(POTIONS.strength_ext.duration).toBe(480);
+    expect(POTIONS.fire_res_ext.duration).toBe(480);
+    expect(POTIONS.water_breathing_ext.duration).toBe(480);
+    expect(POTIONS.regeneration_ext.duration).toBe(80);
+    expect(POTIONS.speed_2).toMatchObject({ effect: 'speed', duration: 90, lvl: 2 });
+    expect(POTIONS.strength_2).toMatchObject({ effect: 'strength', duration: 90, lvl: 2 });
+    expect(POTIONS.healing_2).toMatchObject({ effect: 'healing', duration: 0, lvl: 2 });
+    expect(POTIONS.regeneration_2).toMatchObject({ effect: 'regen', duration: 15, lvl: 2 });
+  });
+
+  it('延时/增强实际可酿：迅捷 + 红石 → 延长；力量 + 荧石粉 → II', () => {
+    const b = getBrew('22,23,24');
+    b.fuel = { item: 'blaze_powder', count: 2 };
+    b.ingredient = { item: 'redstone', count: 1 };
+    b.potions[0] = { item: 'speed', count: 1 };
+    b.potions[1] = { item: 'strength', count: 1 };
+    for (let i = 0; i < BREW_TIME; i++) tickBrewing(1);
+    expect(b.potions[0]?.item).toBe('speed_ext');
+    expect(b.potions[1]?.item).toBe('strength_ext'); // 同槽多瓶同步转化（MC）
+    // 延时版不能再增强（MC：延时与增强互不兼容）
+    b.ingredient = { item: 'glowstone_dust', count: 1 };
+    for (let i = 0; i < BREW_TIME; i++) tickBrewing(1);
+    expect(b.potions[0]?.item).toBe('speed_ext');
+    // I 级 + 荧石粉 → II
+    b.potions[2] = { item: 'strength', count: 1 };
+    b.ingredient = { item: 'glowstone_dust', count: 1 };
+    for (let i = 0; i < BREW_TIME; i++) tickBrewing(1);
+    expect(b.potions[2]?.item).toBe('strength_2');
+  });
+
   it('配方表与 MC 一致（水瓶→粗制；粗制→速度/力量/治疗/抗火）', () => {
     expect(BREWING['water_bottle+nether_wart']).toBe('awkward');
     expect(BREWING['awkward+sugar']).toBe('speed');

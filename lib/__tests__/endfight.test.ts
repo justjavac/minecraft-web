@@ -7,8 +7,28 @@ import { dragonState, endCrystals, hitCrystal, initEndFight, resetEndFight, tick
 import { bossState } from '../game';
 import { arrows, clearMobs, damageMob, makeEnderDragon, mobs, tickMobs } from '../mobs';
 import { hashString } from '../noise';
+import { loadDragonSlain } from '../persistence';
 import { XP_MOB } from '../xp';
 import { World } from '../world';
+
+// IndexedDB 内存替身：persistence 的屠龙标记读写走这里（node 测试环境无 indexedDB）
+vi.mock('idb', () => {
+  const stores = new Map<string, Map<string, unknown>>();
+  const store = (name: string): Map<string, unknown> => {
+    let s = stores.get(name);
+    if (!s) {
+      s = new Map();
+      stores.set(name, s);
+    }
+    return s;
+  };
+  return {
+    openDB: async () => ({
+      get: async (s: string, k: string) => store(s).get(k),
+      put: async (s: string, v: unknown, k: string) => void store(s).set(k, v),
+    }),
+  };
+});
 
 const K = (k: string) => BLOCK_BY_KEY[k].id;
 
@@ -164,5 +184,27 @@ describe('击杀结算', () => {
     tickMobs(w, 0.1, { x: c.x - 3, y: c.y, z: c.z }, () => undefined);
     tickMobs(w, 0.1, { x: c.x - 3, y: c.y, z: c.z }, () => undefined);
     expect(c.alive).toBe(false);
+  });
+});
+
+describe('屠龙标记持久化', () => {
+  it('杀龙写入存档；模拟刷新后 initEndFight 恢复：不放水晶、移除误生成的龙', async () => {
+    // 独立种子：不与本文件其他用例共享存档键
+    const w = endWorld('persist-test');
+    void initEndFight(w); // 注册击杀回调（全局一次性）
+    mobs.push(makeEnderDragon(0.5, 84, 0.5));
+    expect(damageMob(mobs[mobs.length - 1], 999, undefined, 0, w)).toBe(true);
+    expect(dragonState.slain).toBe(true);
+    // 存档写入落定（onDragonKilled 内 fire-and-forget，这里等它写完）
+    await vi.waitFor(async () => expect(await loadDragonSlain('persist-test')).toBe(true));
+    // 模拟页面刷新 + 重进末地：内存态清空；World.tsx 流程在恢复完成前同步生成龙
+    resetEndFight();
+    const restored = initEndFight(w);
+    if (!dragonState.slain) mobs.push(makeEnderDragon(0.5, 84, 0.5));
+    expect(mobs.some((m) => m.type === 'ender_dragon')).toBe(true); // 恢复前的误生成
+    await restored;
+    expect(dragonState.slain).toBe(true);
+    expect(endCrystals).toHaveLength(0);
+    expect(mobs.some((m) => m.type === 'ender_dragon')).toBe(false);
   });
 });

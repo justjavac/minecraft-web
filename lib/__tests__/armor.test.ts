@@ -64,6 +64,22 @@ describe('皮甲装备', () => {
     expect(useGameStore.getState().health).toBe(10);
   });
 
+  it('bypassArmor：摔落类伤害不吃护甲/保护减伤，也不耗装备耐久（MC）', () => {
+    for (const p of ['helmet', 'chestplate', 'leggings', 'boots'] as const) {
+      useGameStore.getState().addArmor(p);
+      useGameStore.getState().equipSelectedArmor();
+    }
+    useGameStore.getState().damagePlayer(10, { bypassArmor: true });
+    const s = useGameStore.getState();
+    expect(s.health).toBe(10); // 全额伤害（穿甲时本会减到 8）
+    expect(s.armorSlots.helmet!.durability).toBe(armorDef('leather', 'helmet').durability); // 耐久未耗
+    expect(s.armorSlots.chestplate!.durability).toBe(armorDef('leather', 'chestplate').durability);
+    // 默认（不传 opts）仍吃护甲减伤
+    hurtState.lastAt = Number.NEGATIVE_INFINITY;
+    useGameStore.getState().damagePlayer(10);
+    expect(useGameStore.getState().health).toBe(10 - Math.ceil(10 * 0.72));
+  });
+
   it('死亡时装备槽物品也散落', () => {
     useGameStore.getState().addArmor('boots');
     useGameStore.getState().equipSelectedArmor();

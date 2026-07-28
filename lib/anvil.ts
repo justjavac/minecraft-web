@@ -12,6 +12,8 @@ export function toolRepairMaterial(tool: ToolType): string | null {
   if (!def) return null;
   if (tool === 'bow' || tool === 'fishing_rod') return 'material:string';
   if (tool === 'shears') return 'material:iron_ingot';
+  // 金工具 tier 记为 'wood'（采掘层级同木），修复材料须按工具名识别（MC：金→金锭）
+  if (tool.startsWith('golden_')) return 'material:gold_ingot';
   switch (def.tier) {
     case 'wood':
       return 'block:oak_planks';

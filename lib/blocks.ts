@@ -24,8 +24,8 @@ export const ATLAS_COLS = 8;
 export const TILE_PX = 32;
 /** canvas 绘制图标（工作台/熔炉/装备/食物）的 atlas 起始格号；pack 贴图格数须小于它 */
 export const ICON_TILE_START = 512;
-/** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧、17 凋灵骷髅头、18 末地星空） */
-export const ICON_TILE_COUNT = 19;
+/** canvas 图标格数量（0-1 工作台、2 熔炉、3-15 装备/食物、16 箱子侧、17 凋灵骷髅头、18 末地星空、19 鸡蛋、20 河豚、21 蜘蛛眼、22 金粒） */
+export const ICON_TILE_COUNT = 23;
 /** atlas 总行数（pack 格 + 图标格） */
 export const ATLAS_ROWS = Math.ceil((ICON_TILE_START + ICON_TILE_COUNT) / ATLAS_COLS);
 
@@ -121,7 +121,7 @@ export interface BlockDef {
   placeSound: SoundGroup;
   /** 在其上行走的脚步音效 */
   stepSound: SoundGroup | null;
-  /** 长按挖掘时长（秒） */
+  /** 长按挖掘时长（秒，MC 徒手时间：需镐方块 = 硬度×5，徒手可采 = 硬度×1.5；工具匹配换算见 lib/dig.ts） */
   digTime: number;
   /** 流体（水/流水）：可游泳、不可选中、参与水渲染 */
   fluid?: boolean;
@@ -202,7 +202,7 @@ defs[GRASS] = {
   opaque: true, solid: true, tool: 'shovel', digTime: 0.9, cat: 'earth', ...GRASS_SND,
 };
 add('dirt', '泥土', 'dirt', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
-add('stone', '石头', 'stone', { cat: 'stone', tool: 'pickaxe', needsPick: true });
+add('stone', '石头', 'stone', { cat: 'stone', tool: 'pickaxe', needsPick: true, dropBlock: COBBLE }); // MC：无精准采集掉圆石
 add('cobble', '圆石', 'cobblestone', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 10 });
 add('sand', '沙子', 'sand', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...SAND_SND });
 defs[LOG] = {
@@ -323,16 +323,16 @@ for (const [c, cn] of COLORS16) {
 }
 
 // ——— 矿石/金属块/紫水晶 ———
-// pickTier：0 木镐可挖（煤）、1 需石镐（铁/铜/金/青金石）、2 需铁镐（钻石/绿宝石）、3 需钻镐（黑曜石）
+// pickTier：0 木镐可挖（煤）、1 需石镐（铁/铜/青金石）、2 需铁镐（金/红石/钻石/绿宝石，MC）、3 需钻镐（黑曜石）
 const ORES: [key: string, cn: string, tier: 0 | 1 | 2 | 3, material: string, count: [number, number]][] = [
   ['coal_ore', '煤矿石', 0, 'coal', [1, 1]],
   ['iron_ore', '铁矿石', 1, 'raw_iron', [1, 1]],
   ['copper_ore', '铜矿石', 1, 'raw_copper', [2, 5]],
-  ['gold_ore', '金矿石', 1, 'raw_gold', [1, 1]],
+  ['gold_ore', '金矿石', 2, 'raw_gold', [1, 1]],
   ['lapis_ore', '青金石矿石', 1, 'lapis', [4, 8]],
   ['redstone_ore', '红石矿石', 2, 'redstone', [4, 5]],
   ['diamond_ore', '钻石矿石', 2, 'diamond', [1, 1]],
-  ['emerald_ore', '绿宝石矿石', 1, 'emerald', [1, 1]],
+  ['emerald_ore', '绿宝石矿石', 2, 'emerald', [1, 1]],
 ];
 for (const [k, cn, tier, material, count] of ORES) {
   add(k, cn, k, { cat: 'ore', tool: 'pickaxe', pickTier: tier, drop: { material, count }, digTime: 15 });
@@ -773,7 +773,7 @@ defs.push({
 // 末地石：末地主岛主体（MC：镐挖、高抗爆）
 add('end_stone', '末地石', 'end_stone', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 9, ...STONE_SND });
 // 远古残骸：下界深层稀有矿（y8-22），烧下界合金碎片；MC 需钻镐、防爆（pickTier 3 同黑曜石）
-add('ancient_debris', '远古残骸', { side: 'ancient_debris_side', top: 'ancient_debris_top' }, { cat: 'ore', tool: 'pickaxe', pickTier: 3, digTime: 30 });
+add('ancient_debris', '远古残骸', { side: 'ancient_debris_side', top: 'ancient_debris_top' }, { cat: 'ore', tool: 'pickaxe', pickTier: 3, digTime: 150 }); // MC 硬度 30 × 5：钻镐 5.6s
 // 龙蛋：击杀末影龙后置于祭坛中心柱顶（MC 纪念战利品，可采集带走）
 add('dragon_egg', '龙蛋', 'dragon_egg', { cat: 'utility', opaque: false, digTime: 3, shape: 'slab', box3: [0.0625, 0, 0.0625, 0.9375, 1, 0.9375], ...STONE_SND });
 // 末地石砖与紫珀块：末地城主体（MC）
@@ -783,6 +783,30 @@ add('purpur_pillar', '紫珀柱', { side: 'purpur_pillar_side', top: 'purpur_pil
 // 紫颂植株：柱状（破坏任一节上方全掉，同仙人掌），顶花为装饰（MC 外岛作物）
 add('chorus_plant', '紫颂植株', 'chorus_plant', { cat: 'earth', opaque: false, shape: 'slab', box3: [0.3125, 0, 0.3125, 0.6875, 1, 0.6875], digTime: 0.4, ...GRASS_SND });
 add('chorus_flower', '紫颂花', 'chorus_flower', { cat: 'earth', opaque: false, shape: 'cross', solid: false, digTime: 0.05, ...GRASS_SND });
+
+// ——— 红石扩展（供能规则见 lib/redstone.ts；贴图复用已注册 stem，atlas 不新增格） ———
+// 红石火把（熄灭态）：附着方块被充能时火把反相熄灭（NOT 门），挖掉落回常亮款
+add('redstone_torch_off', '红石火把（熄灭）', 'redstone_torch', {
+  cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.05,
+  dropBlock: defs.find((d) => d.key === 'redstone_torch')!.id, ...GRASS_SND,
+});
+// 按钮：右击按下供电，石头 1s / 木质 1.5s 后回弹（MC）；十字薄块同拉杆，挖掉落回未按款
+const oakButton = add('oak_button', '橡木按钮', 'oak_planks', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.75, tool: 'axe', ...WOOD_SND });
+add('oak_button_on', '橡木按钮（按下）', 'oak_planks', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.75, tool: 'axe', dropBlock: oakButton.id, ...WOOD_SND });
+const stoneButton = add('stone_button', '石头按钮', 'stone', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.75, tool: 'pickaxe', ...STONE_SND });
+add('stone_button_on', '石头按钮（按下）', 'stone', { cat: 'utility', shape: 'cross', opaque: false, solid: false, digTime: 0.75, tool: 'pickaxe', dropBlock: stoneButton.id, ...STONE_SND });
+// 压力板：玩家/生物踩上供电（15 级），离开断供；贴地薄板同红石粉，无碰撞
+add('oak_pressure_plate', '橡木压力板', 'oak_planks', {
+  cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.0625, 1], opaque: false, solid: false, digTime: 0.75, tool: 'axe', ...WOOD_SND,
+});
+add('stone_pressure_plate', '石头压力板', 'stone', {
+  cat: 'utility', shape: 'slab', box3: [0, 0, 0, 1, 0.0625, 1], opaque: false, solid: false, digTime: 0.75, tool: 'pickaxe', ...STONE_SND,
+});
+// 侦测器：检测面朝方向方块状态变化，从背面输出约 0.1s 脉冲（MC）；6 朝向各 1 id，破坏统一掉 n 款
+const observerN = add('observer_n', '侦测器', { side: 'piston_side', top: 'target_top', bottom: 'piston_bottom' }, { cat: 'utility', facing: 0, tool: 'pickaxe', needsPick: true, digTime: 15 });
+for (const [suf, f] of [['e', 1], ['s', 2], ['w', 3], ['u', 4], ['d', 5]] as const) {
+  add(`observer_${suf}`, '侦测器', { side: 'piston_side', top: 'target_top', bottom: 'piston_bottom' }, { cat: 'utility', facing: f, tool: 'pickaxe', needsPick: true, digTime: 15, dropBlock: observerN.id });
+}
 
 /** 以方块 id 为下标 */
 export const BLOCKS: BlockDef[] = defs;

@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BLOCK_BY_KEY } from '../blocks';
-import { activeBeacons, BEACON_RANGE, clearBeacons, scanPyramid, tickBeacons, interactBeacon } from '../beacon';
+import { activeBeacons, BEACON_RANGE, beaconTiers, clearBeacons, scanPyramid, tickBeacons, interactBeacon } from '../beacon';
 import { clearEffects, effects, tickEffects } from '../effects';
 import { VOID_TERRAIN } from '../noise';
 import { RECIPES } from '../recipes';
@@ -152,5 +152,66 @@ describe('合成配方', () => {
     expect(cost.get(`block:${K('glass')}`)).toBe(5);
     expect(cost.get(`block:${K('obsidian')}`)).toBe(3);
     expect(cost.get('material:nether_star')).toBe(1);
+  });
+});
+
+describe('天空视野', () => {
+  it('上方被不透明方块遮挡视为 0 层（MC：信标须见天空）；玻璃等透明方块不挡', () => {
+    const w = setup();
+    buildPyramid(w, 0, 60, 0, 1);
+    expect(scanPyramid(w, 0, 60, 0)).toBe(1);
+    w.setBlock(0, 70, 0, BLOCK_BY_KEY.stone.id); // 封顶遮光
+    expect(scanPyramid(w, 0, 60, 0)).toBe(0);
+    expect(interactBeacon(w, 0, 60, 0, 'iron_ingot').ok).toBe(false);
+    w.setBlock(0, 70, 0, K('glass')); // 透明方块不挡光柱
+    expect(scanPyramid(w, 0, 60, 0)).toBe(1);
+    expect(interactBeacon(w, 0, 60, 0, 'iron_ingot').ok).toBe(true);
+  });
+
+  it('已激活信标被封顶后，tick 检测失效并停止施加效果', () => {
+    const w = setup();
+    buildPyramid(w, 0, 60, 0, 1);
+    interactBeacon(w, 0, 60, 0, 'iron_ingot');
+    expect(activeBeacons.size).toBe(1);
+    w.setBlock(0, 65, 0, BLOCK_BY_KEY.stone.id);
+    tickBeacons(w, 0.5, 61, 0.5);
+    expect(activeBeacons.size).toBe(0);
+    expect(effects.speed).toBe(0);
+  });
+});
+
+describe('4 层副效果与合金锭支付', () => {
+  it('下界合金锭可支付激活（MC 允许的支付物）', () => {
+    const w = setup();
+    buildPyramid(w, 0, 60, 0, 1);
+    const r = interactBeacon(w, 0, 60, 0, 'netherite_ingot');
+    expect(r.ok).toBe(true);
+    expect(r.consume).toBe('netherite_ingot');
+    expect(activeBeacons.size).toBe(1);
+  });
+
+  it('4 层金字塔：主效果自动 II 级（beaconTiers），离开范围回落 I 级（MC 副效果简化）', () => {
+    const w = setup();
+    buildPyramid(w, 0, 60, 0, 4);
+    const r = interactBeacon(w, 0, 60, 0, 'iron_ingot');
+    expect(r.ok).toBe(true);
+    expect(r.notice).toContain('II'); // 提示 4 层 II 级
+    tickBeacons(w, 10.5, 61, 0.5);
+    expect(effects.speed).toBeGreaterThan(0);
+    expect(beaconTiers.get('speed')).toBe(2); // 4 层 → II 级
+    tickBeacons(w, 100.5, 61, 0.5); // 出范围（4 层范围 50）
+    expect(beaconTiers.get('speed')).toBeUndefined();
+  });
+
+  it('切换效果时 4 层提示 II；3 层金字塔不升 II 级', () => {
+    const w = setup();
+    buildPyramid(w, 0, 60, 0, 4);
+    interactBeacon(w, 0, 60, 0, 'iron_ingot');
+    expect(interactBeacon(w, 0, 60, 0, null).notice).toContain('急迫 II'); // 切换也提示
+    buildPyramid(w, 20, 60, 0, 3);
+    interactBeacon(w, 20, 60, 0, 'iron_ingot');
+    tickBeacons(w, 20.5, 61, 0.5);
+    expect(effects.speed).toBeGreaterThan(0);
+    expect(beaconTiers.get('speed')).toBeUndefined(); // 3 层只有 I 级
   });
 });

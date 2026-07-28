@@ -49,13 +49,17 @@ export function tickFluids(world: World, budget = 128): void {
     drained++;
     const [x, y, z] = key.split(',').map(Number);
     // 未加载的格子不处理——getBlock 会隐式触发全量生成，把 chunk 生成拖出渲染半径形成生成风暴
-    if (!world.chunks.has(`${x >> 4},${z >> 4}`)) continue;
+    if (!world.isChunkLoaded(x, z)) continue;
     const id = world.getBlock(x, y, z);
     const level = waterLevel(id);
     if (level < 0) continue;
+    // 邻格同理：chunk 未加载的方向直接跳过，否则在加载半径边缘倒水会逐 chunk 向外爬，
+    // 每步都隐式触发主线程全量地形生成 + cascadeLight
+    const loaded = (nx: number, nz: number): boolean => world.isChunkLoaded(nx, nz);
     // 水与岩浆源接触：岩浆变黑曜石（MC 规则；本游戏岩浆只有源头）
     const obsidian = BLOCK_BY_KEY.obsidian.id;
     for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
+      if (!loaded(x + dx, z + dz)) continue;
       if (isLavaId(world.getBlock(x + dx, y + dy, z + dz))) {
         world.setBlock(x + dx, y + dy, z + dz, obsidian);
       }
@@ -64,7 +68,7 @@ export function tickFluids(world: World, budget = 128): void {
     if (level > 0 && !isWaterId(world.getBlock(x, y + 1, z))) {
       const parentLevel = level - 1;
       const hasParent = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(
-        ([dx, dz]) => waterLevel(world.getBlock(x + dx, y, z + dz)) === parentLevel,
+        ([dx, dz]) => loaded(x + dx, z + dz) && waterLevel(world.getBlock(x + dx, y, z + dz)) === parentLevel,
       );
       if (!hasParent) {
         world.setBlock(x, y, z, AIR);
@@ -74,7 +78,7 @@ export function tickFluids(world: World, budget = 128): void {
     // 无限水源（MC 规则）：水平两侧都是水源 且 下方是水源或实心方块 → 本格成源
     if (level > 0) {
       const sources = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(
-        ([dx, dz]) => world.getBlock(x + dx, y, z + dz) === WATER,
+        ([dx, dz]) => loaded(x + dx, z + dz) && world.getBlock(x + dx, y, z + dz) === WATER,
       ).length;
       if (sources >= 2) {
         const below = world.getBlock(x, y - 1, z);
@@ -92,6 +96,7 @@ export function tickFluids(world: World, budget = 128): void {
     // 落地才向四方扩散（下方是非水实心/流体底托）；水柱中段不在半空散开（MC 瀑布观感）
     if (level < 7 && !isWaterId(world.getBlock(x, y - 1, z))) {
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        if (!loaded(x + dx, z + dz)) continue;
         if (world.getBlock(x + dx, y, z + dz) === AIR) {
           world.setBlock(x + dx, y, z + dz, FLOW_BASE + level);
           pending.add(`${x + dx},${y},${z + dz}`);

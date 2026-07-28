@@ -31,17 +31,17 @@ export const FACING_VEC: Record<number, [number, number, number]> = {
   5: [0, -1, 0],
 };
 
-/** 不可推动（MC 规则简化：防爆方块 + 容器/功能方块 + 流体 + 传送门 + 活塞自身） */
+/** 不可推动（MC 规则简化：不可破坏方块 + 黑曜石类 + 容器/功能方块 + 流体 + 活塞自身） */
 function immovable(id: BlockId): boolean {
   if (id === AIR) return false;
   const def = BLOCKS[id];
   if (!def) return true;
-  if (def.unbreakable) return true;
-  if (def.pickTier === 3) return true; // 黑曜石类（MC 不可推）
+  if (def.unbreakable) return true; // 基岩/强化深板岩/传送门类
   if (isWaterId(id) || isLavaId(id)) return true;
   if (isPistonPart(id)) return true;
   const key = def.key;
-  return key === 'chest' || key === 'barrel' || key === 'furnace' || key === 'brewing_stand' || key === 'enchanting_table';
+  // MC 明确不可推：黑曜石类与容器/功能方块（远古残骸虽需同级镐挖掘，但 MC 可推，不在此列）
+  return key === 'obsidian' || key === 'crying_obsidian' || key === 'chest' || key === 'barrel' || key === 'furnace' || key === 'brewing_stand' || key === 'enchanting_table';
 }
 
 /** 供能推出：把活塞前方一行（≤12 格）整体前推一格并放活塞头；不可推/无空位则不动 */
