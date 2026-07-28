@@ -32,6 +32,13 @@ interface Face {
 /** AO 亮度曲线：遮蔽等级 0..3 → 顶点色 */
 const AO_CURVE = [0.45, 0.65, 0.82, 1];
 
+/** 面方向明暗（MC 经典规则：顶 1.0 / 底 0.5 / 东西 0.6 / 南北 0.8）——立体观感的关键 */
+function faceShade(dir: Vec3): number {
+  if (dir[1] > 0) return 1;
+  if (dir[1] < 0) return 0.5;
+  return dir[0] !== 0 ? 0.6 : 0.8;
+}
+
 // 每个面 4 个角，外法线方向逆时针；三角剖分见 GeometryBuilder.addFace
 const RAW_FACES: { dir: Vec3; corners: { pos: Vec3; uv: [number, number] }[] }[] = [
   { dir: [-1, 0, 0], corners: [
@@ -107,7 +114,7 @@ class GeometryBuilder {
         const v = 1 - (row + 1 - c.uv[1]) / ATLAS_ROWS;
         this.uvs.push(u, v);
       }
-      const b = Math.max(AO_CURVE[ao[i]] * sky, light);
+      const b = Math.max(AO_CURVE[ao[i]] * sky * faceShade(face.dir), light);
       if (tint) this.colors.push(b * tint[0], b * tint[1], b * tint[2]);
       else this.colors.push(b, b, b);
     }

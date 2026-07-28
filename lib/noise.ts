@@ -150,8 +150,9 @@ export function createTerrain(seed: string): Terrain {
   function heightAt(x: number, z: number): number {
     const cont = contField(x, z);
     const hills = nHill(x * 0.015, z * 0.015);
-    const detail = nHill(x * 0.06, z * 0.06);
-    let h = 44 + cont * 10 + hills * 4 + detail * 1.5;
+    // 细节起伏压到亚格幅度：原版山坡连续的关键——小起伏远小于 1 格，floor 量化后不再密布台阶
+    const detail = nHill(x * 0.06, z * 0.06) * 0.5;
+    let h = 44 + cont * 10 + hills * 4 + detail;
     const mush = mushroomMask(x, z);
     // 蘑菇岛：深海区域抬升成岛（须在海洋下压之前，且抑制下压）
     if (mush > 0) {
@@ -160,15 +161,15 @@ export function createTerrain(seed: string): Terrain {
     }
     const m = mountainMask(x, z);
     const mesa = mesaMask(x, z);
-    // 山地：山脊噪声（1-|n| 出尖峰）+ 细节脊，抬升到 y≈75–115
+    // 山地：山脊噪声（1-|n| 出尖峰）+ 细节脊（幅度压低，坡面更连续），抬升到 y≈75–115
     if (m > 0 && mush < 0.3) {
       const ridge = 1 - Math.abs(nRidge(x * 0.008, z * 0.008));
       const ridge2 = 1 - Math.abs(nRidge(x * 0.021 + 300, z * 0.021 + 300));
-      h += m * (ridge * 36 + ridge2 * 10 + 16);
+      h += m * (ridge * 36 + ridge2 * 6 + 16);
     }
     // 恶地：抬升为 3 格阶梯的台地（mesa 层次感）
     if (mesa > 0 && mush < 0.3) {
-      const plateau = 58 + Math.floor((hills * 4 + detail * 2 + 8) / 3) * 3;
+      const plateau = 58 + Math.floor((hills * 4 + detail * 4 + 8) / 3) * 3; // detail 已 0.5 倍缩放，×4 保持原台地层高
       h = h * (1 - mesa) + plateau * mesa;
     }
     // 盆地：侵蚀值低的区域下沉压平（低洼积水成湖）；山地/台地不做
@@ -216,8 +217,8 @@ export function createTerrain(seed: string): Terrain {
       const t = Math.abs(nCaveA(x * 0.03, y * 0.03, z * 0.03) + nCaveB(x * 0.03 + 500, y * 0.03, z * 0.03 + 500));
       if (t < 0.11) return true;
     }
-    // 奶酪洞腔：大型洞窟偶尔破出地表；深层（y<20）阈值放宽，洞腔更大（MC 深层大洞观感）
-    if (y <= hh - 1 && nCheese(x * 0.011, y * 0.02, z * 0.011) > (y < 20 ? 0.66 : 0.72)) return true;
+    // 奶酪洞腔：深层（y<20）大洞不变；浅层阈值提高 + 至少留 2 层盖——破表大幅收紧（原版克制，避免悬空草皮与破相沟壑）
+    if (y <= hh - 2 && nCheese(x * 0.011, y * 0.02, z * 0.011) > (y < 20 ? 0.66 : 0.78)) return true;
     return false;
   }
 

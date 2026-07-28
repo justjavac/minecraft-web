@@ -67,12 +67,13 @@ describe('mesher 面剔除', () => {
     expect(g.solid.indices.length).toBe(6 * 6); // 只剩石头方块的 6 面
   });
 
-  it('AO：孤立方块全亮，有相邻遮挡时顶点变暗', () => {
+  it('AO：孤立方块顶面全亮（侧面按 MC 方向明暗），有相邻遮挡时顶点变暗', () => {
     const w1 = voidWorld();
     w1.setBlock(8, 8, 8, STONE);
     const g1 = buildChunkGeometry(w1, w1.getChunk(0, 0));
     expect(g1.solid.colors.length).toBe(g1.solid.positions.length); // 每顶点一个 RGB
-    expect(Math.min(...g1.solid.colors)).toBe(1);
+    expect(Math.max(...g1.solid.colors)).toBe(1); // 顶面全亮（MC 方向明暗：顶 1.0）
+    expect(Math.min(...g1.solid.colors)).toBe(0.5); // 底面 0.5
 
     const w2 = voidWorld();
     w2.setBlock(8, 8, 8, STONE);
