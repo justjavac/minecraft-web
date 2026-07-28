@@ -169,9 +169,12 @@ describe('村庄农田', () => {
     expect(water).toBeGreaterThan(0);
     expect(moist).toBeGreaterThan(0);
     expect(crop).toBeGreaterThan(0);
-    // 小屋：屋内 (bx+1, by+1, bz+1) 有床
+    // 小屋：屋内 (bx+1, by+1, bz+1) 有床（by 为 5×5 范围最低点，嵌坡村舍）
     const hut = structs.find((s) => s.type === 'hut');
-    const by = w.terrain.heightAt(hut!.x, hut!.z) + 1;
-    expect(w.getBlock(hut!.x - 1, by + 1, hut!.z - 1)).toBe(BLOCK_BY_KEY.red_bed.id);
+    let baseH = w.terrain.heightAt(hut!.x, hut!.z);
+    for (const [ox, oz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]] as const) {
+      baseH = Math.min(baseH, w.terrain.heightAt(hut!.x + ox, hut!.z + oz));
+    }
+    expect(w.getBlock(hut!.x - 1, baseH + 2, hut!.z - 1)).toBe(BLOCK_BY_KEY.red_bed.id);
   });
 });

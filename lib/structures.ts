@@ -201,12 +201,12 @@ function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z:
 }
 
 function putBase(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
-  // 地板 + 地板下空隙回填（最多 3 格，只在本 chunk 内读写）
+  // 地板 + 地板下柱桩回填直到触地（上限 12 格，MC 村庄在坡地用柱桩接地；只在本 chunk 内读写——邻 chunk 由各自写入补齐）
   put(data, cx, cz, x, y, z, id);
   const lx = x - cx * CHUNK_SIZE;
   const lz = z - cz * CHUNK_SIZE;
   if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE) return;
-  for (let dy = 1; dy <= 3; dy++) {
+  for (let dy = 1; dy <= 12; dy++) {
     if (y - dy < 0) break;
     if (data[localIndex(lx, y - dy, lz)] !== AIR) break;
     data[localIndex(lx, y - dy, lz)] = id;
@@ -215,7 +215,12 @@ function putBase(data: Uint16Array, cx: number, cz: number, x: number, y: number
 
 /** 小屋：5×5×4，地板、角柱、墙、门洞、玻璃窗、屋顶外挑 */
 function writeHut(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array, mats: VillageMats): void {
-  const by = terrain.heightAt(s.x, s.z) + 1;
+  // 地板取 5×5 范围最低点（高侧墙嵌土、低侧柱桩接地，MC 坡地村舍做法）
+  let baseH = terrain.heightAt(s.x, s.z);
+  for (const [ox, oz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]] as const) {
+    baseH = Math.min(baseH, terrain.heightAt(s.x + ox, s.z + oz));
+  }
+  const by = baseH + 1;
   const bx = s.x - 2;
   const bz = s.z - 2;
   for (let x = 0; x < 5; x++) {
@@ -267,7 +272,12 @@ function writeFarm(s: Structure, terrain: Terrain, cx: number, cz: number, data:
 
 /** 水井：4×4 环 + 2×2 水 */
 function writeWell(s: Structure, terrain: Terrain, cx: number, cz: number, data: Uint16Array, mats: VillageMats): void {
-  const by = terrain.heightAt(s.x, s.z) + 1;
+  // 基面取 4×4 范围最低点（嵌坡）
+  let baseH = terrain.heightAt(s.x, s.z);
+  for (const [ox, oz] of [[-1, -1], [2, -1], [-1, 2], [2, 2]] as const) {
+    baseH = Math.min(baseH, terrain.heightAt(s.x + ox, s.z + oz));
+  }
+  const by = baseH + 1;
   for (let x = -1; x <= 2; x++) {
     for (let z = -1; z <= 2; z++) {
       const edge = x === -1 || x === 2 || z === -1 || z === 2;
@@ -294,7 +304,12 @@ function writePath(a: Structure, b: Structure, terrain: Terrain, cx: number, cz:
 
 /** 哨塔：5×5 圆石塔身（12 高）+ 顶部木板瞭望台外挑 + 玻璃窗 */
 function writeWatchtower(spot: StructureSpot, terrain: Terrain, cx: number, cz: number, data: Uint16Array): void {
-  const by = terrain.heightAt(spot.x, spot.z) + 1;
+  // 基面取 5×5 范围最低点（嵌坡 + 柱桩接地）
+  let baseH = terrain.heightAt(spot.x, spot.z);
+  for (const [ox, oz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]] as const) {
+    baseH = Math.min(baseH, terrain.heightAt(spot.x + ox, spot.z + oz));
+  }
+  const by = baseH + 1;
   const bx = spot.x - 2;
   const bz = spot.z - 2;
   for (let x = 0; x < 5; x++) {
