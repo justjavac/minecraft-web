@@ -470,7 +470,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       s.setNotice(`该交易今日已达上限（${MAX_TRADE_USES} 次），明天补货`);
       return;
     }
-    const r = executeTrade(s.hotbarSlots, s.mainSlots, trade);
+    const r = executeTrade(s.hotbarSlots, s.mainSlots, trade, s.worldMode === 'creative');
     if (!r) return;
     deductTradeStock(s.tradeMob, i, day);
     set({ hotbarSlots: r.hotbar, mainSlots: r.backpack });

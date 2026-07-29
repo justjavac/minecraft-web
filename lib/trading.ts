@@ -119,15 +119,19 @@ export function executeTrade(
   hotbar: Slot[],
   backpack: Slot[],
   trade: Trade,
+  free = false,
 ): { hotbar: Slot[]; backpack: Slot[]; xp: number } | null {
-  if (!canAfford([...hotbar, ...backpack], trade)) return null;
+  // free（创造模式）：MC 创造视同材料无限，不检查、不扣材料，直接成交给物品
+  if (!free && !canAfford([...hotbar, ...backpack], trade)) return null;
   let h = hotbar;
   let b = backpack;
-  for (const g of trade.give) {
-    const r = consume(h, b, g);
-    if (!r) return null;
-    h = r.hotbar;
-    b = r.backpack;
+  if (!free) {
+    for (const g of trade.give) {
+      const r = consume(h, b, g);
+      if (!r) return null;
+      h = r.hotbar;
+      b = r.backpack;
+    }
   }
   // 获得物：材料/方块走热键栏堆叠；装备特别编码放热键栏空格（耐久取 ARMOR_DEFS）
   if (trade.get.kind === 'material' && trade.get.material.startsWith('armor:')) {
