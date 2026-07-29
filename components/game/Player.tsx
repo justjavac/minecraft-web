@@ -550,9 +550,9 @@ export function Player() {
     // 岩浆灼烧：接触即掉血（2 心/秒，抗火药水免疫），离开后清零计时
     if (inLava && gs.worldMode === 'survival' && effects.fireRes <= 0) {      lavaAcc.current += dt * 4;
       const dmg = Math.floor(lavaAcc.current);
-      if (dmg > 0) {
+      // damagePlayer 在 500ms 受击无敌帧内返回 false：伤害被拒时不扣累计（否则 DoT 被无敌帧吞掉，实际 DPS 减半）
+      if (dmg > 0 && gs.damagePlayer(dmg)) {
         lavaAcc.current -= dmg;
-        gs.damagePlayer(dmg);
       }
     } else {
       lavaAcc.current = 0;
@@ -561,9 +561,8 @@ export function Player() {
     if (p.y < -16 && gs.worldMode === 'survival' && !gs.dead) {
       voidAcc.current += dt * 2;
       const vd = Math.floor(voidAcc.current);
-      if (vd > 0) {
+      if (vd > 0 && gs.damagePlayer(vd, { bypassArmor: true })) {
         voidAcc.current -= vd;
-        gs.damagePlayer(vd, { bypassArmor: true });
       }
     } else {
       voidAcc.current = 0;

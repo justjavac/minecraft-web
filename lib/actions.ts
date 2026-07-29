@@ -246,7 +246,8 @@ function tryMobInteract(world: World, s: ReturnType<typeof useGameStore.getState
     return true;
   }
   // 金锭与猪灵易物：端详 3s 后丢出随机易物（MC；蛮兵不谈判）
-  if (mob.type === 'piglin' && has('gold_ingot') && spend('gold_ingot') && barterWith(mob)) {
+  // 金锭与猪灵易物：端详 3s 后丢出随机易物（MC；蛮兵不谈判）。冷却检查前置：端详期内重复右键不白扣金锭
+  if (mob.type === 'piglin' && (mob.barterTimer ?? 0) <= 0 && has('gold_ingot') && spend('gold_ingot') && barterWith(mob)) {
     s.setNotice('猪灵端详着金锭…');
     playSound('place');
     lastPlace = now;
