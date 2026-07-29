@@ -75,12 +75,17 @@ const phantomBodyGeo = new BoxGeometry(0.9, 0.25, 0.5);
 const phantomWingGeo = new BoxGeometry(1.6, 0.08, 0.6);
 const phantomTailGeo = new BoxGeometry(0.3, 0.06, 0.5);
 const phantomEyeGeo = new BoxGeometry(0.1, 0.08, 0.02);
-// 铁傀儡：高大人形部件（MC 2.7 格村庄守卫）
+// 铁傀儡：高大人形部件（MC 2.7 格村庄守卫——宽肩、过膝长臂、大扁头+大鼻子）
 const golemLegGeo = new BoxGeometry(0.26, 1.1, 0.3);
-const golemBodyGeo = new BoxGeometry(0.85, 1.0, 0.5);
-const golemArmGeo = new BoxGeometry(0.24, 1.1, 0.26);
-const golemHeadGeo = new BoxGeometry(0.5, 0.45, 0.45);
+const golemBodyGeo = new BoxGeometry(0.95, 1.0, 0.55);
+const golemArmGeo = new BoxGeometry(0.26, 1.35, 0.26);
+const golemHeadGeo = new BoxGeometry(0.58, 0.5, 0.5);
+const golemNoseGeo = new BoxGeometry(0.12, 0.28, 0.14);
 const golemVineGeo = new BoxGeometry(0.14, 0.3, 0.04);
+// 村民：MC 大扁头 + 前垂大鼻子 + 抱臂长袍
+const villagerHeadGeo = new BoxGeometry(0.52, 0.46, 0.46);
+const villagerNoseGeo = new BoxGeometry(0.1, 0.24, 0.12);
+const villagerArmsGeo = new BoxGeometry(0.56, 0.2, 0.3);
 
 type MobMats = Record<string, Material>;
 
@@ -351,13 +356,16 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, beakGeo, mats.beak, 0, 0.58, 0.38);
       break;
     case 'villager': {
-      // 长袍身体 + 大头 + 大鼻子；袍色随职业（农民/图书管理员/石匠/牧师/皮匠）
+      // 长袍身体 + MC 大扁头 + 前垂大鼻子 + 抱臂（横袖）；袍色随职业（农民/图书管理员/石匠/牧师/皮匠）
       const robe = mob ? profRobe(mats, professionOf(mob.id)) : mats.robe;
       addPart(g, legGeo, robe, -0.13, 0.375, 0);
       addPart(g, legGeo, robe, 0.13, 0.375, 0);
       addPart(g, bodyGeo, robe, 0, 1.1, 0);
-      addPart(g, headGeo, mats.villagerSkin, 0, 1.66, 0);
-      addPart(g, snoutGeo, mats.villagerSkin, 0, 1.56, 0.25);
+      addPart(g, villagerHeadGeo, mats.villagerSkin, 0, 1.64, 0);
+      // 大鼻子：面中部前垂（MC 村民标志）
+      addPart(g, villagerNoseGeo, mats.villagerSkin, 0, 1.52, 0.27);
+      // 抱臂横袖（MC 村民双手交叠于袍前）
+      addPart(g, villagerArmsGeo, robe, 0, 1.12, 0.2);
       break;
     }
     case 'sheep': {
@@ -402,15 +410,15 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       break;
     }
     case 'iron_golem':
-      // 铁傀儡：铁灰高大人形（约 2.5 格）+ 垂手长臂 + 大鼻子 + 藤蔓斑（MC 村庄守卫）
-      addPart(g, golemLegGeo, mats.golemIron, -0.2, 0.55, 0);
-      addPart(g, golemLegGeo, mats.golemIron, 0.2, 0.55, 0);
+      // 铁傀儡：宽肩厚背 + 过膝垂臂 + 大扁头与大鼻子 + 藤蔓斑（MC 2.7 格村庄守卫）
+      addPart(g, golemLegGeo, mats.golemIron, -0.18, 0.55, 0);
+      addPart(g, golemLegGeo, mats.golemIron, 0.18, 0.55, 0);
       addPart(g, golemBodyGeo, mats.golemIron, 0, 1.6, 0);
-      addPart(g, golemArmGeo, mats.golemIronDark, -0.56, 1.45, 0);
-      addPart(g, golemArmGeo, mats.golemIronDark, 0.56, 1.45, 0);
-      addPart(g, golemHeadGeo, mats.golemIron, 0, 2.3, 0);
-      addPart(g, snoutGeo, mats.golemIronDark, 0, 2.2, 0.25);
-      addPart(g, golemVineGeo, mats.golemVine, 0.3, 1.7, 0.26);
+      addPart(g, golemArmGeo, mats.golemIronDark, -0.6, 1.35, 0);
+      addPart(g, golemArmGeo, mats.golemIronDark, 0.6, 1.35, 0);
+      addPart(g, golemHeadGeo, mats.golemIron, 0, 2.35, 0);
+      addPart(g, golemNoseGeo, mats.golemIronDark, 0, 2.26, 0.29);
+      addPart(g, golemVineGeo, mats.golemVine, 0.34, 1.7, 0.28);
       break;
   }
   return g;
