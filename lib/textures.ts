@@ -535,7 +535,8 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
       texture,
       waterTex: waterStrip!,
       solid: lambert({ map: texture, alphaTest: 0.5, vertexColors: true }),
-      water: lambert({ map: waterStrip, transparent: true, opacity: 0.7, depthWrite: false, vertexColors: true }),
+      // 水：MC 群系水色蓝调（#3f76e4 乘算），不透明度 0.85 对齐 MC 观感
+      water: lambert({ color: '#3f76e4', map: waterStrip, transparent: true, opacity: 0.85, depthWrite: false, vertexColors: true }),
       lambert,
       basic,
       sprite,
@@ -582,7 +583,8 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     texture,
     waterTex: waterStrip!,
     solid: lambert({ map: texture, alphaTest: 0.5, vertexColors: true }),
-    water: lambert({ map: waterStrip, transparent: true, opacity: 0.7, depthWrite: false, vertexColors: true }),
+    // 水：MC 群系水色蓝调（#3f76e4 乘算），不透明度 0.85 对齐 MC 观感
+    water: lambert({ color: '#3f76e4', map: waterStrip, transparent: true, opacity: 0.85, depthWrite: false, vertexColors: true }),
     lambert,
     basic,
     sprite,

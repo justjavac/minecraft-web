@@ -8,7 +8,7 @@ import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
 import { breakBlock, tryPlace } from '@/lib/actions';
 import { isFarmlandId, isWheatCropId } from '@/lib/crops';
 import { effectiveDigTime } from '@/lib/dig';
-import { cameraRef, debugInfo, digState, getActiveWorld, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput } from '@/lib/game';
+import { cameraRef, debugInfo, digState, getActiveWorld, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput, worldClock } from '@/lib/game';
 import { otherDimension } from '@/lib/dimension';
 import { END_SPAWN } from '@/lib/end';
 import { isPortalId } from '@/lib/portal';
@@ -263,6 +263,8 @@ export function Player() {
     if (process.env.NODE_ENV === 'development') {
       (window as unknown as { __mc?: unknown }).__mc = {
         pos: { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z },
+        pp: playerPosition, // 可写：测试传送（实际玩家状态在下方 tp）
+        tp: pos.current, // 可写：真正的玩家物理状态（传送改这里）
         camera: state.camera,
         scene: state.scene,
         gl: state.gl,
@@ -270,6 +272,8 @@ export function Player() {
         store: useGameStore,
         world,
         touch: touchInput,
+        mobs, // 生物列表（只读排查用）
+        clock: worldClock, // 昼夜时钟（可写）
       };
     }
 

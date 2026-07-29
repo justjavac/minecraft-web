@@ -11,10 +11,15 @@ import { getAtlasMaterials, type AtlasMaterials } from '@/lib/textures';
 import { useRendererKind } from './renderer-kind';
 
 // ——— 共享几何 ———
+/** 创造模式传给生物 AI 的「无目标」坐标（超远，敌对生物失去追击目标、不消失、不触发失眠/护主等玩家联动） */
+const CREATIVE_NO_TARGET = { x: 1e9, y: -999, z: 1e9 };
+
 const headGeo = new BoxGeometry(0.42, 0.42, 0.42);
 const bodyGeo = new BoxGeometry(0.5, 0.7, 0.28);
 const legGeo = new BoxGeometry(0.2, 0.75, 0.22);
 const armGeo = new BoxGeometry(0.18, 0.6, 0.2);
+// MC 僵尸招牌姿势：双臂前平举（水平臂几何）
+const armForwardGeo = new BoxGeometry(0.18, 0.18, 0.55);
 const bodyWideGeo = new BoxGeometry(0.9, 0.5, 0.4);
 const pigLegGeo = new BoxGeometry(0.12, 0.3, 0.12);
 const chickenBodyGeo = new BoxGeometry(0.32, 0.35, 0.35);
@@ -167,8 +172,9 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, legGeo, mats.zombiePants, -0.13, 0.375, 0);
       addPart(g, legGeo, mats.zombiePants, 0.13, 0.375, 0);
       addPart(g, bodyGeo, mats.zombieShirt, 0, 1.1, 0);
-      addPart(g, armGeo, mats.zombieSkin, -0.34, 1.15, 0);
-      addPart(g, armGeo, mats.zombieSkin, 0.34, 1.15, 0);
+      // MC 僵尸双臂前平举（与肩同高，指向移动方向）
+      addPart(g, armForwardGeo, mats.zombieSkin, -0.34, 1.32, 0.22);
+      addPart(g, armForwardGeo, mats.zombieSkin, 0.34, 1.32, 0.22);
       addPart(g, headGeo, mats.zombieSkin, 0, 1.66, 0);
       break;
     case 'skeleton':
@@ -235,12 +241,12 @@ function makeMobMesh(type: MobType, mats: MobMats, mob?: Mob): Group {
       addPart(g, shroomCapGeo, mats.mooshroomSpot, 0, 1.13, -0.25);
       break;
     case 'zombified_piglin':
-      // 僵尸猪灵：腐粉与尸斑拼接的人形 + 金剑（MC 标志性中立怪）
+      // 僵尸猪灵：腐粉与尸斑拼接的人形 + 金剑（MC 标志性中立怪；与僵尸同款双臂前平举）
       addPart(g, legGeo, mats.piglinRot, -0.13, 0.375, 0);
       addPart(g, legGeo, mats.piglinRot, 0.13, 0.375, 0);
       addPart(g, bodyGeo, mats.piglinSkin, 0, 1.1, 0);
-      addPart(g, armGeo, mats.piglinSkin, -0.34, 1.15, 0);
-      addPart(g, armGeo, mats.piglinRot, 0.34, 1.15, 0);
+      addPart(g, armForwardGeo, mats.piglinSkin, -0.34, 1.32, 0.22);
+      addPart(g, armForwardGeo, mats.piglinRot, 0.34, 1.32, 0.22);
       addPart(g, headGeo, mats.piglinSkin, 0, 1.66, 0);
       addPart(g, snoutGeo, mats.piglinRot, 0, 1.6, 0.22);
       addPart(g, swordGeo, mats.goldSword, 0.42, 1.0, 0.1);
@@ -443,13 +449,15 @@ export function Mobs() {
     const group = groupRef.current;
     if (!world || !group) return;
     const store = useGameStore.getState();
-    if (store.worldMode !== 'survival' || store.paused) return;
+    // MC 创造模式也有生物（游荡/刷怪），只是不追击、不伤害玩家——传超远位置让 AI 失去目标（简版 MC 规则）
+    if (store.paused) return;
     const dt = Math.min(delta, 0.05);
+    const survival = store.worldMode === 'survival';
 
     const held = store.hotbarSlots[store.selectedSlot];
     const lureFood = held?.kind === 'material' ? held.material : null;
-    tickMobs(world, dt, playerPosition, (dmg) => {
-      if (!useGameStore.getState().dead) useGameStore.getState().damagePlayer(dmg);
+    tickMobs(world, dt, survival ? playerPosition : CREATIVE_NO_TARGET, (dmg) => {
+      if (survival && !useGameStore.getState().dead) useGameStore.getState().damagePlayer(dmg);
     }, lureFood);
 
     // 同步生物网格（材质表就绪后才创建）
