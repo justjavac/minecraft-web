@@ -15,7 +15,7 @@ import { END_SPAWN } from '@/lib/end';
 import { isPortalId } from '@/lib/portal';
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
-import { arrows, checkEndermanStare, damageMob, mobInReach, mobs, type Arrow } from '@/lib/mobs';
+import { arrows, checkEndermanStare, damageMob, mobInReach, mobs, spawnMobAt, type Arrow } from '@/lib/mobs';
 import { crystalInReach, hitCrystal, tickCrystals } from '@/lib/endfight';
 import { tickFishing } from '@/lib/fishing';
 import { SEA_LEVEL, type Biome } from '@/lib/noise';
@@ -287,6 +287,9 @@ export function Player() {
         digState, // 挖掘进度（排障用）
         targetBlock, // 准星命中（排障用）
         drops: itemDrops, // 掉落物实体（排障用）
+        spawn: spawnMobAt, // 生成生物（实测用）
+        tryPlace, // 右键交互（实测用）
+        mobInReach, // 准星内生物（实测用）
       };
     }
 
