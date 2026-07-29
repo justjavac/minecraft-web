@@ -99,6 +99,8 @@ describe('附魔应用与效果', () => {
     expect(useGameStore.getState().enchantApply(0, offer)).toBe(true);
     const slot = useGameStore.getState().hotbarSlots[0];
     expect(slot?.kind === 'tool' && slot.ench?.sharpness).toBe(3);
+    // 青金石扣 3 剩 2（回归：曾被后续 set 覆盖成不扣）
+    expect(useGameStore.getState().hotbarSlots[1]?.kind === 'material' && useGameStore.getState().hotbarSlots[1]?.count).toBe(2);
     // 青金石耗 3，经验扣 3 级 → 剩 0 级余 1
     const xpLeft = useGameStore.getState().xpTotal;
     expect(levelFromXp(xpLeft).level).toBe(0);

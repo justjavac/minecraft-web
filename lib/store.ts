@@ -318,11 +318,14 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       s.setNotice(`青金石不足（需要 ${offer.lapis} 个）`);
       return false;
     }
-    // 同种附魔取更高级（MC 不降级）
-    const ench = { ...slot.ench, [offer.ench]: Math.max(slot.ench?.[offer.ench] ?? 0, offer.lvl) };
-    const next = [...s.hotbarSlots];
-    next[slotIndex] = { ...slot, ench };
-    set({ hotbarSlots: next, xpTotal: subtractLevels(s.xpTotal, offer.levels) });
+    // 同种附魔取更高级（MC 不降级）；必须从扣料后的最新状态构造 next（否则覆盖掉刚扣的青金石）
+    const curSlots = get().hotbarSlots;
+    const cur = curSlots[slotIndex];
+    if (!cur) return false;
+    const ench = { ...cur.ench, [offer.ench]: Math.max(cur.ench?.[offer.ench] ?? 0, offer.lvl) };
+    const next = [...curSlots];
+    next[slotIndex] = { ...cur, ench };
+    set({ hotbarSlots: next, xpTotal: subtractLevels(get().xpTotal, offer.levels) });
     return true;
   },
   setHealth: (health) => set({ health }),
