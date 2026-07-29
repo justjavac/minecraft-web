@@ -203,6 +203,20 @@ export function onSlept(): void {
   lastClockT = 0;
 }
 
+/** tickMobs 遍历深度与延迟移除队列：遍历中 damageMob 不立即 splice（否则反向遍历索引错位、当前 mob 被前移双结算），遍历结束统一清理 */
+let tickDepth = 0;
+const pendingKill: Mob[] = [];
+
+/** 移除 mob：遍历中（tickDepth>0）入延迟队列，否则立即 splice */
+function removeMob(mob: Mob): void {
+  if (tickDepth > 0) {
+    if (!pendingKill.includes(mob)) pendingKill.push(mob);
+    return;
+  }
+  const i = mobs.indexOf(mob);
+  if (i >= 0) mobs.splice(i, 1);
+}
+
 let nextId = 1;
 let nextArrowId = 1;
 let spawnTimer = 0;
@@ -1041,8 +1055,10 @@ export function tickMobs(
     bossState.hp = 0;
   }
 
+  tickDepth++; // 遍历中 damageMob 延迟移除（pendingKill）：避免反向遍历索引错位、当前 mob 被双结算
   for (let i = mobs.length - 1; i >= 0; i--) {
     const m = mobs[i];
+    if (m.hp <= 0) continue; // 已被 damageMob 标记待移除（pendingKill）的死 mob 跳过
     const def = MOB_DEFS[m.type];
     // 幼体成长
     if (m.baby && m.growUp !== undefined) {
@@ -1506,6 +1522,13 @@ export function tickMobs(
       mobs.splice(i, 1);
     }
   }
+  tickDepth--;
+  // 统一清理遍历中 damageMob 标记的待移除 mob（pendingKill 延迟移除，避免反向遍历索引错位双结算）
+  for (const dead of pendingKill) {
+    const di = mobs.indexOf(dead);
+    if (di >= 0) mobs.splice(di, 1);
+  }
+  pendingKill.length = 0;
 }
 
 /** 玩家攻击判定：视线附近 reach 内最近的生物（投影距离 + 横向容差 + 墙体遮挡检查） */
@@ -1614,7 +1637,7 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
       mobs.push(makeSlime(mob.x + (Math.random() - 0.5) * 1.6, mob.y + 0.1, mob.z + (Math.random() - 0.5) * 1.6, nextSize));
     }
     const i2 = mobs.indexOf(mob);
-    if (i2 >= 0) mobs.splice(i2, 1);
+    if (i2 >= 0) removeMob(mob);
     useGameStore.getState().addXp((mob.slimeSize ?? 4) === 4 ? 4 : 2); // MC：大 4 / 中 2
     return true;
   }
@@ -1634,7 +1657,6 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   // 末影龙：击杀结算（龙蛋 + 返回门激活，lib/endfight.ts）
   if (mob.type === 'ender_dragon' && world) dragonDeathHandler?.(world);
   useGameStore.getState().addXp(mob.type === 'slime' ? 1 : (XP_MOB[mob.type] ?? 5)); // 小史莱姆 1（MC）；新物种未登记经验时按 5 兜底
-  const i = mobs.indexOf(mob);
-  if (i >= 0) mobs.splice(i, 1);
+  removeMob(mob);
   return true;
 }
