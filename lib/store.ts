@@ -790,7 +790,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set((s) => {
       const cur = s.armorSlots[piece];
       if (!cur) return s;
-      const slot: Slot = { kind: 'armor', piece, durability: cur.durability, ench: cur.ench };
+      const slot: Slot = { kind: 'armor', piece, durability: cur.durability, ench: cur.ench, material: cur.material };
       let hotbarSlots = s.hotbarSlots;
       let mainSlots = s.mainSlots;
       const hi = hotbarSlots.indexOf(null);

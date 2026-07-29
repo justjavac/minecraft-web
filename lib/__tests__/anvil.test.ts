@@ -21,8 +21,8 @@ beforeEach(() => {
 
 describe('修复材料映射（MC）', () => {
   it('工具按 tier：木→木板、石→圆石、铁→铁锭、钻→钻石、合金→合金锭；弓/钓竿→线，剪刀→铁锭', () => {
-    expect(toolRepairMaterial('wooden_pickaxe')).toBe('block:oak_planks');
-    expect(toolRepairMaterial('stone_axe')).toBe('block:cobblestone');
+    expect(toolRepairMaterial('wooden_pickaxe')).toBe(`block:${K('planks')}`);
+    expect(toolRepairMaterial('stone_axe')).toBe(`block:${K('cobble')}`);
     expect(toolRepairMaterial('iron_sword')).toBe('material:iron_ingot');
     expect(toolRepairMaterial('diamond_shovel')).toBe('material:diamond');
     expect(toolRepairMaterial('netherite_pickaxe')).toBe('material:netherite_ingot');
@@ -63,6 +63,18 @@ describe('铁砧使用', () => {
     const st = useGameStore.getState();
     expect(st.hotbarSlots[0]).toEqual({ kind: 'tool', tool: 'diamond_sword', durability: 100 + Math.ceil(1561 * 0.25) });
     expect(st.hotbarSlots[3]).toEqual({ kind: 'material', material: 'diamond', count: 1 });
+  });
+
+  it('修复：手持半耐久木镐 + 木板（方块）→ 耗 1 木板补 25%（物品键 block:<数字id> 对齐，曾用字符串 key 永不匹配）', () => {
+    const slots = emptySlots();
+    slots[0] = { kind: 'tool', tool: 'wooden_pickaxe', durability: 10 };
+    slots[1] = { kind: 'block', id: K('planks'), count: 3 };
+    useGameStore.setState({ hotbarSlots: slots, selectedSlot: 0 });
+    const r = useGameStore.getState().anvilUse();
+    expect(r.ok).toBe(true);
+    const st = useGameStore.getState();
+    expect(st.hotbarSlots[0]).toEqual({ kind: 'tool', tool: 'wooden_pickaxe', durability: 10 + Math.ceil(59 * 0.25) });
+    expect(st.hotbarSlots[1]).toEqual({ kind: 'block', id: K('planks'), count: 2 });
   });
 
   it('满耐久拒绝；缺材料拒绝并提示材料名', () => {

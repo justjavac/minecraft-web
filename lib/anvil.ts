@@ -1,6 +1,7 @@
 // 铁砧：修复工具/装备（对应材料补 25% 耐久，MC）与附魔合并（同类两件合一，取高级、同级 +1 上限 5，MC）
 
 import type { ArmorMaterial } from './armor';
+import { BLOCK_BY_KEY } from './blocks';
 import { TOOLS, type ToolType } from './tools';
 import type { EnchMap } from './xp';
 
@@ -16,9 +17,9 @@ export function toolRepairMaterial(tool: ToolType): string | null {
   if (tool.startsWith('golden_')) return 'material:gold_ingot';
   switch (def.tier) {
     case 'wood':
-      return 'block:oak_planks';
+      return `block:${BLOCK_BY_KEY.planks.id}`; // 物品键惯例 block:<数字id>（与 anvilUse 扣料/配方一致；原为字符串 key 永不匹配，木/石工具修不了）
     case 'stone':
-      return 'block:cobblestone';
+      return `block:${BLOCK_BY_KEY.cobble.id}`;
     case 'iron':
       return 'material:iron_ingot';
     case 'diamond':
