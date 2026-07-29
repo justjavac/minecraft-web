@@ -68,6 +68,11 @@ function caveWorld(seed: string): World {
       w.setBlock(x, 40, z, STONE);
     }
   }
+  // 封闭洞穴无自然光：显式置零（setBlock 的光照重算是异步的，测试里不等它；不依赖史莱姆区块运气）
+  for (const c of w.chunks.values()) {
+    c.sky.fill(0);
+    c.light.fill(0);
+  }
   return w;
 }
 

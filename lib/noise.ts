@@ -66,13 +66,17 @@ export interface Terrain {
   aquiferAt(x: number, z: number): boolean;
 }
 
+/** 种子字符串 → 数值（MC 规则：整数字符串按数值种子解析，其余按 Java String.hashCode） */
 export function hashString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+  const t = s.trim();
+  if (/^[+-]?\d+$/.test(t)) {
+    // MC：数字种子按 long 解析（JS 以 BigInt 取低 32 位，超长数字不丢精度）
+    return Number(BigInt(t) & BigInt('0xffffffff')) | 0;
   }
-  return h >>> 0;
+  // MC：非数字种子按 Java String.hashCode（31 进制多项式，32 位有符号回绕）
+  let h = 0;
+  for (let i = 0; i < t.length; i++) h = (Math.imul(31, h) + t.charCodeAt(i)) | 0;
+  return h | 0;
 }
 
 export function mulberry32(seed: number): () => number {

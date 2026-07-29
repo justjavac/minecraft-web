@@ -47,22 +47,24 @@ describe('外岛地形', () => {
     // 环带扫描：存在外岛，且约 1/4 带城
     let islands = 0;
     let cities = 0;
+    let firstIsle: { x: number; z: number; y: number } | null = null;
     for (let rx = 2; rx < 20; rx++) {
       for (let rz = -10; rz < 10; rz++) {
         const isle = outerIslandAt(sh, rx, rz);
         if (isle) {
           islands++;
+          firstIsle ??= isle;
           if (isle.city) cities++;
         }
       }
     }
     expect(islands).toBeGreaterThan(10);
     expect(cities).toBeGreaterThan(2);
-    // 岛面高度在岛 y 附近
-    const some = outerIslandAt(sh, 5, 0) ?? outerIslandAt(sh, 5, 1)!;
-    const h = outerHeightAt(sh, some.x, some.z);
-    expect(h).toBeGreaterThanOrEqual(some.y - 4);
-    expect(h).toBeLessThanOrEqual(some.y + 10);
+    // 岛面高度在岛 y 附近（取扫描到的首个外岛，不硬编码格子——种子规则变化会移动岛位）
+    expect(firstIsle).not.toBeNull();
+    const h = outerHeightAt(sh, firstIsle!.x, firstIsle!.z);
+    expect(h).toBeGreaterThanOrEqual(firstIsle!.y - 4);
+    expect(h).toBeLessThanOrEqual(firstIsle!.y + 10);
   });
   // 生成约 60 个末地 chunk（地形+紫颂树+塔楼），CI 慢机上会超默认 30s——放宽到 90s
   it('外岛 chunk：末地石岛体 + 紫颂树（植株 + 花）；城岛有塔楼与宝箱', () => {
