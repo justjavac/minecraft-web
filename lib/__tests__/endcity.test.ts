@@ -64,7 +64,7 @@ describe('外岛地形', () => {
     expect(h).toBeGreaterThanOrEqual(some.y - 4);
     expect(h).toBeLessThanOrEqual(some.y + 10);
   });
-
+  // 生成约 60 个末地 chunk（地形+紫颂树+塔楼），CI 慢机上会超默认 30s——放宽到 90s
   it('外岛 chunk：末地石岛体 + 紫颂树（植株 + 花）；城岛有塔楼与宝箱', () => {
     const sh = hashString('city-test');
     // 找前几个外岛（含至少一城岛）
@@ -115,7 +115,7 @@ describe('外岛地形', () => {
     // 主塔顶箱存在（基面 +16）
     const baseY = w.terrain.heightAt(cityIsle!.x, cityIsle!.z);
     expect(w.getBlock(cityIsle!.x, baseY + 16, cityIsle!.z)).toBe(K('chest'));
-  });
+  }, 90_000);
 
   it('主塔顶箱战利品必含鞘翅（MC 末地船鞘翅）', () => {
     const elytra = END_CITY_MAIN_LOOT.find(([m]) => m === 'elytra');
