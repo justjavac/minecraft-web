@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { damageMob, clearMobs, mobs, spawnMobAt } from '../mobs';
 import { toolRepairMaterial } from '../anvil';
+import { BLOCK_BY_KEY } from '../blocks';
 
 describe('击退附魔', () => {
   it('命中后获得远离攻击者的水平冲量并小浮空；Boss 免疫', () => {
@@ -24,6 +25,6 @@ describe('金工具铁砧修复材料（MC：金→金锭）', () => {
   it('金质工具用金锭，木质工具仍用木板', () => {
     expect(toolRepairMaterial('golden_pickaxe')).toBe('material:gold_ingot');
     expect(toolRepairMaterial('golden_sword')).toBe('material:gold_ingot');
-    expect(toolRepairMaterial('wooden_pickaxe')).toBe('block:oak_planks');
+    expect(toolRepairMaterial('wooden_pickaxe')).toBe(`block:${BLOCK_BY_KEY.planks.id}`);
   });
 });
