@@ -45,8 +45,8 @@ describe('生物群系', () => {
       for (let z = -2000; z < 2000 && checked < 50; z += 3) {
         if (t.biomeAt(x, z) !== 'river') continue;
         const h = t.heightAt(x, z);
-        // 河床低于海平面（能蓄水），且不深不见底
-        expect(h).toBeLessThan(SEA_LEVEL);
+        // 河床在海平面附近（缓坡河岸可高出 1 格；能蓄水），且不深不见底
+        expect(h).toBeLessThanOrEqual(SEA_LEVEL + 1);
         expect(h).toBeGreaterThan(SEA_LEVEL - 6);
         checked++;
       }

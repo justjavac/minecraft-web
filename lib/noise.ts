@@ -99,7 +99,9 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 /** 河流通道阈值（|riverNoise| 小于它就是河） */
-export const RIVER_WIDTH = 0.045;
+// 河道半宽（|riverField| 阈值）。取较宽值（0.085）：窄河道（渐变强处仅 2-3 格宽）任何河岸剖面都是悬崖，
+// 加宽后河道 6-12 格，smoothstep 河岸剖面才有空间展开（MC 河宽量级）
+export const RIVER_WIDTH = 0.085;
 
 export function createTerrain(seed: string): Terrain {
   const sh = hashString(seed);
@@ -172,19 +174,27 @@ export function createTerrain(seed: string): Terrain {
       const plateau = 58 + Math.floor((hills * 4 + detail * 4 + 8) / 3) * 3; // detail 已 0.5 倍缩放，×4 保持原台地层高
       h = h * (1 - mesa) + plateau * mesa;
     }
-    // 盆地：侵蚀值低的区域下沉压平（低洼积水成湖）；山地/台地不做
-    if (m < 0.3 && mesa < 0.3) {
-      const basin = smoothstep(-0.18, -0.5, erosion(x, z));
+    // 山地/台地遮罩的共用渐出带：一切「仅限平地」的地形项（盆地/河流）都乘它，
+    // 不用 m<0.3 硬阈值——硬阈值会在遮罩边界一侧全生效一侧不生效，形成 15-30 格断裂峡谷
+    const flatFade = (1 - smoothstep(0.1, 0.4, m)) * (1 - smoothstep(0.1, 0.35, mesa));
+    // 盆地：侵蚀值低的区域下沉压平（低洼积水成湖）；按遮罩渐出
+    {
+      const basin = smoothstep(-0.18, -0.5, erosion(x, z)) * flatFade;
       h = h * (1 - basin * 0.5) + 34 * basin * 0.5 - basin * 3;
     }
     // 海洋：大陆值很低的区域进一步下压成深海（蘑菇岛处按权重减轻）
     if (cont < -0.45) h -= (-0.45 - cont) * 22 * (1 - mush);
-    // 河流：只雕刻近海平面的平缓陆地（山地/台地/蘑菇岛不雕，避免深渊切山）
-    if (m < 0.3 && mesa < 0.3 && mush < 0.3) {
+    // 河流：河岸平滑下切（MC 缓坡）。两个要点：
+    // 1) Math.min(h, bed) ≤ h 永不抬升，故无需 h>34 前提（前提本身就是阶跃边界）；
+    // 2) 雕刻强度随遮罩渐出（flatFade/mushFade）——硬阈值会在边界形成断裂峡谷
+    {
       const rv = Math.abs(riverField(x, z));
-      if (rv < RIVER_WIDTH && h > SEA_LEVEL - 6) {
-        const depth = 1 - rv / RIVER_WIDTH;
-        h = Math.min(h, SEA_LEVEL - 1 - Math.floor(depth * 3));
+      if (rv < RIVER_WIDTH) {
+        const depth = 1 - rv / RIVER_WIDTH; // 0 岸 → 1 河心
+        const bed = SEA_LEVEL - 1 - depth * 3; // 39 → 36 连续河床（不取整，避免台阶）
+        const mushFade = 1 - smoothstep(0.1, 0.35, mush);
+        const carve = smoothstep(0.12, 0.85, depth) * flatFade * mushFade; // 外缘不动、向河心平滑增强
+        h = h * (1 - carve) + Math.min(h, bed) * carve;
       }
     }
     return Math.max(1, Math.min(MAX_TERRAIN_H, Math.floor(h)));
