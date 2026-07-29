@@ -357,6 +357,8 @@ export function tryPlace(): boolean {
   const now = performance.now();
   if (now - lastPlace < PLACE_COOLDOWN) return false;
   const s = useGameStore.getState();
+  // 准星 mob 交互最优先（MC：右击村民/可交互动物优先于一切手持物使用）——交易/驯狼/剪羊毛/易物/繁殖
+  if (tryMobInteract(world, s, now)) return false;
   // 手持装备右键：穿上；手持食物右键：进食（均无需准星目标）
   if (s.worldMode === 'survival') {
     const held = s.hotbarSlots[s.selectedSlot];
@@ -407,13 +409,9 @@ export function tryPlace(): boolean {
     }
     // 手持功能性物品：弓/珍珠/蛋/末影眼/钓竿（共用 tryUseHeldItem；生存消耗并扣耐久）
     if (tryUseHeldItem(world, s, now)) return false;
-    // 准星 mob 交互：交易/驯狼/剪羊毛/易物/繁殖（共用 tryMobInteract；生存需手持并消耗，创造视同材料无限）
-    if (tryMobInteract(world, s, now)) return false;
   }
   // 创造模式同样可用：射箭/末影珍珠/末影之眼/钓鱼（MC 创造不消耗弹药与材料；不扣耐久）
   if (s.worldMode === 'creative') {
-    // 准星 mob 交互：交易/驯狼/剪羊毛/易物/繁殖（共用 tryMobInteract；创造视同材料无限，无需手持对应物）
-    if (tryMobInteract(world, s, now)) return false;
     // 手持功能性物品：弓/珍珠/蛋/末影眼/钓竿（共用 tryUseHeldItem；创造视同材料无限，不扣耐久）
     if (tryUseHeldItem(world, s, now)) return false;
   }
