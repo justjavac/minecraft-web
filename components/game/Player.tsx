@@ -262,8 +262,8 @@ export function Player() {
     if (!world) return;
     const dt = Math.min(delta, 0.05);
 
-    // 开发环境调试钩子（自动化实测用；生产构建不暴露）
-    if (process.env.NODE_ENV === 'development') {
+    // 调试钩子（自动化实测用；开发环境，或生产带 ?mcdebug 时暴露——正常用户不可见）
+    if (process.env.NODE_ENV === 'development' || window.location.search.includes('mcdebug')) {
       (window as unknown as { __mc?: unknown }).__mc = {
         pos: { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z },
         pp: playerPosition, // 可写：测试传送（实际玩家状态在下方 tp）
