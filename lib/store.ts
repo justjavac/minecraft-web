@@ -294,7 +294,10 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     const s = get();
     if (!BLOCKS[id]) return; // 空气/无效方块不选
     if (s.worldMode === 'creative') {
-      s.setHotbarBlock(s.selectedSlot, id); // 创造：任意方块直接放入当前格（MC）
+      // 创造：hotbar 已有该方块则切换过去（MC pick block 不重复占格），否则放入当前格
+      const bi = s.hotbarBlocks.findIndex((b) => b === id);
+      if (bi >= 0) s.setSlot(bi);
+      else s.setHotbarBlock(s.selectedSlot, id);
       return;
     }
     // 生存：hotbar 有该方块则切换过去；背包有则与当前格交换拿到手上（MC pick block）
