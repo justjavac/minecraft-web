@@ -4,7 +4,7 @@ import { memo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { buildChunkGeometry, chunkBiomes, type GeometryData } from '@/lib/mesher';
 import { getMesherPool } from '@/lib/mesherPool';
-import type { Chunk, World } from '@/lib/world';
+import { getActiveWorld } from '@/lib/game';
 import type { AtlasMaterials } from '@/lib/textures';
 
 export function toGeometry(data: GeometryData): THREE.BufferGeometry | null {
@@ -19,7 +19,6 @@ export function toGeometry(data: GeometryData): THREE.BufferGeometry | null {
 }
 
 interface ChunkMeshProps {
-  world: World;
   /** chunk 坐标（组件内按坐标取数据；不传 chunk 本体以减小 React props 体积） */
   cx: number;
   cz: number;
@@ -28,7 +27,7 @@ interface ChunkMeshProps {
   materials: AtlasMaterials;
 }
 
-export const ChunkMesh = memo(function ChunkMesh({ world, cx, cz, version, materials }: ChunkMeshProps) {
+export const ChunkMesh = memo(function ChunkMesh({ cx, cz, version, materials }: ChunkMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
   /** 当前展示中的 mesh（新几何就绪后才替换，消除加载闪烁） */
   const currentRef = useRef<THREE.Mesh[]>([]);
@@ -38,6 +37,10 @@ export const ChunkMesh = memo(function ChunkMesh({ world, cx, cz, version, mater
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
+    // world 走模块单例（getActiveWorld），不走 props：World 实例含全部 chunk 数据（数百 MB），
+    // 作为 prop 会被 dev 的 React DevTools 序列化 fiber 时拖出，直接 OOM 崩溃
+    const world = getActiveWorld();
+    if (!world) return;
     let cancelled = false;
     const key = `${cx},${cz}`;
     const chunk = world.chunks.get(key);
@@ -108,7 +111,7 @@ export const ChunkMesh = memo(function ChunkMesh({ world, cx, cz, version, mater
       cancelled = true;
       getMesherPool()?.cancel(key);
     };
-  }, [world, cx, cz, version, materials]);
+  }, [cx, cz, version, materials]);
 
   // 组件卸载时清理当前 mesh（StrictMode 模拟卸载发生在任何构建完成之前，数组必为空，安全）
   useEffect(

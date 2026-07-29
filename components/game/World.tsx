@@ -340,10 +340,10 @@ export function WorldRenderer() {
   return (
     <>
       {chunkList.map((c) => (
-        // 只传坐标（不传 chunk 对象）：React DevTools 序列化 props 时不会拖出每个 chunk 的 ~400KB 数据
+        // 只传坐标（不传 chunk 对象、不传 world 实例）：world 走 getActiveWorld() 单例，
+        // 避免 dev 的 React DevTools 序列化 fiber props 时拖出 world 的数百 MB chunk 数据
         <ChunkMesh
           key={`${c.cx},${c.cz}`}
-          world={world}
           cx={c.cx}
           cz={c.cz}
           version={c.version}
