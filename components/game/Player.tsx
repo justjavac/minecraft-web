@@ -245,6 +245,14 @@ export function Player() {
       if (document.pointerLockElement !== gl.domElement) return;
       if (e.button === 0) digHeld.current = true;
       else if (e.button === 2) tryPlace();
+      else if (e.button === 1) {
+        // 中键选块（MC pick block）：取准星方块到手上
+        e.preventDefault(); // 阻止浏览器中键自动滚动
+        const hit = targetBlock.hit;
+        const w = getActiveWorld();
+        const id = hit && w ? w.getBlock(hit.block[0], hit.block[1], hit.block[2]) : undefined;
+        if (id !== undefined) useGameStore.getState().pickBlock(id);
+      }
     };
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) digHeld.current = false;

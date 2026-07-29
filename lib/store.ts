@@ -146,6 +146,8 @@ interface GameStore {
   backToMenu: () => void;
   setSlot: (i: number) => void;
   setHotbarBlock: (slot: number, id: BlockId) => void;
+  /** 中键选块（MC pick block）：创造直接放入当前格；生存 hotbar 有则切换、背包有则换到当前格 */
+  pickBlock: (id: BlockId) => void;
   setPickerOpen: (open: boolean) => void;
   toggleFly: () => void;
   setPaused: (paused: boolean) => void;
@@ -288,6 +290,30 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
     set(pickerOpen ? { pickerOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null } : { pickerOpen });
   },
+  pickBlock: (id) => {
+    const s = get();
+    if (!BLOCKS[id]) return; // 空气/无效方块不选
+    if (s.worldMode === 'creative') {
+      s.setHotbarBlock(s.selectedSlot, id); // 创造：任意方块直接放入当前格（MC）
+      return;
+    }
+    // 生存：hotbar 有该方块则切换过去；背包有则与当前格交换拿到手上（MC pick block）
+    const hi = s.hotbarSlots.findIndex((sl) => sl?.kind === 'block' && sl.id === id);
+    if (hi >= 0) {
+      s.setSlot(hi);
+      return;
+    }
+    const mi = s.mainSlots.findIndex((sl) => sl?.kind === 'block' && sl.id === id);
+    if (mi < 0) return;
+    set((st) => {
+      const hotbarSlots = [...st.hotbarSlots];
+      const mainSlots = [...st.mainSlots];
+      const tmp = hotbarSlots[st.selectedSlot] ?? null;
+      hotbarSlots[st.selectedSlot] = mainSlots[mi];
+      mainSlots[mi] = tmp;
+      return { hotbarSlots, mainSlots };
+    });
+  },
   toggleFly: () => set((s) => ({ flying: s.worldMode === 'creative' ? !s.flying : false })),
   setPaused: (paused) => set({ paused }),
   toggleDebug: () => set((s) => ({ debug: !s.debug })),
@@ -333,6 +359,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setSaturation: (saturation) => set({ saturation }),
   setDead: (dead) => set({ dead }),
   damagePlayer: (amount, opts) => {
+    // MC：创造模式玩家无敌，不受任何伤害（虚空 /kill 由各自路径单独处理，不经此函数）
+    if (get().worldMode === 'creative') return false;
     const now = performance.now();
     if (now - hurtState.lastAt < HURT_COOLDOWN) return false;
     hurtState.lastAt = now;
@@ -655,6 +683,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   },
   damageHeldTool: (amount) =>
     set((s) => {
+      if (s.worldMode === 'creative') return s; // MC：创造模式工具/武器不耗耐久
       const slot = s.hotbarSlots[s.selectedSlot];
       if (!slot || slot.kind !== 'tool') return s;
       // 耐久附魔：每级 1/(lvl+1) 概率不掉耐久（MC 公式）
