@@ -271,12 +271,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       hasLocked: false, spawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION, xpTotal: 0,
       dimension: 'overworld',
-      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
+      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
