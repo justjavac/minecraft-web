@@ -19,6 +19,8 @@ export function raycastBlock(
   dy: number,
   dz: number,
   maxDist: number,
+  /** 是否命中流体（水/岩浆）。默认 false：挖掘/放置穿过流体；装水等场景传 true */
+  includeFluid = false,
 ): RaycastHit | null {
   const len = Math.hypot(dx, dy, dz);
   if (len === 0) return null;
@@ -47,9 +49,9 @@ export function raycastBlock(
 
   while (t <= maxDist) {
     const id = world.getBlock(x, y, z);
-    // 可命中的方块：实心、cross（花草/火把）、非实心薄片（雪层/红石粉/压力板——MC 均可挖掘）
+    // 可命中的方块：实心、cross（花草/火把）、非实心薄片（雪层/红石粉/压力板——MC 均可挖掘）；includeFluid 时还可命中流体（装水）
     const def = BLOCKS[id];
-    if (id !== AIR && def && (def.solid || def.shape === 'cross' || (def.shape === 'slab' && def.digTime !== undefined))) {
+    if (id !== AIR && def && (def.solid || def.shape === 'cross' || (def.shape === 'slab' && def.digTime !== undefined) || (includeFluid && def.fluid))) {
       return { block: [x, y, z], face };
     }
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {

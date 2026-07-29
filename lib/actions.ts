@@ -501,7 +501,9 @@ export function tryPlace(): boolean {
   if (heldMat?.kind === 'material' && heldMat.material === 'glass_bottle') {
     const camBlock = world.getBlock(Math.floor(camera.position.x), Math.floor(camera.position.y), Math.floor(camera.position.z));
     const eyeInWater = camBlock === BLOCK_BY_KEY.water.id;
-    const hitWater = hit !== null && world.getBlock(hit.block[0], hit.block[1], hit.block[2]) === BLOCK_BY_KEY.water.id;
+    // 对准水源：水不被常规 raycast（挖掘/放置要穿过流体）命中，需 includeFluid 单独取——否则 hitWater 恒 false，对准水源永远装不了水（死代码）
+    const wh = raycastBlock(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH, true);
+    const hitWater = wh !== null && world.getBlock(wh.block[0], wh.block[1], wh.block[2]) === BLOCK_BY_KEY.water.id;
     if (eyeInWater || hitWater) {
       s.consumeMaterial('glass_bottle', 1);
       s.addStack({ kind: 'material', material: 'water_bottle' }, 1);
