@@ -3,9 +3,24 @@
 import { AIR, atlasUV, BLOCKS, isWaterId, WATER, WATER_FLOW_1, type BlockDef } from './blocks';
 import { FOLIAGE_TINT_KEYS, FOLIAGE_TINT_RATIO, GRASS_TINT_KEYS, GRASS_TINT_RATIO } from './biomes';
 import { BIOME_LIST, biomeIndex, type Terrain } from './noise';
-// 常量取叶子模块 grid（保持 worker 包最小）；Chunk/World 仅类型引用（编译期擦除，不产生模块边）
+// 常量取叶子模块 grid（保持 worker 包最小）。
+// 注意：不要从 './world' 引入任何东西——即便是 type-only 引用，某些打包器/版本也不会擦除模块边，
+// 会把 world 的依赖链（react/store/idb）拖进 mesher worker 包致其初始化挂死。改用下面的结构化类型
 import { CHUNK_SIZE, WORLD_HEIGHT } from './grid';
-import type { Chunk, World } from './world';
+
+/** buildChunkGeometry/chunkBiomes 需要的世界结构（与 lib/world.ts 的 World 结构化兼容，无模块边） */
+export interface MesherWorld {
+  terrain: Terrain;
+  chunks: Map<string, { data: Uint16Array; light: Uint8Array; sky: Uint8Array } | undefined>;
+}
+/** 与 lib/world.ts 的 Chunk 结构化兼容 */
+export interface MesherChunk {
+  cx: number;
+  cz: number;
+  data: Uint16Array;
+  light: Uint8Array;
+  sky: Uint8Array;
+}
 
 export interface GeometryData {
   positions: Float32Array;
@@ -476,7 +491,7 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
   return { solid: solid.build(), water: water.build() };
 }
 
-export function buildChunkGeometry(world: World, chunk: Chunk): { solid: GeometryData; water: GeometryData } {
+export function buildChunkGeometry(world: MesherWorld, chunk: MesherChunk): { solid: GeometryData; water: GeometryData } {
   const datas: (Uint16Array | null)[] = [];
   const lights: (Uint8Array | null)[] = [];
   const skys: (Uint8Array | null)[] = [];
@@ -492,7 +507,7 @@ export function buildChunkGeometry(world: World, chunk: Chunk): { solid: Geometr
 }
 
 /** 中心 chunk 及 1 格环共 18×18 列的群系索引（群系顶点色 3×3 平滑用） */
-export function chunkBiomes(world: World, cx: number, cz: number): Uint8Array {
+export function chunkBiomes(world: MesherWorld, cx: number, cz: number): Uint8Array {
   const biomes = new Uint8Array(18 * 18);
   for (let z = -1; z <= CHUNK_SIZE; z++) {
     for (let x = -1; x <= CHUNK_SIZE; x++) {
