@@ -37,7 +37,7 @@ export interface MobDef {
 }
 
 export const MOB_DEFS: Record<MobType, MobDef> = {
-  zombie: { name: '僵尸', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 4, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'rotten_flesh', count: [0, 2] }] },
+  zombie: { name: '僵尸', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 3, attackRange: 1.4, attackCd: 1.2, drops: [{ material: 'rotten_flesh', count: [0, 2] }] },
   skeleton: { name: '骷髅', hp: 20, speed: 2.3, hostile: true, burnsAtDay: true, damage: 3, attackRange: 16, attackCd: 2, drops: [{ material: 'bone', count: [0, 2] }, { material: 'arrow', count: [0, 2] }] },
   spider: { name: '蜘蛛', hp: 16, speed: 3.2, hostile: true, burnsAtDay: false, damage: 2, attackRange: 1.4, attackCd: 1, drops: [{ material: 'string', count: [0, 2] }, { material: 'spider_eye', count: [0, 1] }] },
   creeper: { name: '苦力怕', hp: 20, speed: 2.2, hostile: true, burnsAtDay: false, damage: 0, attackRange: 3, attackCd: 1.5, drops: [{ material: 'gunpowder', count: [0, 2] }] },
@@ -64,7 +64,7 @@ export const MOB_DEFS: Record<MobType, MobDef> = {
   wolf: { name: '狼', hp: 8, speed: 2.6, hostile: true, burnsAtDay: false, damage: 3, attackRange: 1.4, attackCd: 1, drops: [],
   },
   // 末影人：高个传送怪——对视/受击激怒，被追/受伤即瞬移（MC 标志）；水触即伤
-  enderman: { name: '末影人', hp: 40, speed: 3.2, hostile: true, burnsAtDay: false, damage: 4, attackRange: 1.6, attackCd: 1, drops: [{ material: 'ender_pearl', count: [0, 1] }],
+  enderman: { name: '末影人', hp: 40, speed: 3.2, hostile: true, burnsAtDay: false, damage: 7, attackRange: 1.6, attackCd: 1, drops: [{ material: 'ender_pearl', count: [0, 1] }],
   },
   // 凋灵：Boss——悬浮弹幕（凋灵骷髅弹带凋零 DOT），半血以下免疫箭矢（MC）；击杀掉下界之星
   wither: { name: '凋灵', hp: 300, speed: 2.2, hostile: true, burnsAtDay: false, damage: 8, attackRange: 30, attackCd: 2, drops: [{ material: 'nether_star', count: [1, 1] }],

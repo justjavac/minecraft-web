@@ -145,7 +145,7 @@ describe('僵尸', () => {
     mobs.push(mkMob({ id: 2, type: 'zombie', x: 1, y: 10, z: 0 }));
     let dmg = 0;
     tickMobs(w, 0.1, { x: 0, y: 10, z: 0 }, (d) => (dmg += d));
-    expect(dmg).toBe(4); // MC 普通难度僵尸近战 2 心
+    expect(dmg).toBe(3); // MC 普通难度僵尸近战 1.5 心（3 点；困难才 2 心/4 点）
     dmg = 0;
     tickMobs(w, 0.1, { x: 0, y: 10, z: 0 }, (d) => (dmg += d));
     expect(dmg).toBe(0); // 冷却中不再攻击
