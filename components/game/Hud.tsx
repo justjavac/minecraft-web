@@ -5,7 +5,7 @@ import { BLOCKS } from '@/lib/blocks';
 import { bossState, debugInfo, survivalStats } from '@/lib/game';
 import { clearMobs } from '@/lib/mobs';
 import { MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
-import { effects } from '@/lib/effects';
+import { effects, clearEffects } from '@/lib/effects';
 import { levelFromXp } from '@/lib/xp';
 import { loadWorldMeta, type WorldMeta } from '@/lib/persistence';
 import { armorDefOf, armorPoints } from '@/lib/armor';
@@ -193,6 +193,8 @@ function DeathOverlay() {
     s.setSaturation(MAX_SATURATION);
     s.setDead(false);
     survivalStats.exhaustion = 0;
+    survivalStats.wither = 0; // MC：死亡清空凋零 DoT（否则复活后继续扣血）
+    clearEffects(); // MC：死亡清空全部药水效果
     clearMobs();
     if (s.dimension === 'end') s.setDimension('overworld'); // MC：末地死亡回主世界重生点
   };

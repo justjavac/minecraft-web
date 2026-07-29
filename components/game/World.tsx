@@ -30,6 +30,7 @@ import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
 import { tickSaplings, clearSaplings } from '@/lib/saplings';
 import { clearRedstone, rescanSources, tickRedstone } from '@/lib/redstone';
+import { clearDrops } from '@/lib/items';
 import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
@@ -258,6 +259,7 @@ export function WorldRenderer() {
       clearSaplings();
       clearCrops();
       clearRedstone();
+      clearDrops(); // 掉落物也随维度/世界清理（否则主世界掉落物跟到下界继续 tick，回菜单再开新图旧掉落物残留）
       worldRef.current = null;
       setActiveWorld(null);
     };
