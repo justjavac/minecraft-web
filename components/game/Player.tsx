@@ -106,6 +106,7 @@ export function Player() {
   const touchMode = useGameStore((s) => s.touchMode);
   const fov = useGameStore((s) => s.settings.fov);
   const sensitivity = useGameStore((s) => s.settings.sensitivity);
+  const autoJump = useGameStore((s) => s.settings.autoJump);
   const pos = useRef<Aabb | null>(null);
   const velY = useRef(0);
   const onGround = useRef(false);
@@ -388,8 +389,8 @@ export function Player() {
     p.z = wantZ;
     const hitZ = collideAxis(world, p, 2, mz * dt, HALF_W, HEIGHT);
 
-    // 台阶辅助：着地行走被 1 格高障碍挡住时自动抬上去（天花板下不触发）
-    if ((hitX || hitZ) && !flying && onGround.current) {
+    // 台阶辅助（设置「自动跳跃」，MC 辅助功能）：着地行走被 1 格高障碍挡住时自动抬上去（天花板下不触发）
+    if (autoJump && (hitX || hitZ) && !flying && onGround.current) {
       const stepY = p.y + 1;
       const groundLevel = Math.floor(stepY) - 1; // 台阶顶面所在方块层
       const groundSolid = BLOCKS[world.getBlock(Math.floor(wantX), groundLevel, Math.floor(wantZ))]?.solid;

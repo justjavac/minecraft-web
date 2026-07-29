@@ -6,6 +6,7 @@ import { BoxGeometry, Mesh, MeshBasicMaterial, Vector3, type Group } from 'three
 import { ATLAS_CELL_RATIO, ATLAS_COLS, ATLAS_PAD_RATIO, ATLAS_ROWS, BLOCKS } from '@/lib/blocks';
 import { breakParticles, getActiveWorld, type BreakParticleEvent } from '@/lib/game';
 import { getAtlasMaterials, tilePx } from '@/lib/textures';
+import { useGameStore } from '@/lib/store';
 import { useRendererKind } from './renderer-kind';
 
 const POOL_SIZE = 32;
@@ -63,6 +64,12 @@ export function BreakParticles() {
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
     const world = getActiveWorld();
+
+    // 设置里关闭粒子：丢弃破坏事件且不再更新（MC 粒子开关）
+    if (!useGameStore.getState().settings.particles) {
+      breakParticles.length = 0;
+      return;
+    }
 
     // 消费破坏事件，每次激活最多 PARTICLES_PER_BREAK 个粒子
     while (particlePool.length > 0 && breakParticles.length > 0) {

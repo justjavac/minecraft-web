@@ -198,9 +198,10 @@ export function DayNight() {
       );
     }
 
-    // 云层跟随相机平移 + 纹理漂移；雨雪天云层变灰变厚
+    // 云层跟随相机平移 + 纹理漂移；雨雪天云层变灰变厚；设置里可关闭云（MC 云开关）
     const cloud = cloudRef.current;
     if (cloud) {
+      cloud.visible = useGameStore.getState().settings.clouds;
       cloud.position.set(camera.position.x, CLOUD_Y, camera.position.z);
       const mat = cloud.material as MeshBasicMaterial;
       const gray = 0.45 + 0.55 * dim;

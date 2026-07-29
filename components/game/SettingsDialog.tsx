@@ -43,7 +43,7 @@ function SettingRow({ label, display, min, max, step, value, onChange }: Setting
   );
 }
 
-/** 设置弹窗：音量 / FOV / 渲染距离 / 灵敏度 / 渲染器 / 贴图包，改动即时生效并存 localStorage */
+/** 设置弹窗：音量 / FOV / 渲染距离 / 灵敏度 / 自动跳跃 / 云 / 粒子 / 渲染器 / 贴图包，改动即时生效并存 localStorage */
 export function SettingsDialog() {
   const settings = useGameStore((s) => s.settings);
   const updateSettings = useGameStore((s) => s.updateSettings);
@@ -114,6 +114,63 @@ export function SettingsDialog() {
             value={settings.sensitivity}
             onChange={(sensitivity) => updateSettings({ sensitivity })}
           />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>自动跳跃</Label>
+              <span className="text-sm text-muted-foreground">着地行走自动跨上 1 格台阶（MC 辅助功能）</span>
+            </div>
+            <div className="flex gap-2">
+              {[true, false].map((v) => (
+                <Button
+                  key={String(v)}
+                  type="button"
+                  variant={settings.autoJump === v ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => updateSettings({ autoJump: v })}
+                >
+                  {v ? '开' : '关'}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>云</Label>
+              <span className="text-sm text-muted-foreground">MC 云开关</span>
+            </div>
+            <div className="flex gap-2">
+              {[true, false].map((v) => (
+                <Button
+                  key={String(v)}
+                  type="button"
+                  variant={settings.clouds === v ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => updateSettings({ clouds: v })}
+                >
+                  {v ? '开' : '关'}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>粒子效果</Label>
+              <span className="text-sm text-muted-foreground">方块破坏碎屑等</span>
+            </div>
+            <div className="flex gap-2">
+              {[true, false].map((v) => (
+                <Button
+                  key={String(v)}
+                  type="button"
+                  variant={settings.particles === v ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => updateSettings({ particles: v })}
+                >
+                  {v ? '开' : '关'}
+                </Button>
+              ))}
+            </div>
+          </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>渲染器</Label>

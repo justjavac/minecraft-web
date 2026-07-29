@@ -40,6 +40,12 @@ export interface Settings {
   sensitivity: number;
   /** 渲染器：WebGPU（默认，不支持自动降级 WebGL）/ WebGL */
   renderer: 'webgl' | 'webgpu';
+  /** 自动跳跃（MC 辅助功能）：着地行走自动跨上 1 格台阶 */
+  autoJump: boolean;
+  /** 显示云 */
+  clouds: boolean;
+  /** 破坏/放置粒子效果 */
+  particles: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -48,6 +54,9 @@ export const DEFAULT_SETTINGS: Settings = {
   renderDistance: 6,
   sensitivity: 1,
   renderer: 'webgpu',
+  autoJump: true,
+  clouds: true,
+  particles: true,
 };
 
 const SETTINGS_KEY = 'kimi-mc-settings';
