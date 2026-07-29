@@ -41,9 +41,18 @@ export function BlockHighlight() {
     if (!world || !mesh) return;
     const hit = targetBlock.hit;
     if (hit) {
-      mesh.visible = true;
-      mesh.position.set(hit.block[0] + 0.5, hit.block[1] + 0.5, hit.block[2] + 0.5);
       const id = world.getBlock(hit.block[0], hit.block[1], hit.block[2]);
+      const box = BLOCKS[id]?.box3;
+      if (box) {
+        // 薄片/异形块（雪层/红石粉/压力板/按钮等带 box3）按实际碰撞盒描框，不画整方块
+        const [x0, y0, z0, x1, y1, z1] = box;
+        mesh.scale.set(Math.max(x1 - x0, 0.01), Math.max(y1 - y0, 0.01), Math.max(z1 - z0, 0.01));
+        mesh.position.set(hit.block[0] + (x0 + x1) / 2, hit.block[1] + (y0 + y1) / 2, hit.block[2] + (z0 + z1) / 2);
+      } else {
+        mesh.scale.set(1, 1, 1);
+        mesh.position.set(hit.block[0] + 0.5, hit.block[1] + 0.5, hit.block[2] + 0.5);
+      }
+      mesh.visible = true;
       debugInfo.target = `${BLOCKS[id]?.name ?? id} (${hit.block[0]}, ${hit.block[1]}, ${hit.block[2]})`;
     } else {
       mesh.visible = false;
