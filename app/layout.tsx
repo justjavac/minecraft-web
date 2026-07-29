@@ -2,8 +2,16 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://k3mc.jjc.fun"),
   title: "kimi-mc",
   description: "网页版体素沙盒 · Next.js + shadcn/ui + Three.js",
+  openGraph: {
+    title: "kimi-mc",
+    description: "浏览器里的 Minecraft：生存、创造、探索——无需安装，打开网页即玩",
+    url: "https://k3mc.jjc.fun",
+    siteName: "kimi-mc",
+    type: "website",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
