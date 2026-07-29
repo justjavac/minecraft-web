@@ -27,10 +27,10 @@ describe('树叶掉落（MC）', () => {
   it('剪刀：掉树叶方块', () => {
     const w = setup();
     w.setBlock(3, 40, 3, LEAVES());
-    useGameStore.setState((s) => ({
+    useGameStore.setState({
       hotbarSlots: [{ kind: 'tool', tool: 'shears', durability: 1 }, ...emptySlots().slice(1)],
       selectedSlot: 0,
-    }));
+    });
     breakBlock(w, 3, 40, 3);
     expect(itemDrops).toHaveLength(1);
     expect(itemDrops[0].drop).toEqual({ kind: 'block', blockId: LEAVES() });

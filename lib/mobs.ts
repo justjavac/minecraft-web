@@ -409,11 +409,15 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
   if (village && !mobs.some((m) => m.type === 'iron_golem' && Math.hypot(m.x - village.x, m.z - village.z) < 48) && Math.random() < 0.2) {
     if (trySpawnGolem(world, village)) return true;
   }
-  const villageRoll = !night && village !== null && Math.random() < 0.7;
+  const villageRoll = !night && village !== null && Math.random() < 0.85;
   const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile && m.type !== 'iron_golem').length;
   const passiveCount = mobs.filter((m) => !MOB_DEFS[m.type].hostile).length;
   if (night && hostileCount >= MAX_HOSTILE) return false;
-  if (!night && passiveCount >= MAX_PASSIVE) return false;
+  // 村民单独限额（每村最多 3 只，MC 村庄必有村民——不与普通动物共享被动上限，否则被猪牛挤满永不出村民）
+  if (villageRoll) {
+    const villagerCount = mobs.filter((m) => m.type === 'villager' && Math.hypot(m.x - village!.x, m.z - village!.z) < 48).length;
+    if (villagerCount >= 3) return false;
+  } else if (!night && passiveCount >= MAX_PASSIVE) return false;
   for (let attempt = 0; attempt < 8; attempt++) {
     const ang = Math.random() * Math.PI * 2;
     const r = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
@@ -455,10 +459,11 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     const wantType = biome === 'mushroom_fields' ? 'mooshroom' : villageRoll ? 'villager' : pickSpawnType(night, biome);
     const wantDef = MOB_DEFS[wantType];
     if (isWaterId(world.getBlock(bx, y, bz))) continue; // 不在水面生成
-    // 被动只在草地上（蘑菇牛在菌丝上）
+    // 被动只在草地上（蘑菇牛在菌丝上；村民可站村庄土径，MC）
     if (!wantDef.hostile) {
       const ground = world.getBlock(bx, y, bz);
-      if (wantType === 'mooshroom' ? BLOCKS[ground]?.key !== 'mycelium' : ground !== GRASS) continue;
+      const gk = BLOCKS[ground]?.key;
+      if (wantType === 'mooshroom' ? gk !== 'mycelium' : wantType === 'villager' ? ground !== GRASS && gk !== 'dirt' : ground !== GRASS) continue;
     }
     const sy = y + 1;
     // 亮度门控（MC：敌对在亮度 ≤7 生成；地表白天天空光 15 不刷，深夜露天 ≈0 可刷）

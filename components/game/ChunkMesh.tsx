@@ -20,13 +20,15 @@ export function toGeometry(data: GeometryData): THREE.BufferGeometry | null {
 
 interface ChunkMeshProps {
   world: World;
-  chunk: Chunk;
+  /** chunk 坐标（组件内按坐标取数据；不传 chunk 本体以减小 React props 体积） */
+  cx: number;
+  cz: number;
   /** chunk.version 变化时重建几何 */
   version: number;
   materials: AtlasMaterials;
 }
 
-export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materials }: ChunkMeshProps) {
+export const ChunkMesh = memo(function ChunkMesh({ world, cx, cz, version, materials }: ChunkMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
   /** 当前展示中的 mesh（新几何就绪后才替换，消除加载闪烁） */
   const currentRef = useRef<THREE.Mesh[]>([]);
@@ -37,14 +39,16 @@ export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materi
     const group = groupRef.current;
     if (!group) return;
     let cancelled = false;
-    const key = `${chunk.cx},${chunk.cz}`;
+    const key = `${cx},${cz}`;
+    const chunk = world.chunks.get(key);
+    if (!chunk) return;
 
     const datas: (Uint16Array | null)[] = [];
     const lights: (Uint8Array | null)[] = [];
     const skys: (Uint8Array | null)[] = [];
     for (let gz = -1; gz <= 1; gz++) {
       for (let gx = -1; gx <= 1; gx++) {
-        const c = world.chunks.get(`${chunk.cx + gx},${chunk.cz + gz}`);
+        const c = world.chunks.get(`${cx + gx},${cz + gz}`);
         datas.push(c?.data ?? null);
         lights.push(c?.light ?? null);
         skys.push(c?.sky ?? null);
@@ -104,7 +108,7 @@ export const ChunkMesh = memo(function ChunkMesh({ world, chunk, version, materi
       cancelled = true;
       getMesherPool()?.cancel(key);
     };
-  }, [world, chunk, version, materials]);
+  }, [world, cx, cz, version, materials]);
 
   // 组件卸载时清理当前 mesh（StrictMode 模拟卸载发生在任何构建完成之前，数组必为空，安全）
   useEffect(
