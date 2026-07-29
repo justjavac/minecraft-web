@@ -95,8 +95,8 @@ export function dropStorageContents(key: string, x: number, y: number, z: number
     if (!slot) continue;
     if (slot.kind === 'block') spawnBlockDrop(slot.id, x + 0.5, y + 0.5, z + 0.5, slot.count);
     else if (slot.kind === 'material') spawnMaterialDrop(slot.material, x + 0.5, y + 0.5, z + 0.5, slot.count);
-    else if (slot.kind === 'tool') spawnToolDrop(slot.tool, x + 0.5, y + 0.5, z + 0.5, slot.durability);
-    else spawnArmorDrop(slot.piece, x + 0.5, y + 0.5, z + 0.5, slot.durability, slot.material);
+    else if (slot.kind === 'tool') spawnToolDrop(slot.tool, x + 0.5, y + 0.5, z + 0.5, slot.durability, slot.ench);
+    else spawnArmorDrop(slot.piece, x + 0.5, y + 0.5, z + 0.5, slot.durability, slot.material, slot.ench);
   }
   storages.delete(key);
 }

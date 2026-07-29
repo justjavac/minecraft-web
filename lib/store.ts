@@ -17,7 +17,7 @@ import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptyS
 import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS, type ToolType } from './tools';
 import { executeTrade, MAX_TRADE_USES, professionOf, TRADES, tradeDay, tradeStockLeft, deductTradeStock } from './trading';
-import { levelFromXp, subtractLevels, type EnchOffer } from './xp';
+import { levelFromXp, subtractLevels, type EnchMap, type EnchOffer } from './xp';
 
 export type Screen = 'menu' | 'playing';
 export type GameMode = 'new' | 'continue';
@@ -200,9 +200,9 @@ interface GameStore {
   /** 向热键栏添加可堆叠物品，返回放不下的数量 */
   addStack: (item: { kind: 'block'; id: BlockId } | { kind: 'material'; material: string }, count?: number) => number;
   /** 给工具找空槽，满则返回 false */
-  addTool: (tool: ToolType, durability?: number) => boolean;
+  addTool: (tool: ToolType, durability?: number, ench?: EnchMap) => boolean;
   /** 给装备找空槽，满则返回 false */
-  addArmor: (piece: ArmorPiece, durability?: number, material?: ArmorMaterial) => boolean;
+  addArmor: (piece: ArmorPiece, durability?: number, material?: ArmorMaterial, ench?: EnchMap) => boolean;
   /** 把选中的装备穿上（已有装备换回手中），非装备返回 false */
   equipSelectedArmor: () => boolean;
   /** 从选中槽位消耗一个方块用于放置，返回其 id；选中不是方块或为空返回 null */
@@ -399,12 +399,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
           if (!slot) continue;
           if (slot.kind === 'block') spawnBlockDrop(slot.id, x, y + 0.5, z, slot.count);
           else if (slot.kind === 'material') spawnMaterialDrop(slot.material, x, y + 0.5, z, slot.count);
-          else if (slot.kind === 'tool') spawnToolDrop(slot.tool, x, y + 0.5, z, slot.durability);
-          else spawnArmorDrop(slot.piece, x, y + 0.5, z, slot.durability, slot.material);
+          else if (slot.kind === 'tool') spawnToolDrop(slot.tool, x, y + 0.5, z, slot.durability, slot.ench);
+          else spawnArmorDrop(slot.piece, x, y + 0.5, z, slot.durability, slot.material, slot.ench);
         }
         for (const piece of ['helmet', 'chestplate', 'leggings', 'boots'] as const) {
           const cur = armorSlots[piece];
-          if (cur) spawnArmorDrop(piece, x, y + 0.5, z, cur.durability, cur.material);
+          if (cur) spawnArmorDrop(piece, x, y + 0.5, z, cur.durability, cur.material, cur.ench);
         }
         hotbarSlots = emptySlots();
         mainSlots = emptyBackpack();
@@ -561,25 +561,25 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (second.slots !== get().mainSlots) set({ mainSlots: second.slots });
     return second.leftover;
   },
-  addTool: (tool, durability) => {
+  addTool: (tool, durability, ench) => {
     // 热键栏满了放背包
-    const hot = addToolToSlots(get().hotbarSlots, tool, durability ?? TOOLS[tool].durability);
+    const hot = addToolToSlots(get().hotbarSlots, tool, durability ?? TOOLS[tool].durability, ench);
     if (hot) {
       set({ hotbarSlots: hot });
       return true;
     }
-    const main = addToolToSlots(get().mainSlots, tool, durability ?? TOOLS[tool].durability);
+    const main = addToolToSlots(get().mainSlots, tool, durability ?? TOOLS[tool].durability, ench);
     if (!main) return false;
     set({ mainSlots: main });
     return true;
   },
-  addArmor: (piece, durability, material) => {
-    const hot = addArmorToSlots(get().hotbarSlots, piece, durability ?? armorDef(material ?? 'leather', piece).durability, material);
+  addArmor: (piece, durability, material, ench) => {
+    const hot = addArmorToSlots(get().hotbarSlots, piece, durability ?? armorDef(material ?? 'leather', piece).durability, material, ench);
     if (hot) {
       set({ hotbarSlots: hot });
       return true;
     }
-    const main = addArmorToSlots(get().mainSlots, piece, durability ?? armorDef(material ?? 'leather', piece).durability, material);
+    const main = addArmorToSlots(get().mainSlots, piece, durability ?? armorDef(material ?? 'leather', piece).durability, material, ench);
     if (!main) return false;
     set({ mainSlots: main });
     return true;

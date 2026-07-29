@@ -59,9 +59,9 @@ export function ItemDrops() {
         return false;
       }
       if (drop.drop.kind === 'tool') {
-        return s.addTool(drop.drop.tool, drop.durability);
+        return s.addTool(drop.drop.tool, drop.durability, drop.ench);
       }
-      return s.addArmor(drop.drop.piece, drop.durability, drop.drop.material);
+      return s.addArmor(drop.drop.piece, drop.durability, drop.drop.material, drop.ench);
     });
 
     // 同步 mesh：新增/更新/删除

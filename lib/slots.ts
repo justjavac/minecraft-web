@@ -67,20 +67,20 @@ export function addStackToSlots(
 }
 
 /** 给工具找一个空槽，满则返回 null */
-export function addToolToSlots(slots: Slot[], tool: ToolType, durability: number): Slot[] | null {
+export function addToolToSlots(slots: Slot[], tool: ToolType, durability: number, ench?: EnchMap): Slot[] | null {
   const i = slots.indexOf(null);
   if (i < 0) return null;
   const next = [...slots];
-  next[i] = { kind: 'tool', tool, durability };
+  next[i] = { kind: 'tool', tool, durability, ench };
   return next;
 }
 
 /** 给装备找一个空槽，满则返回 null */
-export function addArmorToSlots(slots: Slot[], piece: ArmorPiece, durability: number, material?: ArmorMaterial): Slot[] | null {
+export function addArmorToSlots(slots: Slot[], piece: ArmorPiece, durability: number, material?: ArmorMaterial, ench?: EnchMap): Slot[] | null {
   const i = slots.indexOf(null);
   if (i < 0) return null;
   const next = [...slots];
-  next[i] = { kind: 'armor', piece, material, durability };
+  next[i] = { kind: 'armor', piece, material, durability, ench };
   return next;
 }
 

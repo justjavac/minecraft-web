@@ -4,6 +4,7 @@ import { BLOCKS, type BlockId } from './blocks';
 import type { ArmorMaterial, ArmorPiece } from './armor';
 import type { ToolType } from './tools';
 import type { World } from './world';
+import type { EnchMap } from './xp';
 
 export type DropKind =
   | { kind: 'block'; blockId: BlockId }
@@ -17,6 +18,8 @@ export interface ItemDrop {
   count: number;
   /** 工具/装备的剩余耐久（其他类别为 undefined） */
   durability?: number;
+  /** 工具/装备的附魔（透传，避免死亡/容器掉落丢附魔） */
+  ench?: EnchMap;
   x: number;
   y: number;
   z: number;
@@ -36,9 +39,9 @@ const MAX_DROPS = 256;
 let nextId = 1;
 
 
-function spawn(drop: DropKind, x: number, y: number, z: number, count: number, durability?: number): void {
+function spawn(drop: DropKind, x: number, y: number, z: number, count: number, durability?: number, ench?: EnchMap): void {
   if (itemDrops.length >= MAX_DROPS) itemDrops.shift(); // 超上限丢弃最旧的
-  itemDrops.push({ id: nextId++, drop, count, durability, x, y, z, velY: 2, age: 0 });
+  itemDrops.push({ id: nextId++, drop, count, durability, ench, x, y, z, velY: 2, age: 0 });
 }
 
 export function spawnBlockDrop(blockId: BlockId, x: number, y: number, z: number, count = 1): void {
@@ -49,12 +52,12 @@ export function spawnMaterialDrop(material: string, x: number, y: number, z: num
   spawn({ kind: 'material', material }, x, y, z, count);
 }
 
-export function spawnToolDrop(tool: ToolType, x: number, y: number, z: number, durability?: number): void {
-  spawn({ kind: 'tool', tool }, x, y, z, 1, durability);
+export function spawnToolDrop(tool: ToolType, x: number, y: number, z: number, durability?: number, ench?: EnchMap): void {
+  spawn({ kind: 'tool', tool }, x, y, z, 1, durability, ench);
 }
 
-export function spawnArmorDrop(piece: ArmorPiece, x: number, y: number, z: number, durability: number, material?: ArmorMaterial): void {
-  spawn({ kind: 'armor', piece, material }, x, y, z, 1, durability);
+export function spawnArmorDrop(piece: ArmorPiece, x: number, y: number, z: number, durability: number, material?: ArmorMaterial, ench?: EnchMap): void {
+  spawn({ kind: 'armor', piece, material }, x, y, z, 1, durability, ench);
 }
 
 export function clearDrops(): void {
