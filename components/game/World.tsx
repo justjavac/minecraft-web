@@ -166,7 +166,10 @@ export function WorldRenderer() {
           const store = useGameStore.getState();
           if (meta?.player) store.setSpawnPoint(meta.player);
           store.setWorldMode(meta?.mode ?? 'creative');
-          store.loadSurvival(meta?.survival ?? { health: MAX_HEALTH, hunger: MAX_HUNGER, slots: emptySlots() });
+          // MC：死亡后重进世界回满血（存档可能在死亡瞬间写入 health 0，避免载入「尸体态」）
+          const sv = meta?.survival ?? { health: MAX_HEALTH, hunger: MAX_HUNGER, slots: emptySlots() };
+          if ((sv.health ?? MAX_HEALTH) <= 0) sv.health = MAX_HEALTH;
+          store.loadSurvival(sv);
           const center = meta?.player ?? { x: 8.5, y: 40, z: 8.5 };
           worlds[dimension] = await loadDimWorld(dimension, meta?.seed ?? seed, center);
         } else if (mode !== 'continue' && firstLoadRef.current) {
