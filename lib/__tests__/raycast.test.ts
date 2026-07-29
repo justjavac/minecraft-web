@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STONE, WATER } from '../blocks';
+import { BLOCK_BY_KEY, STONE, WATER } from '../blocks';
 import { VOID_TERRAIN } from '../noise';
 import { raycastBlock } from '../raycast';
 import { World } from '../world';
@@ -44,5 +44,13 @@ describe('raycastBlock', () => {
     const w = voidWorld();
     w.setBlock(0, 0, 0, WATER);
     expect(raycastBlock(w, 0.5, 0.5, 5.5, 0, 0, -1, 6)).toBeNull();
+  });
+
+  it('非实心薄片可被选中（雪层/红石粉/压力板，MC 均可挖掘）', () => {
+    const w = voidWorld();
+    w.setBlock(0, 0, 0, BLOCK_BY_KEY.snow_layer.id);
+    const hit = raycastBlock(w, 0.5, 0.5, 5.5, 0, 0, -1, 6);
+    expect(hit).not.toBeNull();
+    expect(hit!.block).toEqual([0, 0, 0]);
   });
 });

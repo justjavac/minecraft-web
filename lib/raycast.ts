@@ -47,7 +47,9 @@ export function raycastBlock(
 
   while (t <= maxDist) {
     const id = world.getBlock(x, y, z);
-    if (id !== AIR && (BLOCKS[id]?.solid || BLOCKS[id]?.shape === 'cross')) {
+    // 可命中的方块：实心、cross（花草/火把）、非实心薄片（雪层/红石粉/压力板——MC 均可挖掘）
+    const def = BLOCKS[id];
+    if (id !== AIR && def && (def.solid || def.shape === 'cross' || (def.shape === 'slab' && def.digTime !== undefined))) {
       return { block: [x, y, z], face };
     }
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {
