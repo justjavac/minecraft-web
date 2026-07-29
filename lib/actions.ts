@@ -271,6 +271,84 @@ function tryMobInteract(world: World, s: ReturnType<typeof useGameStore.getState
   return false;
 }
 
+/**
+ * 手持功能性物品右键（MC）：弓射箭 / 末影珍珠传送 / 鸡蛋孵鸡 / 末影之眼定位要塞 / 钓竿抛收。
+ * 生存模式消耗物品并扣耐久；创造模式视同材料无限、不消耗不扣耐久（MC）。命中处理返回 true。
+ */
+function tryUseHeldItem(world: World, s: ReturnType<typeof useGameStore.getState>, now: number): boolean {
+  const camera = cameraRef.current;
+  if (!camera) return false;
+  const creative = s.worldMode === 'creative';
+  const held = s.hotbarSlots[s.selectedSlot];
+  const origin = () => ({ x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z });
+  // 弓：射箭（生存耗 1 箭 + 1 耐久；MC）
+  if (held?.kind === 'tool' && held.tool === 'bow') {
+    if (creative || s.consumeMaterial('arrow', 1)) {
+      camera.getWorldDirection(dir);
+      firePlayerArrow(origin(), { x: dir.x, y: dir.y, z: dir.z });
+      if (!creative) s.damageHeldTool(1);
+      playSound('place');
+      lastPlace = now;
+    } else {
+      s.setNotice('没有箭了');
+    }
+    return true;
+  }
+  // 末影珍珠：投掷，落点传送（生存耗 1，MC）
+  if (held?.kind === 'material' && held.material === 'ender_pearl') {
+    if (creative || s.consumeMaterial('ender_pearl', 1)) {
+      camera.getWorldDirection(dir);
+      fireEnderPearl(origin(), { x: dir.x, y: dir.y, z: dir.z });
+      playSound('place');
+      lastPlace = now;
+    }
+    return true;
+  }
+  // 鸡蛋：投掷孵鸡（生存耗 1，MC）
+  if (held?.kind === 'material' && held.material === 'egg') {
+    if (creative || s.consumeMaterial('egg', 1)) {
+      camera.getWorldDirection(dir);
+      throwEgg(world, origin(), { x: dir.x, y: dir.y, z: dir.z });
+      playSound('place');
+      lastPlace = now;
+    }
+    return true;
+  }
+  // 末影之眼：投掷定位要塞（生存耗 1，MC；瞄准空门框架除外——走下方嵌眼逻辑）
+  if (held?.kind === 'material' && held.material === 'eye_of_ender') {
+    camera.getWorldDirection(dir);
+    const aim = raycastBlock(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
+    const aimFrame = aim !== null && world.getBlock(aim.block[0], aim.block[1], aim.block[2]) === BLOCK_BY_KEY.end_portal_frame.id;
+    if (!aimFrame && (creative || s.consumeMaterial('eye_of_ender', 1))) {
+      const spot = nearestStronghold(world.seedHash, playerPosition.x, playerPosition.z);
+      fireEyeOfEnder(origin(), spot.x, spot.z);
+      playSound('place');
+      lastPlace = now;
+    }
+    return true;
+  }
+  // 钓竿：无浮标抛竿 / 有浮标收竿（生存收竿扣 1 耐久，MC；咬钩窗口收竿得渔获 + 1-6 经验）
+  if (held?.kind === 'tool' && held.tool === 'fishing_rod') {
+    if (!bobber.current) {
+      camera.getWorldDirection(dir);
+      castBobber({ x: camera.position.x, y: camera.position.y - 0.2, z: camera.position.z }, { x: dir.x, y: dir.y, z: dir.z });
+      playSound('place');
+    } else {
+      const got = reelIn();
+      if (got) {
+        s.addStack({ kind: 'material', material: got.material }, got.count);
+        s.setNotice(`钓到了${MATERIAL_INFO[got.material]?.name ?? got.material}！`);
+        s.addXp(1 + Math.floor(Math.random() * 6));
+        playSound('place');
+      }
+      if (!creative) s.damageHeldTool(1);
+    }
+    lastPlace = now;
+    return true;
+  }
+  return false;
+}
+
 /** 从准星射线放置当前热键栏选中的方块；手持食物则进食；命中工作台/熔炉则打开对应界面。返回是否成功放置 */
 export function tryPlace(): boolean {
   const world = getActiveWorld();
@@ -327,167 +405,17 @@ export function tryPlace(): boolean {
       lastPlace = now;
       return false;
     }
-    // 手持弓右键：射箭（消耗 1 支箭 + 1 点耐久），无需准星目标
-    if (held?.kind === 'tool' && held.tool === 'bow') {
-      if (s.consumeMaterial('arrow', 1)) {
-        camera.getWorldDirection(dir);
-        firePlayerArrow(
-          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
-          { x: dir.x, y: dir.y, z: dir.z },
-        );
-        s.damageHeldTool(1);
-        playSound('place');
-        lastPlace = now;
-      } else {
-        s.setNotice('没有箭了');
-      }
-      return false;
-    }
-    // 手持末影珍珠右键：投掷，落点传送 + 2 伤害（MC）
-    if (held?.kind === 'material' && held.material === 'ender_pearl') {
-      if (s.consumeMaterial('ender_pearl', 1)) {
-        camera.getWorldDirection(dir);
-        fireEnderPearl(
-          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
-          { x: dir.x, y: dir.y, z: dir.z },
-        );
-        playSound('place');
-        lastPlace = now;
-        return false;
-      }
-    }
-    // 手持鸡蛋右键：投掷，命中碎裂、1/8 概率孵出小鸡（MC）
-    if (held?.kind === 'material' && held.material === 'egg') {
-      if (s.consumeMaterial('egg', 1)) {
-        camera.getWorldDirection(dir);
-        throwEgg(
-          world,
-          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
-          { x: dir.x, y: dir.y, z: dir.z },
-        );
-        playSound('place');
-        lastPlace = now;
-        return false;
-      }
-    }
-    // 手持末影之眼右键：投掷，朝最近要塞方向直飞（MC 定位要塞）；瞄准空门框架时除外（走下方嵌眼）
-    if (held?.kind === 'material' && held.material === 'eye_of_ender') {
-      camera.getWorldDirection(dir);
-      const aim = raycastBlock(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
-      const aimFrame = aim !== null && world.getBlock(aim.block[0], aim.block[1], aim.block[2]) === BLOCK_BY_KEY.end_portal_frame.id;
-      if (!aimFrame && s.consumeMaterial('eye_of_ender', 1)) {
-        const spot = nearestStronghold(world.seedHash, playerPosition.x, playerPosition.z);
-        fireEyeOfEnder(
-          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
-          spot.x,
-          spot.z,
-        );
-        playSound('place');
-        lastPlace = now;
-        return false;
-      }
-    }
-    // 手持钓竿右键：无浮标抛竿 / 有浮标收竿（咬钩窗口收竿得渔获 + 1-6 经验，MC）
-    if (held?.kind === 'tool' && held.tool === 'fishing_rod') {
-      if (!bobber.current) {
-        camera.getWorldDirection(dir);
-        castBobber(
-          { x: camera.position.x, y: camera.position.y - 0.2, z: camera.position.z },
-          { x: dir.x, y: dir.y, z: dir.z },
-        );
-        playSound('place');
-      } else {
-        const got = reelIn();
-        if (got) {
-          s.addStack({ kind: 'material', material: got.material }, got.count);
-          s.setNotice(`钓到了${MATERIAL_INFO[got.material]?.name ?? got.material}！`);
-          s.addXp(1 + Math.floor(Math.random() * 6)); // MC 钓鱼经验 1-6
-          playSound('place');
-        }
-        s.damageHeldTool(1); // MC 钓鱼每次收竿扣 1 耐久
-      }
-      lastPlace = now;
-      return false;
-    }
+    // 手持功能性物品：弓/珍珠/蛋/末影眼/钓竿（共用 tryUseHeldItem；生存消耗并扣耐久）
+    if (tryUseHeldItem(world, s, now)) return false;
     // 准星 mob 交互：交易/驯狼/剪羊毛/易物/繁殖（共用 tryMobInteract；生存需手持并消耗，创造视同材料无限）
     if (tryMobInteract(world, s, now)) return false;
   }
   // 创造模式同样可用：射箭/末影珍珠/末影之眼/钓鱼（MC 创造不消耗弹药与材料；不扣耐久）
   if (s.worldMode === 'creative') {
-    const held = s.hotbarSlots[s.selectedSlot];
     // 准星 mob 交互：交易/驯狼/剪羊毛/易物/繁殖（共用 tryMobInteract；创造视同材料无限，无需手持对应物）
     if (tryMobInteract(world, s, now)) return false;
-    // 手持弓右键：射箭（创造不耗箭，MC）
-    if (held?.kind === 'tool' && held.tool === 'bow') {
-      camera.getWorldDirection(dir);
-      firePlayerArrow(
-        { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
-        { x: dir.x, y: dir.y, z: dir.z },
-      );
-      playSound('place');
-      lastPlace = now;
-      return false;
-    }
-    // 手持末影珍珠右键：投掷，落点传送（MC）
-    if (held?.kind === 'material' && held.material === 'ender_pearl') {
-      camera.getWorldDirection(dir);
-      fireEnderPearl(
-        { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
-        { x: dir.x, y: dir.y, z: dir.z },
-      );
-      playSound('place');
-      lastPlace = now;
-      return false;
-    }
-    // 手持鸡蛋右键：投掷孵鸡（MC 创造不耗蛋）
-    if (held?.kind === 'material' && held.material === 'egg') {
-      camera.getWorldDirection(dir);
-      throwEgg(
-        world,
-        { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
-        { x: dir.x, y: dir.y, z: dir.z },
-      );
-      playSound('place');
-      lastPlace = now;
-      return false;
-    }
-    // 手持末影之眼右键：投掷定位要塞（MC；瞄准空门框架除外）
-    if (held?.kind === 'material' && held.material === 'eye_of_ender') {
-      camera.getWorldDirection(dir);
-      const aim = raycastBlock(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
-      const aimFrame = aim !== null && world.getBlock(aim.block[0], aim.block[1], aim.block[2]) === BLOCK_BY_KEY.end_portal_frame.id;
-      if (!aimFrame) {
-        const spot = nearestStronghold(world.seedHash, playerPosition.x, playerPosition.z);
-        fireEyeOfEnder(
-          { x: camera.position.x, y: camera.position.y - 0.15, z: camera.position.z },
-          spot.x,
-          spot.z,
-        );
-        playSound('place');
-        lastPlace = now;
-        return false;
-      }
-    }
-    // 手持钓竿右键：抛竿/收竿（MC 创造也能钓鱼；渔获入包）
-    if (held?.kind === 'tool' && held.tool === 'fishing_rod') {
-      if (!bobber.current) {
-        camera.getWorldDirection(dir);
-        castBobber(
-          { x: camera.position.x, y: camera.position.y - 0.2, z: camera.position.z },
-          { x: dir.x, y: dir.y, z: dir.z },
-        );
-        playSound('place');
-      } else {
-        const got = reelIn();
-        if (got) {
-          s.addStack({ kind: 'material', material: got.material }, got.count);
-          s.setNotice(`钓到了${MATERIAL_INFO[got.material]?.name ?? got.material}！`);
-          playSound('place');
-        }
-      }
-      lastPlace = now;
-      return false;
-    }
+    // 手持功能性物品：弓/珍珠/蛋/末影眼/钓竿（共用 tryUseHeldItem；创造视同材料无限，不扣耐久）
+    if (tryUseHeldItem(world, s, now)) return false;
   }
   camera.getWorldDirection(dir);
   const hit = raycastBlock(
