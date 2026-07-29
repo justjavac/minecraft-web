@@ -202,6 +202,74 @@ export function throwEgg(world: World, origin: { x: number; y: number; z: number
   return null;
 }
 
+/**
+ * 准星 mob 交互（MC）：村民交易 / 驯狼 / 剪羊毛 / 猪灵易物 / 动物繁殖。
+ * 生存模式需手持对应物（骨头/剪刀/金锭/繁殖食物）并消耗；创造模式视同材料无限、无需手持。
+ * 命中并处理（含交易打开界面）返回 true；未命中或条件不符返回 false。
+ */
+function tryMobInteract(world: World, s: ReturnType<typeof useGameStore.getState>, now: number): boolean {
+  const camera = cameraRef.current;
+  if (!camera) return false;
+  const creative = s.worldMode === 'creative';
+  const held = s.hotbarSlots[s.selectedSlot];
+  camera.getWorldDirection(dir);
+  const mob = mobInReach(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
+  if (!mob) return false;
+  // 创造视同材料无限：手持检查直接通过、消耗直接成功；生存按 MC 规则校验并扣材料
+  const has = (mat: string) => creative || (held?.kind === 'material' && held.material === mat);
+  const spend = (mat: string) => creative || s.consumeMaterial(mat, 1);
+  // 右键村民：打开交易界面（不看手持物，MC）
+  if (mob.type === 'villager') {
+    s.setTradeMob(mob.id);
+    playSound('place');
+    lastPlace = now;
+    return true;
+  }
+  // 骨头驯狼：1/3 概率驯服（MC）
+  if (mob.type === 'wolf' && !mob.tamed && has('bone') && spend('bone')) {
+    if (Math.random() < 1 / 3) {
+      mob.tamed = true;
+      mob.aggroTimer = 0;
+      s.setNotice('狼成为了你的伙伴');
+    }
+    playSound('place');
+    lastPlace = now;
+    return true;
+  }
+  // 剪刀剪羊毛：掉同色羊毛 1-3（MC）
+  if (mob.type === 'sheep' && !mob.sheared && (creative || (held?.kind === 'tool' && held.tool === 'shears'))) {
+    mob.sheared = true;
+    spawnBlockDrop(woolBlockId(mob.woolColor ?? 'white'), mob.x, mob.y + 0.3, mob.z, 1 + Math.floor(Math.random() * 3));
+    if (!creative) s.damageHeldTool(1);
+    playSound('place');
+    lastPlace = now;
+    return true;
+  }
+  // 金锭与猪灵易物：端详 3s 后丢出随机易物（MC；蛮兵不谈判）
+  if (mob.type === 'piglin' && has('gold_ingot') && spend('gold_ingot') && barterWith(mob)) {
+    s.setNotice('猪灵端详着金锭…');
+    playSound('place');
+    lastPlace = now;
+    return true;
+  }
+  // 繁殖食物喂养：进入恋爱模式（MC；创造模式任意可繁殖动物均可，无需对应食物）
+  if (!MOB_DEFS[mob.type].hostile && !mob.baby && BREED_FOOD[mob.type] !== undefined && (creative || (held?.kind === 'material' && BREED_FOOD[mob.type] === held.material))) {
+    if ((mob.breedCd ?? 0) > 0) {
+      s.setNotice('刚繁殖过，让它缓缓');
+      lastPlace = now;
+      return true;
+    }
+    if (spend(held?.kind === 'material' ? held.material : '')) {
+      feedMob(mob);
+      playSound('place');
+      s.setNotice('它在寻找伴侣…');
+      lastPlace = now;
+      return true;
+    }
+  }
+  return false;
+}
+
 /** 从准星射线放置当前热键栏选中的方块；手持食物则进食；命中工作台/熔炉则打开对应界面。返回是否成功放置 */
 export function tryPlace(): boolean {
   const world = getActiveWorld();
@@ -340,117 +408,14 @@ export function tryPlace(): boolean {
       lastPlace = now;
       return false;
     }
-    // 右键村民：打开交易界面（MC；不看手持物，优先于繁殖判定）
-    camera.getWorldDirection(dir);
-    const mobForTrade = mobInReach(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
-    if (mobForTrade?.type === 'villager') {
-      s.setTradeMob(mobForTrade.id);
-      playSound('place');
-      lastPlace = now;
-      return false;
-    }
-    // 剪刀剪羊毛：羊在准星内且未剪过 → 掉同色羊毛 1-3（MC）
-    if (held?.kind === 'tool' && held.tool === 'shears') {
-      if (mobForTrade?.type === 'sheep' && !mobForTrade.sheared) {
-        mobForTrade.sheared = true;
-        spawnBlockDrop(woolBlockId(mobForTrade.woolColor ?? 'white'), mobForTrade.x, mobForTrade.y + 0.3, mobForTrade.z, 1 + Math.floor(Math.random() * 3));
-        s.damageHeldTool(1);
-        playSound('place');
-        lastPlace = now;
-        return false;
-      }
-    }
-    // 以物易物：手持金锭右击猪灵 → 端详 3s 后丢出随机易物（MC；蛮兵不谈判）
-    if (held?.kind === 'material' && held.material === 'gold_ingot' && mobForTrade?.type === 'piglin') {
-      if (s.consumeMaterial('gold_ingot', 1) && barterWith(mobForTrade)) {
-        s.setNotice('猪灵端详着金锭…');
-        playSound('place');
-        lastPlace = now;
-        return false;
-      }
-    }
-    // 骨头驯狼：1/3 概率驯服（MC 驯狼）
-    if (held?.kind === 'material' && held.material === 'bone') {
-      if (mobForTrade?.type === 'wolf' && !mobForTrade.tamed) {
-        if (s.consumeMaterial('bone', 1)) {
-          if (Math.random() < 1 / 3) {
-            mobForTrade.tamed = true;
-            mobForTrade.aggroTimer = 0;
-            s.setNotice('狼成为了你的伙伴');
-          }
-          playSound('place');
-          lastPlace = now;
-          return false;
-        }
-      }
-    }
-    // 手持繁殖食物右键：喂养视线内的成年动物（MC：进入恋爱模式，两只恋爱个体才产仔）
-    if (held?.kind === 'material') {
-      camera.getWorldDirection(dir);
-      const mob = mobInReach(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
-      if (mob && !MOB_DEFS[mob.type].hostile && !mob.baby && BREED_FOOD[mob.type] === held.material) {
-        if ((mob.breedCd ?? 0) > 0) {
-          s.setNotice('刚繁殖过，让它缓缓');
-          lastPlace = now;
-          return false;
-        }
-        if (s.consumeMaterial(held.material, 1)) {
-          feedMob(mob);
-          playSound('place');
-          s.setNotice('它在寻找伴侣…');
-          lastPlace = now;
-          return false;
-        }
-      }
-    }
+    // 准星 mob 交互：交易/驯狼/剪羊毛/易物/繁殖（共用 tryMobInteract；生存需手持并消耗，创造视同材料无限）
+    if (tryMobInteract(world, s, now)) return false;
   }
   // 创造模式同样可用：射箭/末影珍珠/末影之眼/钓鱼（MC 创造不消耗弹药与材料；不扣耐久）
   if (s.worldMode === 'creative') {
     const held = s.hotbarSlots[s.selectedSlot];
-    // mob 交互（MC 创造可交易/驯狼/剪羊毛/易物/繁殖；创造视同材料无限，无需手持对应物，右键即交互）
-    camera.getWorldDirection(dir);
-    const mobHit = mobInReach(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
-    if (mobHit?.type === 'villager') {
-      s.setTradeMob(mobHit.id);
-      playSound('place');
-      lastPlace = now;
-      return false;
-    }
-    if (mobHit?.type === 'wolf' && !mobHit.tamed) {
-      if (Math.random() < 1 / 3) {
-        mobHit.tamed = true;
-        mobHit.aggroTimer = 0;
-        s.setNotice('狼成为了你的伙伴');
-      }
-      playSound('place');
-      lastPlace = now;
-      return false;
-    }
-    if (mobHit?.type === 'sheep' && !mobHit.sheared) {
-      mobHit.sheared = true;
-      spawnBlockDrop(woolBlockId(mobHit.woolColor ?? 'white'), mobHit.x, mobHit.y + 0.3, mobHit.z, 1 + Math.floor(Math.random() * 3));
-      playSound('place');
-      lastPlace = now;
-      return false;
-    }
-    if (mobHit?.type === 'piglin' && barterWith(mobHit)) {
-      s.setNotice('猪灵端详着金锭…');
-      playSound('place');
-      lastPlace = now;
-      return false;
-    }
-    if (mobHit && !MOB_DEFS[mobHit.type].hostile && !mobHit.baby && BREED_FOOD[mobHit.type] !== undefined) {
-      if ((mobHit.breedCd ?? 0) > 0) {
-        s.setNotice('刚繁殖过，让它缓缓');
-        lastPlace = now;
-        return false;
-      }
-      feedMob(mobHit);
-      playSound('place');
-      s.setNotice('它在寻找伴侣…');
-      lastPlace = now;
-      return false;
-    }
+    // 准星 mob 交互：交易/驯狼/剪羊毛/易物/繁殖（共用 tryMobInteract；创造视同材料无限，无需手持对应物）
+    if (tryMobInteract(world, s, now)) return false;
     // 手持弓右键：射箭（创造不耗箭，MC）
     if (held?.kind === 'tool' && held.tool === 'bow') {
       camera.getWorldDirection(dir);
