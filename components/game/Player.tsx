@@ -277,12 +277,16 @@ export function Player() {
       };
     }
 
-    // FOV 设置变化时同步到相机
-    if (appliedFov.current !== fov) {
-      appliedFov.current = fov;
+    // FOV：设置基准值 + 冲刺时 +10%（MC 冲刺视角），平滑过渡
+    {
       const cam = state.camera as PerspectiveCamera;
-      cam.fov = fov;
-      cam.updateProjectionMatrix();
+      const sprintKey = keys.current['ControlLeft'] || keys.current['ControlRight'];
+      const targetFov = fov * (sprintKey ? 1.1 : 1);
+      if (Math.abs(cam.fov - targetFov) > 0.05) {
+        cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 10);
+        cam.updateProjectionMatrix();
+      }
+      appliedFov.current = cam.fov;
     }
 
     // 触屏：用拖动增量驱动相机偏航/俯仰
@@ -361,11 +365,17 @@ export function Player() {
     const shift = keys.current['ShiftLeft'] || keys.current['ShiftRight'] || touchInput.down;
     const f = (keys.current['KeyW'] ? 1 : 0) - (keys.current['KeyS'] ? 1 : 0) + touchInput.moveY;
     const r = (keys.current['KeyD'] ? 1 : 0) - (keys.current['KeyA'] ? 1 : 0) + touchInput.moveX;
+    // MC 潜行：地面按 Shift（水中/飞行时是下降键）；冲刺：Ctrl（MC Java 同款）
+    const sneaking = shift && !flying && !inFluid;
+    const sprinting = (keys.current['ControlLeft'] || keys.current['ControlRight']) && !sneaking && !flying;
     // 前进 = (fx, fz)，右 = 前进 × up = (-fz, fx)
     let mx = fx * f - fz * r;
     let mz = fz * f + fx * r;
     const mLen = Math.hypot(mx, mz);
-    const speed = (flying ? FLY_SPEED : inFluid ? WALK_SPEED * (inLava ? 0.4 : 0.6) : WALK_SPEED) * (effects.speed > 0 ? 1 + 0.2 * Math.max(effectLvls.speed, beaconTiers.get('speed') ?? 1) : 1); // 迅捷药水 +20%/级（II 级 +40%）
+    const speed =
+      (flying ? FLY_SPEED : inFluid ? WALK_SPEED * (inLava ? 0.4 : 0.6) : WALK_SPEED) *
+      (effects.speed > 0 ? 1 + 0.2 * Math.max(effectLvls.speed, beaconTiers.get('speed') ?? 1) : 1) * // 迅捷药水 +20%/级（II 级 +40%）
+      (sneaking ? 0.3 : sprinting ? 1.3 : 1); // MC 潜行 ~30%、冲刺 ~130% 走速
     // 摇杆为模拟量：mLen ≤ 1 时保留力度，超过 1（键盘对角线）才归一化
     const scale = mLen > 1 ? speed / mLen : speed;
     mx *= scale;
@@ -386,25 +396,44 @@ export function Player() {
       velY.current = Math.max(velY.current - GRAVITY * 0.12 * dt, -3);
       if (pitch > 0.35) velY.current = Math.min(velY.current + 3 * dt, 0.5); // 仰视拉升
     }
-    const wantX = p.x + mx * dt;
-    const wantZ = p.z + mz * dt;
+    let wantX = p.x + mx * dt;
+    let wantZ = p.z + mz * dt;
+    // MC 潜行防跌落：着地潜行时，目标轴向前沿脚下无实体支撑则取消该轴移动
+    if (sneaking && onGround.current) {
+      const floorY = Math.floor(p.y) - 1;
+      const hasFloor = (ex: number, ez: number): boolean =>
+        BLOCKS[world.getBlock(Math.floor(ex), floorY, Math.floor(ez))]?.solid === true;
+      if (mx !== 0 && !hasFloor(wantX + Math.sign(mx) * (HALF_W + 0.05), p.z)) wantX = p.x;
+      if (mz !== 0 && !hasFloor(wantX, wantZ + Math.sign(mz) * (HALF_W + 0.05))) wantZ = p.z;
+    }
     p.x = wantX;
     const hitX = collideAxis(world, p, 0, mx * dt, HALF_W, HEIGHT);
     p.z = wantZ;
     const hitZ = collideAxis(world, p, 2, mz * dt, HALF_W, HEIGHT);
 
     // 台阶辅助（设置「自动跳跃」，MC 辅助功能）：着地行走被 1 格高障碍挡住时自动抬上去（天花板下不触发）
-    if (autoJump && (hitX || hitZ) && !flying && onGround.current) {
+    if (autoJump && !flying && onGround.current && (hitX || hitZ)) {
       const stepY = p.y + 1;
       const groundLevel = Math.floor(stepY) - 1; // 台阶顶面所在方块层
-      const groundSolid = BLOCKS[world.getBlock(Math.floor(wantX), groundLevel, Math.floor(wantZ))]?.solid;
-      if (groundSolid && aabbFree(world, wantX, stepY, wantZ, HALF_W, HEIGHT)) {
-        p.x = wantX;
-        p.z = wantZ;
+      // 障碍格在被挡方向的下一格（不是玩家自身格——wantX/wantZ 被碰撞推回后仍在原地，查自身格恒为空导致辅助失效）
+      const tryStep = (ax: number, az: number): boolean => {
+        const bx = Math.floor(p.x) + ax;
+        const bz = Math.floor(p.z) + az;
+        if (!BLOCKS[world.getBlock(bx, groundLevel, bz)]?.solid) return false;
+        // 障碍顶上方需容得下玩家（天花板下不抬）
+        const nx = p.x + ax * 0.55;
+        const nz = p.z + az * 0.55;
+        if (!aabbFree(world, nx, stepY, nz, HALF_W, HEIGHT)) return false;
+        p.x = nx;
+        p.z = nz;
         p.y = stepY;
         velY.current = 0;
         onGround.current = true;
-      }
+        return true;
+      };
+      if (hitX && tryStep(Math.sign(mx), 0)) {
+        // stepped
+      } else if (hitZ) tryStep(0, Math.sign(mz));
     }
 
     // 垂直方向
@@ -535,9 +564,9 @@ export function Player() {
     // 脚步声：着地行走时按实际位移触发（顶墙走不响）
     const hDist = Math.hypot(p.x - prevStep.current.x, p.z - prevStep.current.z);
     prevStep.current = { x: p.x, z: p.z };
-    // MC 消耗度：步行 0.01/格，游泳 0.015/格
+    // MC 消耗度：步行 0.01/格，冲刺 0.1/格（MC 冲刺消耗），游泳 0.015/格
     if (gs.worldMode === 'survival') {
-      survivalStats.exhaustion += hDist * (inFluid ? 0.015 : 0.01);
+      survivalStats.exhaustion += hDist * (inFluid ? 0.015 : sprinting ? 0.1 : 0.01);
     }
     if (!flying && !inFluid && onGround.current && hDist > 0.001) {
       stepAcc.current += hDist;
@@ -600,7 +629,7 @@ export function Player() {
       prevStep.current = { x: pos.current.x, z: pos.current.z };
     }
 
-    state.camera.position.set(p.x, p.y + EYE, p.z);
+    state.camera.position.set(p.x, p.y + (sneaking ? EYE - 0.12 : EYE), p.z); // MC 潜行视点略降
     playerPosition.x = p.x;
     playerPosition.y = p.y;
     playerPosition.z = p.z;
