@@ -17,7 +17,7 @@ import { trySummonWither } from './wither';
 import { pistonIdFor } from './pistons';
 import { cycleRepeaterDelay, isComparatorId, isRepeaterId, observerIdFor, pressButton, toggleComparatorMode, toggleLever, tuneNoteBlock } from './redstone';
 import { XP_ORE } from './xp';
-import { BREED_FOOD, barterWith, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, mobs, woolBlockId } from './mobs';
+import { BREED_FOOD, barterWith, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, mobs, onSlept, woolBlockId } from './mobs';
 import { fillPortalFrame, nearestStronghold } from './stronghold';
 import { bobber, castBobber, reelIn } from './fishing';
 import { MATERIAL_INFO, materialTile } from './materials';
@@ -640,6 +640,7 @@ export function tryPlace(): boolean {
   if (hitId === BLOCK_BY_KEY.red_bed.id) {
     if (dayFactorAt(worldClock.t) < 0.4) {
       worldClock.t = 0;
+      onSlept(); // MC 睡过清零失眠（幻翼计数）；同步重置跨日基准，避免回拨误判为自然跨日
       s.setSpawnPoint({ x: bx + 0.5, y: by + 1, z: bz + 0.5 });
       s.setNotice('重生点已设置');
       playSound('place');

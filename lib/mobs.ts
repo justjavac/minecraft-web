@@ -197,6 +197,12 @@ export const phantomState = { insomniaDays: 0, timer: 0 };
 /** 上一帧的昼夜时钟（区分自然跨日与睡觉回拨：床把 worldClock.t 直接设回日出 0） */
 let lastClockT = worldClock.t;
 
+/** 睡觉（床）：失眠清零（MC 睡过重置幻翼计数），并重置跨日基准 lastClockT——否则下一 tick 会把「回拨到日出 0」误判为自然跨日而 +1（越睡越失眠） */
+export function onSlept(): void {
+  phantomState.insomniaDays = 0;
+  lastClockT = 0;
+}
+
 let nextId = 1;
 let nextArrowId = 1;
 let spawnTimer = 0;
@@ -989,22 +995,26 @@ export function tickMobs(
   lureFood?: string | null,
 ): void {
   const night = isNight();
+  // 创造模式 playerPos 是 CREATIVE_NO_TARGET（约 1e9 假目标）：刷怪/幻翼/失眠需真实玩家位置，跳过——否则在 1e9 处刷怪、生成幻翼，并隐式生成数十万格外的 chunk
+  const fakeTarget = Math.abs(playerPos.x) > 1e8 || Math.abs(playerPos.z) > 1e8;
   spawnTimer -= dt;
   if (spawnTimer <= 0) {
     spawnTimer = SPAWN_INTERVAL;
     // 夜晚刷敌对（60%），白天刷被动（20%）
-    if (night ? Math.random() < 0.6 : Math.random() < 0.2) trySpawn(world, playerPos.x, playerPos.z);
+    if (!fakeTarget && (night ? Math.random() < 0.6 : Math.random() < 0.2)) trySpawn(world, playerPos.x, playerPos.z);
   }
 
   // 失眠追踪（MC 幻翼前置）：时钟自然跨日（t 由 ~1 绕回 0）累计 1 天；睡觉（夜晚时钟直接回拨到日出 0）清零
   const ct = worldClock.t;
-  if (lastClockT > 0.9 && ct < 0.1) phantomState.insomniaDays += 1;
-  else if (ct < lastClockT - 0.2) phantomState.insomniaDays = 0;
-  lastClockT = ct;
+  if (!fakeTarget) {
+    if (lastClockT > 0.9 && ct < 0.1) phantomState.insomniaDays += 1;
+    else if (ct < lastClockT - 0.2) phantomState.insomniaDays = 0;
+    lastClockT = ct;
+  }
 
   // 幻翼（MC 失眠惩罚）：失眠 ≥3 天的夜晚，玩家头顶高空来袭 1-3 只（仅主世界，场上限 3 只）
   phantomState.timer -= dt;
-  if (night && world.terrain.kind !== 'nether' && world.terrain.kind !== 'end' && phantomState.insomniaDays >= 3 && phantomState.timer <= 0) {
+  if (!fakeTarget && night && world.terrain.kind !== 'nether' && world.terrain.kind !== 'end' && phantomState.insomniaDays >= 3 && phantomState.timer <= 0) {
     phantomState.timer = 30 + Math.random() * 30;
     const count = mobs.filter((m) => m.type === 'phantom').length;
     const n = Math.min(3 - count, 1 + Math.floor(Math.random() * 3));
