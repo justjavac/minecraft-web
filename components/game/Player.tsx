@@ -9,6 +9,7 @@ import { breakBlock, tryPlace } from '@/lib/actions';
 import { isFarmlandId, isWheatCropId } from '@/lib/crops';
 import { effectiveDigTime } from '@/lib/dig';
 import { cameraRef, debugInfo, digState, getActiveWorld, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput, worldClock } from '@/lib/game';
+import { itemDrops } from '@/lib/items';
 import { otherDimension } from '@/lib/dimension';
 import { END_SPAWN } from '@/lib/end';
 import { isPortalId } from '@/lib/portal';
@@ -266,8 +267,14 @@ export function Player() {
       (window as unknown as { __mc?: unknown }).__mc = {
         pos: { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z },
         pp: playerPosition, // 可写：测试传送（实际玩家状态在下方 tp）
-        tp: pos.current, // 可写：真正的玩家物理状态（传送改这里）
-        camera: state.camera,
+        tp: pos.current, // 当前帧的物理状态对象（重生等重赋值后会变）
+        tpTo: (x: number, y: number, z: number) => {
+          // 传送（对当前 pos.current 写字段；重生重赋值也安全）
+          if (!pos.current) return;
+          pos.current.x = x;
+          pos.current.y = y;
+          pos.current.z = z;
+        },        camera: state.camera,
         scene: state.scene,
         gl: state.gl,
         fps: debugInfo.fps,
@@ -277,6 +284,9 @@ export function Player() {
         mobs, // 生物列表（只读排查用）
         clock: worldClock, // 昼夜时钟（可写）
         yawPitch: yawPitch.current, // 触屏视角（可写：自动化对准）
+        digState, // 挖掘进度（排障用）
+        targetBlock, // 准星命中（排障用）
+        drops: itemDrops, // 掉落物实体（排障用）
       };
     }
 

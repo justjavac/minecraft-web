@@ -18,7 +18,7 @@ export function isLeavesId(id: BlockId): boolean {
 }
 
 /** 树叶 → 对应树苗（凋零掉落用） */
-const LEAF_TO_SAPLING: Record<string, string> = {
+export const LEAF_TO_SAPLING: Record<string, string> = {
   leaves: 'oak_sapling',
   spruce_leaves: 'spruce_sapling',
   birch_leaves: 'birch_sapling',

@@ -9,7 +9,7 @@ import { isFarmlandId, isWheatCropId } from './crops';
 import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, pearlTeleport, playerPosition, worldClock } from './game';
 import { setGrowthDropHandler } from './growth';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
-import { setSaplingDropHandler } from './saplings';
+import { setSaplingDropHandler, isLeavesId, LEAF_TO_SAPLING } from './saplings';
 import { raycastBlock } from './raycast';
 import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { interactBeacon } from './beacon';
@@ -131,6 +131,15 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
       // MC：砂砾 10% 掉燧石，否则掉砂砾自身
       if (Math.random() < 0.1) spawnMaterialDrop('flint', x + 0.5, y + 0.4, z + 0.5, 1);
       else spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
+    } else if (isLeavesId(oldId)) {
+      // 树叶（MC）：剪刀掉树叶方块；否则 5% 掉对应树苗，其余不掉
+      const leafKey = BLOCKS[oldId].key;
+      if (held?.kind === 'tool' && held.tool === 'shears') {
+        spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
+      } else if (Math.random() < 0.05) {
+        const saplingKey = LEAF_TO_SAPLING[leafKey] ?? 'oak_sapling';
+        spawnBlockDrop(BLOCK_BY_KEY[saplingKey].id, x + 0.5, y + 0.4, z + 0.5);
+      }
     } else if (tierOk) {
       // 精准采集：跳过 dropBlock 转换掉自身（石头掉石头而非圆石，MC）
       spawnBlockDrop(silk ? oldId : (def.dropBlock ?? oldId), x + 0.5, y + 0.4, z + 0.5);
