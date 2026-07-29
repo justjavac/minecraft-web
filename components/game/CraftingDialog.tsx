@@ -1,11 +1,14 @@
 'use client';
 
 import { armorDefOf, type ArmorPiece } from '@/lib/armor';
-import { RECIPES, canCraft, type Recipe } from '@/lib/recipes';
+import { RECIPES, canCraft, recipePattern, type Recipe } from '@/lib/recipes';
 import { useGameStore } from '@/lib/store';
 import type { Slot } from '@/lib/slots';
 import { slotCount, slotDurabilityPct, slotName, slotTile } from './slotDisplay';
 import { TileIcon } from './TileIcon';
+import { useState } from 'react';
+import { BLOCKS } from '@/lib/blocks';
+import { materialTile } from '@/lib/materials';
 import {
   Dialog,
   DialogContent,
@@ -36,6 +39,33 @@ function outName(recipe: Recipe): string {
           : { kind: 'armor', piece: recipe.out.piece, durability: 1 },
   );
   return recipe.out.kind === 'block' || recipe.out.kind === 'material' ? `${base} ×${recipe.out.count}` : base;
+}
+
+/** 摆法格内的物品图标（'block:<id>' / 'material:<name>'） */
+function patternTile(item: string): number {
+  if (item.startsWith('block:')) return BLOCKS[Number(item.slice(6))]?.side ?? 0;
+  return materialTile(item.slice(9));
+}
+
+/** MC 原版合成预览：3×3 摆法网格 → 成品槽 */
+function CraftPreview({ recipe }: { recipe: Recipe }) {
+  const cells = recipePattern(recipe);
+  return (
+    <div className="flex items-center gap-2">
+      <div className="grid grid-cols-3 gap-0.5">
+        {cells.map((item, i) => (
+          <span key={i} className={SLOT}>
+            {item && <TileIcon tile={patternTile(item)} size={26} />}
+          </span>
+        ))}
+      </div>
+      <span className="text-xl text-[#5f5f5f]">→</span>
+      <span className={`${SLOT} !h-12 !w-12 bg-[#a8e063]`}>
+        <TileIcon tile={outTile(recipe)} size={34} />
+      </span>
+      <span className="text-sm text-[#3f3f3f]">{outName(recipe)}</span>
+    </div>
+  );
 }
 
 /** 物品格子（背包/热键栏通用）：图标 + 数量 + 耐久条 */
@@ -79,6 +109,7 @@ export function CraftingDialog() {
   const craft = useGameStore((s) => s.craft);
   const moveSlot = useGameStore((s) => s.moveSlot);
   const unequipArmor = useGameStore((s) => s.unequipArmor);
+  const [preview, setPreview] = useState<Recipe | null>(null);
   // 关闭时直接不渲染：避免每次背包变化都全量重算配方与 JSX（hooks 已全部调用，顺序稳定）
   if (!open) return null;
   const merged = [...hotbarSlots, ...mainSlots];
@@ -125,22 +156,30 @@ export function CraftingDialog() {
               );
             })}
           </div>
-          {/* 配方区（可合成的高亮） */}
-          <div className="grid max-h-48 flex-1 grid-cols-5 content-start gap-1 overflow-y-auto">
-            {recipes.map((r) => {
-              const ok = canCraft(merged, r);
-              return (
-                <button
-                  key={r.id}
-                  disabled={!ok}
-                  onClick={() => craft(r)}
-                  title={outName(r)}
-                  className={`${SLOT} ${ok ? 'bg-[#a8e063] hover:brightness-105' : 'opacity-45'}`}
-                >
-                  <TileIcon tile={outTile(r)} size={28} />
-                </button>
-              );
-            })}
+          {/* 配方区（MC 风格：悬停显示 3×3 摆法预览；可合成的高亮） */}
+          <div className="flex-1 space-y-2">
+            {preview ? (
+              <CraftPreview recipe={preview} />
+            ) : (
+              <div className="text-xs text-[#5f5f5f]">悬停配方查看摆法，点击合成</div>
+            )}
+            <div className="grid max-h-44 grid-cols-5 content-start gap-1 overflow-y-auto">
+              {recipes.map((r) => {
+                const ok = canCraft(merged, r);
+                return (
+                  <button
+                    key={r.id}
+                    disabled={!ok}
+                    onClick={() => craft(r)}
+                    onMouseEnter={() => setPreview(r)}
+                    title={outName(r)}
+                    className={`${SLOT} ${ok ? 'bg-[#a8e063] hover:brightness-105' : 'opacity-45'}`}
+                  >
+                    <TileIcon tile={outTile(r)} size={28} />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

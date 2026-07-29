@@ -298,3 +298,40 @@ export function hasSpaceFor(slots: Slot[], out: RecipeOut): boolean {
   }
   return space >= out.count;
 }
+
+// ——— MC 原版摆法（3×3 行优先；仅核心配方，其余按材料顺序填充网格） ———
+const PATTERNS: Record<string, (string | null)[]> = {
+  stick: [null, PLANKS_ITEM, null, null, PLANKS_ITEM, null, null, null, null],
+  crafting_table: [PLANKS_ITEM, PLANKS_ITEM, null, PLANKS_ITEM, PLANKS_ITEM, null, null, null, null],
+  furnace: [COBBLE_ITEM, COBBLE_ITEM, COBBLE_ITEM, COBBLE_ITEM, null, COBBLE_ITEM, COBBLE_ITEM, COBBLE_ITEM, COBBLE_ITEM],
+  chest: [PLANKS_ITEM, PLANKS_ITEM, PLANKS_ITEM, PLANKS_ITEM, null, PLANKS_ITEM, PLANKS_ITEM, PLANKS_ITEM, PLANKS_ITEM],
+  redstone_torch: [null, 'material:redstone', null, null, STICK, null, null, null, null],
+  bow: [null, STICK, 'material:string', STICK, null, 'material:string', null, STICK, 'material:string'],
+  shears: [null, 'material:iron_ingot', null, 'material:iron_ingot', null, null, null, null, null],
+  fishing_rod: [null, null, STICK, null, STICK, 'material:string', STICK, null, 'material:string'],
+  tnt: ['material:gunpowder', K('sand'), 'material:gunpowder', K('sand'), 'material:gunpowder', K('sand'), 'material:gunpowder', K('sand'), 'material:gunpowder'],
+};
+// 四材质工具摆法（镐/斧/锹/剑/锄，MC 形状）
+for (const [idPrefix, mat] of [
+  ['wooden', PLANKS_ITEM],
+  ['stone', COBBLE_ITEM],
+  ['iron', 'material:iron_ingot'],
+  ['diamond', 'material:diamond'],
+  ['golden', 'material:gold_ingot'],
+] as const) {
+  PATTERNS[`${idPrefix}_pickaxe`] = [mat, mat, mat, null, STICK, null, null, STICK, null];
+  PATTERNS[`${idPrefix}_axe`] = [mat, mat, null, mat, STICK, null, null, STICK, null];
+  PATTERNS[`${idPrefix}_shovel`] = [null, mat, null, null, STICK, null, null, STICK, null];
+  PATTERNS[`${idPrefix}_sword`] = [null, mat, null, null, mat, null, null, STICK, null];
+  PATTERNS[`${idPrefix}_hoe`] = [mat, mat, null, null, STICK, null, null, STICK, null];
+}
+
+/** 配方的 3×3 摆法网格（有 MC 原版摆法用之，否则按材料顺序填充） */
+export function recipePattern(r: Recipe): (string | null)[] {
+  const p = PATTERNS[r.id];
+  if (p) return p;
+  const cells: (string | null)[] = [];
+  for (const c of r.cost) for (let i = 0; i < c.count && cells.length < 9; i++) cells.push(c.item);
+  while (cells.length < 9) cells.push(null);
+  return cells;
+}
