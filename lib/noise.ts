@@ -198,7 +198,9 @@ export function createTerrain(seed: string): Terrain {
         const bed = SEA_LEVEL - 1 - depth * 3; // 39 → 36 连续河床（不取整，避免台阶）
         const mushFade = 1 - smoothstep(0.1, 0.35, mush);
         const carve = smoothstep(0.12, 0.85, depth) * flatFade * mushFade; // 外缘不动、向河心平滑增强
-        h = h * (1 - carve) + Math.min(h, bed) * carve;
+        const carved = h * (1 - carve) + Math.min(h, bed) * carve;
+        // 限深：任何地形下切深不超过 ~4.5 格（MC 河谷是浅槽；不限深则丘陵被切出 10-20 格峡谷）
+        h = Math.max(carved, h - 4.5);
       }
     }
     return Math.max(1, Math.min(MAX_TERRAIN_H, Math.floor(h)));

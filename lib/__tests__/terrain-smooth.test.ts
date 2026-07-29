@@ -34,7 +34,7 @@ describe('地形平滑（无断裂峡谷）', () => {
       }
     }
     expect(river).toBeGreaterThan(100);
-    expect(belowSea / river).toBeGreaterThan(0.7); // 河床大部在水下
+    expect(belowSea / river).toBeGreaterThan(0.6); // 低地河床在水下；高地河流随地形限深（不切峡谷，可高于海平面）
   });
 
   it('河流：无 >10 格单步落差，>6 格陡坡占比 <0.5%（旧硬切：最大 24 格、占比 2%）', () => {
