@@ -407,6 +407,50 @@ export function tryPlace(): boolean {
   // 创造模式同样可用：射箭/末影珍珠/末影之眼/钓鱼（MC 创造不消耗弹药与材料；不扣耐久）
   if (s.worldMode === 'creative') {
     const held = s.hotbarSlots[s.selectedSlot];
+    // mob 交互（MC 创造可交易/驯狼/剪羊毛/易物/繁殖；创造视同材料无限，无需手持对应物，右键即交互）
+    camera.getWorldDirection(dir);
+    const mobHit = mobInReach(world, camera.position.x, camera.position.y, camera.position.z, dir.x, dir.y, dir.z, REACH);
+    if (mobHit?.type === 'villager') {
+      s.setTradeMob(mobHit.id);
+      playSound('place');
+      lastPlace = now;
+      return false;
+    }
+    if (mobHit?.type === 'wolf' && !mobHit.tamed) {
+      if (Math.random() < 1 / 3) {
+        mobHit.tamed = true;
+        mobHit.aggroTimer = 0;
+        s.setNotice('狼成为了你的伙伴');
+      }
+      playSound('place');
+      lastPlace = now;
+      return false;
+    }
+    if (mobHit?.type === 'sheep' && !mobHit.sheared) {
+      mobHit.sheared = true;
+      spawnBlockDrop(woolBlockId(mobHit.woolColor ?? 'white'), mobHit.x, mobHit.y + 0.3, mobHit.z, 1 + Math.floor(Math.random() * 3));
+      playSound('place');
+      lastPlace = now;
+      return false;
+    }
+    if (mobHit?.type === 'piglin' && barterWith(mobHit)) {
+      s.setNotice('猪灵端详着金锭…');
+      playSound('place');
+      lastPlace = now;
+      return false;
+    }
+    if (mobHit && !MOB_DEFS[mobHit.type].hostile && !mobHit.baby && BREED_FOOD[mobHit.type] !== undefined) {
+      if ((mobHit.breedCd ?? 0) > 0) {
+        s.setNotice('刚繁殖过，让它缓缓');
+        lastPlace = now;
+        return false;
+      }
+      feedMob(mobHit);
+      playSound('place');
+      s.setNotice('它在寻找伴侣…');
+      lastPlace = now;
+      return false;
+    }
     // 手持弓右键：射箭（创造不耗箭，MC）
     if (held?.kind === 'tool' && held.tool === 'bow') {
       camera.getWorldDirection(dir);
