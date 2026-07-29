@@ -1065,9 +1065,11 @@ export function tickMobs(
     const dist = Math.hypot(dx, dz);
     let mx = 0;
     let mz = 0;
+    // 创造模式 playerPos 是 CREATIVE_NO_TARGET（约 1e9 的假目标）：despawn 需真实玩家距离，跳过——否则敌对 mob（含狼）在创造模式会 spawn 即消失（MC 创造模式怪物应存在，只是不主动攻击）
+    const hasRealPlayerDist = Math.abs(playerPos.x) < 1e8 && Math.abs(playerPos.z) < 1e8;
 
     // 距离消失（MC 简版）：敌对 >64 立即消失；32-64 持续远离 20-40s 随机刻消失；驯服/村民（非敌对）/Boss/铁傀儡不消失
-    if (def.hostile && !m.tamed && m.type !== 'wither' && m.type !== 'shulker' && m.type !== 'iron_golem') {
+    if (hasRealPlayerDist && def.hostile && !m.tamed && m.type !== 'wither' && m.type !== 'shulker' && m.type !== 'iron_golem') {
       if (dist > 64) {
         mobs.splice(i, 1);
         continue;
