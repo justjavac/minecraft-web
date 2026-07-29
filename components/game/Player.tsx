@@ -706,7 +706,9 @@ export function Player() {
           const held = gs.hotbarSlots[gs.selectedSlot];
           const tool = held?.kind === 'tool' ? TOOLS[held.tool] : null;
           attackCd.current = tool?.attackCd ?? 0.25; // MC 拳头 4 攻速，剑 1.6
-          damageMob(mob, (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? (held.ench?.sharpness ?? 0) * 0.5 : 0) + (effects.strength > 0 ? 2 * Math.max(effectLvls.strength, beaconTiers.get('strength') ?? 1) : 0), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0, world, held?.kind === 'tool' ? (held.ench?.knockback ?? 0) : 0); // 拳头 1 点（半心），锋利 +0.5/级，力量药水 +2/级（II 级 +4），抢夺加掉落，击退附魔击退目标
+          // 击退：MC 近战命中本就有基础击退（怪会后退），击退附魔在此之上增强；原仅附魔才击退导致普通攻击打不动怪
+          const kbEnch = held?.kind === 'tool' ? (held.ench?.knockback ?? 0) : 0;
+          damageMob(mob, (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? (held.ench?.sharpness ?? 0) * 0.5 : 0) + (effects.strength > 0 ? 2 * Math.max(effectLvls.strength, beaconTiers.get('strength') ?? 1) : 0), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0, world, kbEnch > 0 ? kbEnch : 0.3); // 拳头 1 点（半心），锋利 +0.5/级，力量药水 +2/级（II 级 +4），抢夺加掉落，击退附魔击退目标
           if (tool) gs.damageHeldTool(tool.kind === 'sword' ? 1 : 2); // MC：剑耗 1，工具作武器耗 2
           playSound('dig_choppy', 0.8);
           survivalStats.exhaustion += 0.1; // MC：攻击消耗
