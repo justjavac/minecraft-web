@@ -18,12 +18,14 @@ import { TileIcon } from './TileIcon';
 
 function itemName(item: string): string {
   const [kind, idStr] = item.split(':');
-  return kind === 'block' ? BLOCKS[Number(idStr)].name : materialName(idStr);
+  if (kind === 'block') return BLOCKS[Number(idStr)].name;
+  // BrewStack.item 是裸材料名（无 'material:' 前缀），兼容两种格式
+  return materialName(kind === 'material' ? idStr : item);
 }
 
 function itemTile(item: string): number {
   const [kind, idStr] = item.split(':');
-  return kind === 'block' ? BLOCKS[Number(idStr)].side : materialTile(idStr);
+  return kind === 'block' ? BLOCKS[Number(idStr)].side : materialTile(kind === 'material' ? idStr : item);
 }
 
 const BREW_INGREDIENTS = ['nether_wart', 'sugar', 'blaze_powder', 'glistering_melon', 'magma_cream'];
