@@ -121,6 +121,8 @@ export function Player() {
   const yawPitch = useRef({ yaw: 0, pitch: 0 });
   /** 脚步声：累计水平位移，每 2.2 格一步 */
   const stepAcc = useRef(0);
+  /** 台阶辅助上台动画（150ms 平滑升起，避免瞬移突兀/起跳弹循环） */
+  const stepAnim = useRef<{ from: number; to: number; t: number } | null>(null);
   const prevStep = useRef({ x: 0, z: 0 });
   /** 已应用到相机的 FOV，变化时在帧循环里同步 */
   const appliedFov = useRef(0);
@@ -274,6 +276,7 @@ export function Player() {
         touch: touchInput,
         mobs, // 生物列表（只读排查用）
         clock: worldClock, // 昼夜时钟（可写）
+        yawPitch: yawPitch.current, // 触屏视角（可写：自动化对准）
       };
     }
 
@@ -411,29 +414,40 @@ export function Player() {
     p.z = wantZ;
     const hitZ = collideAxis(world, p, 2, mz * dt, HALF_W, HEIGHT);
 
-    // 台阶辅助（设置「自动跳跃」，MC 辅助功能）：着地行走被 1 格高障碍挡住时自动抬上去（天花板下不触发）
-    if (autoJump && !flying && onGround.current && (hitX || hitZ)) {
-      const stepY = p.y + 1;
-      const groundLevel = Math.floor(stepY) - 1; // 台阶顶面所在方块层
+    // 台阶辅助（设置「自动跳跃」，MC 辅助功能）：着地行走被 1 格高障碍挡住时启动 150ms 上台动画
+    //（平滑升起 + 前冲，观感是快速小跳——不是瞬移闪现，也不会像起跳那样弹回）
+    if (autoJump && !flying && onGround.current && !stepAnim.current && (hitX || hitZ)) {
       // 障碍格在被挡方向的下一格（不是玩家自身格——wantX/wantZ 被碰撞推回后仍在原地，查自身格恒为空导致辅助失效）
       const tryStep = (ax: number, az: number): boolean => {
         const bx = Math.floor(p.x) + ax;
         const bz = Math.floor(p.z) + az;
+        const groundLevel = Math.floor(p.y + 1) - 1; // 台阶顶面所在方块层
         if (!BLOCKS[world.getBlock(bx, groundLevel, bz)]?.solid) return false;
-        // 障碍顶上方需容得下玩家（天花板下不抬）
-        const nx = p.x + ax * 0.55;
-        const nz = p.z + az * 0.55;
-        if (!aabbFree(world, nx, stepY, nz, HALF_W, HEIGHT)) return false;
-        p.x = nx;
-        p.z = nz;
-        p.y = stepY;
-        velY.current = 0;
-        onGround.current = true;
+        // 台阶顶上方需容得下玩家（天花板下不触发）
+        if (!aabbFree(world, p.x + ax * 0.4, p.y + 1, p.z + az * 0.4, HALF_W, HEIGHT)) return false;
+        stepAnim.current = { from: p.y, to: p.y + 1, t: 0 };
+        onGround.current = false;
         return true;
       };
       if (hitX && tryStep(Math.sign(mx), 0)) {
-        // stepped
+        // stepping
       } else if (hitZ) tryStep(0, Math.sign(mz));
+    }
+    // 上台动画推进：150ms 平滑升到台阶顶（期间保持前冲；动画里不做重力）
+    if (stepAnim.current) {
+      const a = stepAnim.current;
+      a.t += dt / 0.15;
+      if (a.t >= 1) {
+        p.y = a.to;
+        stepAnim.current = null;
+        velY.current = 0;
+        onGround.current = true;
+      } else {
+        const k = a.t * a.t * (3 - 2 * a.t); // smoothstep
+        p.y = a.from + (a.to - a.from) * k;
+        velY.current = 0;
+        onGround.current = false;
+      }
     }
 
     // 垂直方向
@@ -450,6 +464,9 @@ export function Player() {
         else velY.current += GRAVITY * 1.1 * visc * dt;
       }
       velY.current = Math.min(Math.max(velY.current, -3), 4);
+    } else if (stepAnim.current) {
+      // 上台动画期间：y 由动画驱动，重力/跳跃不干预
+      velY.current = 0;
     } else {
       if (effects.levitation > 0) {
         // 漂浮：匀速上浮（MC 潜影贝弹命中效果；期间跳跃/重力不生效）
