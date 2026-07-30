@@ -62,26 +62,42 @@ function Meter({ value, kind }: { value: number; kind: 'heart' | 'food' | 'armor
 const CELL_CLASS =
   'relative flex h-9 w-9 cursor-pointer items-center justify-center rounded border bg-black/30 transition-transform duration-100 sm:h-12 sm:w-12';
 
-/** 创造模式热键栏格子：固定方块图标 */
+/** 创造模式热键栏格子：固定方块图标；选中格叠加 MC hotbar_selection 框 */
 function HotbarCell({ index, active, onClick, id }: { index: number; active: boolean; onClick: () => void; id: number }) {
   const def = BLOCKS[id];
   return (
-    <div
-      title={def.name}
-      onClick={onClick}
-      className={`${CELL_CLASS} ${active ? '-translate-y-0.5 scale-110 border-white ring-2 ring-white/70' : 'border-white/30'}`}
-    >
+    <div title={def.name} onClick={onClick} className={`${CELL_CLASS} border-white/20 ${active ? '-translate-y-0.5 scale-110' : ''}`}>
+      {active && (
+        <img
+          src="/textures/gui/hud/hotbar_selection.png"
+          alt=""
+          draggable={false}
+          className="pointer-events-none absolute -inset-1 z-10 h-[calc(100%+8px)] w-[calc(100%+8px)] select-none [image-rendering:pixelated]"
+        />
+      )}
       <TileIcon tile={def.side} size={28} />
       <span className="absolute left-0.5 top-0 text-[10px] leading-3 text-white/70">{index + 1}</span>
     </div>
   );
 }
 
-/** 生存模式热键栏格子：方块堆叠 / 材料 / 工具 / 装备（带耐久条） */
+/** 生存模式热键栏格子：方块堆叠 / 材料 / 工具 / 装备（带耐久条）；选中格叠加 MC hotbar_selection 框 */
 function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: Slot; active: boolean; onClick: () => void }) {
-  const cls = `${CELL_CLASS} ${active ? '-translate-y-0.5 scale-110 border-white ring-2 ring-white/70' : 'border-white/30'}`;
+  const cls = `${CELL_CLASS} border-white/20 ${active ? '-translate-y-0.5 scale-110' : ''}`;
+  const selBox = active ? (
+    <img
+      src="/textures/gui/hud/hotbar_selection.png"
+      alt=""
+      draggable={false}
+      className="pointer-events-none absolute -inset-1 z-10 h-[calc(100%+8px)] w-[calc(100%+8px)] select-none [image-rendering:pixelated]"
+    />
+  ) : null;
   if (!slot) {
-    return <div onClick={onClick} className={cls} />;
+    return (
+      <div onClick={onClick} className={cls}>
+        {selBox}
+      </div>
+    );
   }
   const tile =
     slot.kind === 'block'
@@ -107,6 +123,7 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
         : null;
   return (
     <div title={title} onClick={onClick} className={cls}>
+      {selBox}
       <TileIcon tile={tile} size={26} />
       <span className="absolute left-0.5 top-0 text-[10px] leading-3 text-white/70">{index + 1}</span>
       {(slot.kind === 'block' || slot.kind === 'material') && slot.count > 1 && (
@@ -370,14 +387,18 @@ export function Hud() {
           {selectedName}
           {flying ? ' · 飞行中' : ''}
         </div>
-        <div className="flex gap-1 rounded-lg bg-black/40 p-1 backdrop-blur-sm">
-          {worldMode === 'creative'
-            ? hotbarBlocks.map((id, i) => (
-                <HotbarCell key={i} id={id} index={i} active={i === selectedSlot} onClick={() => setSlot(i)} />
-              ))
-            : hotbarSlots.map((slot, i) => (
-                <SurvivalCell key={i} index={i} slot={slot} active={i === selectedSlot} onClick={() => setSlot(i)} />
-              ))}
+        <div className="relative p-1">
+          {/* MC 热键栏：hotbar.png 纹理背景（Faithful），格子图标叠加，选中格 hotbar_selection 框 */}
+          <img src="/textures/gui/hud/hotbar.png" alt="" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none [image-rendering:pixelated]" />
+          <div className="relative flex gap-1">
+            {worldMode === 'creative'
+              ? hotbarBlocks.map((id, i) => (
+                  <HotbarCell key={i} id={id} index={i} active={i === selectedSlot} onClick={() => setSlot(i)} />
+                ))
+              : hotbarSlots.map((slot, i) => (
+                  <SurvivalCell key={i} index={i} slot={slot} active={i === selectedSlot} onClick={() => setSlot(i)} />
+                ))}
+          </div>
         </div>
         {worldMode === 'creative' ? (
           <div className="mt-1 text-center">
