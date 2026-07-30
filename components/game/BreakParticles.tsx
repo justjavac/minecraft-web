@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { BoxGeometry, Mesh, MeshBasicMaterial, Vector3, type Group } from 'three';
+import { BoxGeometry, Mesh, Vector3, type Group, type Material } from 'three';
 import { ATLAS_CELL_RATIO, ATLAS_COLS, ATLAS_PAD_RATIO, ATLAS_ROWS, BLOCKS } from '@/lib/blocks';
 import { breakParticles, getActiveWorld, type BreakParticleEvent } from '@/lib/game';
 import { getAtlasMaterials, tilePx } from '@/lib/textures';
@@ -17,6 +17,7 @@ const BASE_SIZE = 0.12;
 
 interface Particle {
   mesh: Mesh;
+  geo: BoxGeometry;
   vel: Vector3;
   spin: Vector3;
   age: number;
@@ -25,11 +26,22 @@ interface Particle {
   size: number;
 }
 
-const geo = new BoxGeometry(1, 1, 1);
 /** 模块级粒子池：帧循环里直接改（与 digState/touchInput 同模式） */
 const particlePool: Particle[] = [];
 
-/** 方块破坏时的碎块粒子：共享几何 + 每粒子克隆贴图（随机局部 UV），落地反弹后静止消失 */
+/** BoxGeometry 每面 4 顶点（uv 顺序 (0,1)(1,1)(0,0)(1,0)），按图集子区重写 24 顶点 UV */
+function setGeoUv(geo: BoxGeometry, u0: number, vTop: number, u1: number, vBottom: number): void {
+  const uv = geo.attributes.uv;
+  for (let f = 0; f < 6; f++) {
+    uv.setXY(f * 4 + 0, u0, vTop);
+    uv.setXY(f * 4 + 1, u1, vTop);
+    uv.setXY(f * 4 + 2, u0, vBottom);
+    uv.setXY(f * 4 + 3, u1, vBottom);
+  }
+  uv.needsUpdate = true;
+}
+
+/** 方块破坏时的碎块粒子：每粒子独立几何（激活时重写 UV 取图集子区），全池共享一份材质/纹理（不再克隆 32 份图集，省 ~147MB 显存），落地反弹后静止消失 */
 export function BreakParticles() {
   const groupRef = useRef<Group>(null);
   const kind = useRendererKind();
@@ -39,25 +51,26 @@ export function BreakParticles() {
     const group = groupRef.current;
     if (!group) return;
     let cancelled = false;
+    let sharedMat: Material | null = null;
     void getAtlasMaterials(kind).then((mats) => {
       if (cancelled) return;
+      sharedMat = mats.basic({ map: mats.texture, transparent: true });
       for (let i = 0; i < POOL_SIZE; i++) {
-        const tex = mats.texture.clone();
-        tex.needsUpdate = true;
-        const mesh = new Mesh(geo, mats.basic({ map: tex, transparent: true }));
+        const geo = new BoxGeometry(1, 1, 1);
+        const mesh = new Mesh(geo, sharedMat);
         mesh.visible = false;
         group.add(mesh);
-        particlePool.push({ mesh, vel: new Vector3(), spin: new Vector3(), age: 0, active: false, size: BASE_SIZE });
+        particlePool.push({ mesh, geo, vel: new Vector3(), spin: new Vector3(), age: 0, active: false, size: BASE_SIZE });
       }
     });
     return () => {
       cancelled = true;
       for (const p of particlePool) {
         p.mesh.removeFromParent();
-        (p.mesh.material as MeshBasicMaterial).dispose();
-        (p.mesh.material as MeshBasicMaterial).map?.dispose();
+        p.geo.dispose();
       }
       particlePool.length = 0;
+      sharedMat?.dispose();
     };
   }, [kind]);
 
@@ -137,17 +150,16 @@ function spawn(e: BreakParticleEvent): void {
     p.spin.set((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, 0);
     p.mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
     p.mesh.scale.setScalar(p.size);
-    // 每颗粒取贴图的随机 1/4 局部（MC 的 4×4 碎块样式），看起来像真正的碎屑而非整块缩小
+    // 每颗粒取贴图的随机 1/4 局部（MC 的 4×4 碎块样式）：重写本粒子几何的 UV（几何独立、材质共享）
     const crop = tilePx / 4;
-    const cx = Math.floor(Math.random() * (tilePx - crop));
-    const cy = Math.floor(Math.random() * (tilePx - crop));
-    const map = (p.mesh.material as MeshBasicMaterial).map!;
-    // atlas 格距含挤出（CELL_RATIO），子区偏移/比例换算到内容区
-    map.repeat.set((crop / tilePx) / (ATLAS_COLS * ATLAS_CELL_RATIO), (crop / tilePx) / (ATLAS_ROWS * ATLAS_CELL_RATIO));
-    map.offset.set(
-      (col * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + cx / tilePx) / (ATLAS_COLS * ATLAS_CELL_RATIO),
-      1 - (row * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + (cy + crop) / tilePx) / (ATLAS_ROWS * ATLAS_CELL_RATIO),
-    );
+    const cx = Math.floor(Math.random() * (tilePx - crop)) / tilePx;
+    const cy = Math.floor(Math.random() * (tilePx - crop)) / tilePx;
+    const cw = crop / tilePx;
+    const u0 = (col * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + cx) / (ATLAS_COLS * ATLAS_CELL_RATIO);
+    const u1 = (col * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + cx + cw) / (ATLAS_COLS * ATLAS_CELL_RATIO);
+    const vTop = 1 - (row * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + cy) / (ATLAS_ROWS * ATLAS_CELL_RATIO);
+    const vBottom = 1 - (row * ATLAS_CELL_RATIO + ATLAS_PAD_RATIO + cy + cw) / (ATLAS_ROWS * ATLAS_CELL_RATIO);
+    setGeoUv(p.geo, u0, vTop, u1, vBottom);
     if (++spawned >= PARTICLES_PER_BREAK) break;
   }
 }
