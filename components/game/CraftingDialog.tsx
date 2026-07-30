@@ -1,25 +1,24 @@
 'use client';
 
-import { armorDefOf, type ArmorPiece } from '@/lib/armor';
+import { useState } from 'react';
+import { armorDefOf, type ArmorMaterial, type ArmorPiece } from '@/lib/armor';
 import { RECIPES, canCraft, recipePattern, type Recipe } from '@/lib/recipes';
 import { useGameStore } from '@/lib/store';
 import type { Slot } from '@/lib/slots';
-import { slotCount, slotDurabilityPct, slotName, slotTile } from './slotDisplay';
-import { TileIcon } from './TileIcon';
-import { useState } from 'react';
 import { BLOCKS } from '@/lib/blocks';
-import { materialTile } from '@/lib/materials';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { materialName, materialTile } from '@/lib/materials';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { slotName, slotTile } from './slotDisplay';
+import { TileIcon } from './TileIcon';
+import { G, GuiHotbarSlots, GuiMainSlots, McGuiFrame } from './McGui';
 
-// ——— MC 原版物品栏配色（浅灰面板 + 内凹深灰槽位） ———
-const SLOT =
-  'relative flex h-10 w-10 items-center justify-center border border-t-[#5a5a5a] border-l-[#5a5a5a] border-b-[#ffffff] border-r-[#ffffff] bg-[#8b8b8b]';
+/** 背包（inventory.png）槽位坐标（×2） */
+const ARMOR_POS = (i: number): [number, number] => [16, 16 + i * G];
+const GRID2 = (i: number): [number, number] => [196 + (i % 2) * G, 36 + Math.floor(i / 2) * G];
+const OUT2: [number, number] = [308, 56];
+/** 工作台（crafting_table.png）槽位坐标（×2） */
+const GRID3 = (i: number): [number, number] => [60 + (i % 3) * G, 34 + Math.floor(i / 3) * G];
+const OUT3: [number, number, number] = [240, 60, 48];
 
 function outTile(recipe: Recipe): number {
   if (recipe.out.kind === 'block') return slotTile({ kind: 'block', id: recipe.out.id, count: 1 });
@@ -47,50 +46,50 @@ function patternTile(item: string): number {
   return materialTile(item.slice(9));
 }
 
-/** MC 原版合成预览：3×3 摆法网格 → 成品槽 */
-function CraftPreview({ recipe }: { recipe: Recipe }) {
-  const cells = recipePattern(recipe);
-  return (
-    <div className="flex items-center gap-2">
-      <div className="grid grid-cols-3 gap-0.5">
-        {cells.map((item, i) => (
-          <span key={i} className={SLOT}>
-            {item && <TileIcon tile={patternTile(item)} size={26} />}
-          </span>
-        ))}
-      </div>
-      <span className="text-xl text-[#5f5f5f]">→</span>
-      <span className={`${SLOT} !h-12 !w-12 bg-[#a8e063]`}>
-        <TileIcon tile={outTile(recipe)} size={34} />
-      </span>
-      <span className="text-sm text-[#3f3f3f]">{outName(recipe)}</span>
-    </div>
-  );
+function costName(item: string): string {
+  if (item.startsWith('block:')) return BLOCKS[Number(item.slice(6))]?.name ?? item;
+  return materialName(item.slice(9));
 }
 
-/** 物品格子（背包/热键栏通用）：图标 + 数量 + 耐久条 */
-function InvCell({ slot, onClick }: { slot: Slot; onClick: () => void }) {
-  const count = slotCount(slot);
-  const pct = slotDurabilityPct(slot);
+/** 玩家持有某成本项的数量 */
+function haveOf(slots: Slot[], item: string): number {
+  const [kind, id] = item.split(':');
+  return slots.reduce((n, s) => {
+    if (!s) return n;
+    if (kind === 'block' && s.kind === 'block' && s.id === Number(id)) return n + s.count;
+    if (kind === 'material' && s.kind === 'material' && s.material === id) return n + s.count;
+    return n;
+  }, 0);
+}
+
+/** 装备槽（背包模式左侧一列）：空槽显示灰色皮革图标，有装备显示耐久条，点击卸下 */
+function ArmorCell({
+  pos,
+  piece,
+  slot,
+  onClick,
+}: {
+  pos: [number, number];
+  piece: ArmorPiece;
+  slot: { durability: number; material?: ArmorMaterial } | null;
+  onClick: () => void;
+}) {
+  const def = armorDefOf({ piece, material: slot?.material }); // 空槽按皮革基准显示
+  const pct = slot ? slot.durability / def.durability : null;
   return (
-    <button onClick={onClick} title={slotName(slot)} className={`${SLOT} hover:brightness-110`}>
-      {slot && (
-        <>
-          <TileIcon tile={slotTile(slot)} size={30} />
-          {count > 1 && (
-            <span className="absolute bottom-0 right-0.5 text-[11px] font-bold leading-3 text-white drop-shadow">
-              {count}
-            </span>
-          )}
-          {pct !== null && (
-            <div className="absolute bottom-0.5 left-1 right-1 h-0.5 bg-zinc-700">
-              <div
-                className="h-full"
-                style={{ width: `${pct * 100}%`, backgroundColor: pct > 0.3 ? '#4ade80' : '#ef4444' }}
-              />
-            </div>
-          )}
-        </>
+    <button
+      onClick={onClick}
+      title={slot ? def.name : `空${def.name}槽`}
+      className="absolute flex items-center justify-center"
+      style={{ left: pos[0], top: pos[1], width: G, height: G }}
+    >
+      <span className={slot ? '' : 'opacity-50 grayscale'}>
+        <TileIcon tile={def.iconTile} size={28} />
+      </span>
+      {pct !== null && pct < 1 && (
+        <span className="pointer-events-none absolute bottom-0.5 left-1 right-1 h-0.5 bg-zinc-700">
+          <span className="block h-full" style={{ width: `${pct * 100}%`, backgroundColor: pct > 0.3 ? '#4ade80' : '#ef4444' }} />
+        </span>
       )}
     </button>
   );
@@ -98,7 +97,7 @@ function InvCell({ slot, onClick }: { slot: Slot; onClick: () => void }) {
 
 const ARMOR_ORDER: ArmorPiece[] = ['helmet', 'chestplate', 'leggings', 'boots'];
 
-/** MC 物品栏（E 键）：装备列 + 随身 2×2 合成 + 27 背包 + 9 热键栏；点格子在两区间移动 */
+/** MC 物品栏（E 键）/ 工作台：Faithful inventory.png / crafting_table.png 背景；左侧配方书点选合成，摆法与成品预览叠加在纹理格子上 */
 export function CraftingDialog() {
   const open = useGameStore((s) => s.craftingOpen);
   const withTable = useGameStore((s) => s.craftingTable);
@@ -109,61 +108,33 @@ export function CraftingDialog() {
   const craft = useGameStore((s) => s.craft);
   const moveSlot = useGameStore((s) => s.moveSlot);
   const unequipArmor = useGameStore((s) => s.unequipArmor);
-  const [preview, setPreview] = useState<Recipe | null>(null);
+  const [hover, setHover] = useState<Recipe | null>(null);
   // 关闭时直接不渲染：避免每次背包变化都全量重算配方与 JSX（hooks 已全部调用，顺序稳定）
   if (!open) return null;
   const merged = [...hotbarSlots, ...mainSlots];
   const recipes = RECIPES.filter((r) => withTable || !r.needsTable);
+  // 预览 = 悬停配方，默认第一个可合成的（让摆法区不空）
+  const preview = hover ?? recipes.find((r) => canCraft(merged, r)) ?? recipes[0] ?? null;
+  // 摆法预览：工作台用 3×3 真实摆法；随身 2×2 展示去重成本项（≤4 格）
+  const cells: (string | null)[] = preview
+    ? withTable
+      ? recipePattern(preview)
+      : [...new Set(preview.cost.map((c) => c.item))].slice(0, 4)
+    : [];
+  const gridPos = withTable ? GRID3 : GRID2;
+  const outOk = preview ? canCraft(merged, preview) : false;
 
   return (
     <Dialog open={open} onOpenChange={(o) => setOpen(o)}>
-      <DialogContent className="border-4 border-t-[#ffffff] border-l-[#ffffff] border-b-[#555555] border-r-[#555555] bg-[#c6c6c6] text-[#3f3f3f] sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="text-[#3f3f3f]">{withTable ? '工作台' : '物品栏'}</DialogTitle>
-          <DialogDescription className="text-[#5f5f5f]">
-            {withTable ? '全部配方可用' : '点配方合成；点物品在背包与热键栏间移动'}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex gap-3">
-          {/* 装备列 */}
-          <div className="flex flex-col gap-1">
-            {ARMOR_ORDER.map((piece) => {
-              const cur = armorSlots[piece];
-              const def = armorDefOf({ piece, material: cur?.material }); // 空槽按皮革基准显示
-              return (
-                <button
-                  key={piece}
-                  onClick={() => cur && unequipArmor(piece)}
-                  title={cur ? def.name : `空${def.name}槽`}
-                  className={`${SLOT} ${cur ? '' : 'opacity-60'}`}
-                >
-                  <span className={cur ? '' : 'grayscale'}>
-                    <TileIcon tile={def.iconTile} size={28} />
-                  </span>
-                  {cur && (
-                    <div className="absolute bottom-0.5 left-1 right-1 h-0.5 bg-zinc-700">
-                      <div
-                        className="h-full"
-                        style={{
-                          width: `${(cur.durability / def.durability) * 100}%`,
-                          backgroundColor: cur.durability / def.durability > 0.3 ? '#4ade80' : '#ef4444',
-                        }}
-                      />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {/* 配方区（MC 风格：悬停显示 3×3 摆法预览；可合成的高亮） */}
-          <div className="flex-1 space-y-2">
-            {preview ? (
-              <CraftPreview recipe={preview} />
-            ) : (
-              <div className="text-xs text-[#5f5f5f]">悬停配方查看摆法，点击合成</div>
-            )}
-            <div className="grid max-h-44 grid-cols-5 content-start gap-1 overflow-y-auto">
+      <DialogContent className="border-0 bg-transparent p-0 shadow-none sm:max-w-none">
+        <div className="flex items-start justify-center gap-1">
+          {/* 配方书（MC 1.12+ 风格：物品栏左侧弹出的配方面板） */}
+          <div
+            className="flex flex-col border-2 border-t-white border-l-white border-b-[#555555] border-r-[#555555] bg-[#c6c6c6] p-1.5"
+            style={{ width: 170, height: 332 }}
+          >
+            <div className="text-[12px] font-bold text-[#3f3f3f]">{withTable ? '工作台配方' : '配方'}</div>
+            <div className="mt-1 grid flex-1 grid-cols-4 content-start gap-0.5 overflow-y-auto">
               {recipes.map((r) => {
                 const ok = canCraft(merged, r);
                 return (
@@ -171,29 +142,69 @@ export function CraftingDialog() {
                     key={r.id}
                     disabled={!ok}
                     onClick={() => craft(r)}
-                    onMouseEnter={() => setPreview(r)}
+                    onMouseEnter={() => setHover(r)}
                     title={outName(r)}
-                    className={`${SLOT} ${ok ? 'bg-[#a8e063] hover:brightness-105' : 'opacity-45'}`}
+                    className={`flex h-9 w-9 items-center justify-center border border-t-[#5a5a5a] border-l-[#5a5a5a] border-b-white border-r-white bg-[#8b8b8b] hover:brightness-110 disabled:opacity-40 ${
+                      preview === r ? 'outline outline-1 outline-white' : ''
+                    }`}
                   >
                     <TileIcon tile={outTile(r)} size={28} />
                   </button>
                 );
               })}
             </div>
+            {/* 配方信息：成品与成本（不足的材料标红） */}
+            {preview && (
+              <div className="mt-1 border-t border-[#8b8b8b] pt-1 text-[10px] leading-[14px] text-[#3f3f3f]" style={{ minHeight: 62 }}>
+                <div className="font-bold">{outName(preview)}</div>
+                {preview.cost.map((c, i) => {
+                  const have = haveOf(merged, c.item);
+                  return (
+                    <div key={i} className={`flex items-center gap-1 ${have < c.count ? 'text-red-700' : ''}`}>
+                      <TileIcon tile={patternTile(c.item)} size={12} />
+                      <span>
+                        {costName(c.item)} ×{c.count}（有 {have}）
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* 背包 27 格 */}
-        <div className="grid grid-cols-9 gap-0.5">
-          {mainSlots.map((slot, i) => (
-            <InvCell key={i} slot={slot} onClick={() => moveSlot('main', i)} />
-          ))}
-        </div>
-        {/* 热键栏 9 格 */}
-        <div className="grid grid-cols-9 gap-0.5 border-t-2 border-[#8b8b8b] pt-1">
-          {hotbarSlots.map((slot, i) => (
-            <InvCell key={i} slot={slot} onClick={() => moveSlot('hotbar', i)} />
-          ))}
+          {/* 纹理面板：摆法/成品预览 + 装备列（背包模式）+ 背包热键栏 */}
+          <McGuiFrame centered={false} texture={withTable ? '/textures/gui/container/crafting_table.png' : '/textures/gui/container/inventory.png'}>
+            {/* 摆法预览（悬停配方填入纹理格子） */}
+            {cells.map((item, i) => (
+              <span key={i} className="pointer-events-none absolute flex items-center justify-center" style={{ left: gridPos(i)[0], top: gridPos(i)[1], width: G, height: G }}>
+                {item && <TileIcon tile={patternTile(item)} size={28} />}
+              </span>
+            ))}
+            {/* 成品槽：点击合成 */}
+            {preview && (
+              <button
+                onClick={() => outOk && craft(preview)}
+                title={outName(preview)}
+                className="absolute flex items-center justify-center"
+                style={
+                  withTable
+                    ? { left: OUT3[0], top: OUT3[1], width: OUT3[2], height: OUT3[2] }
+                    : { left: OUT2[0], top: OUT2[1], width: G, height: G }
+                }
+              >
+                <TileIcon tile={outTile(preview)} size={withTable ? 36 : 30} className={outOk ? '' : 'opacity-60'} />
+                {(preview.out.kind === 'block' || preview.out.kind === 'material') && preview.out.count > 1 && (
+                  <span className="pointer-events-none absolute bottom-0 right-0.5 text-[10px] font-bold text-white drop-shadow">{preview.out.count}</span>
+                )}
+              </button>
+            )}
+            {/* 装备列（仅背包模式；MC 工作台界面无装备槽） */}
+            {!withTable &&
+              ARMOR_ORDER.map((piece, i) => (
+                <ArmorCell key={piece} pos={ARMOR_POS(i)} piece={piece} slot={armorSlots[piece]} onClick={() => armorSlots[piece] && unequipArmor(piece)} />
+              ))}
+            <GuiMainSlots slots={mainSlots} onSlotClick={(i) => moveSlot('main', i)} />
+            <GuiHotbarSlots slots={hotbarSlots} onSlotClick={(i) => moveSlot('hotbar', i)} />
+          </McGuiFrame>
         </div>
       </DialogContent>
     </Dialog>

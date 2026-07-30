@@ -30,6 +30,7 @@ export function McGuiFrame({
   height = 332,
   imgW = 512,
   imgH = 512,
+  centered = true,
 }: {
   texture: string;
   children: ReactNode;
@@ -37,9 +38,11 @@ export function McGuiFrame({
   height?: number;
   imgW?: number;
   imgH?: number;
+  /** false 时取消 mx-auto（与配方书等侧栏并排时由外层 flex 控制布局） */
+  centered?: boolean;
 }) {
   return (
-    <div className="relative mx-auto select-none overflow-hidden" style={{ width, height }}>
+    <div className={`relative select-none overflow-hidden ${centered ? 'mx-auto' : ''}`} style={{ width, height }}>
       <img
         src={texture}
         alt=""
@@ -75,6 +78,13 @@ export function GuiSlot({
         : slot.kind === 'tool'
           ? TOOLS[slot.tool].iconTile
           : armorDefOf(slot).iconTile;
+  /** 工具/装备耐久比例（其余 null 不显示耐久条） */
+  const pct =
+    slot?.kind === 'tool'
+      ? slot.durability / TOOLS[slot.tool].durability
+      : slot?.kind === 'armor'
+        ? slot.durability / armorDefOf(slot).durability
+        : null;
   return (
     <button
       onClick={onClick}
@@ -86,6 +96,14 @@ export function GuiSlot({
       {slot && <TileIcon tile={tile} size={30} />}
       {slot && slot.kind !== 'tool' && slot.kind !== 'armor' && slot.count > 1 && (
         <span className="pointer-events-none absolute bottom-0 right-0.5 text-[10px] font-bold text-white drop-shadow">{slot.count}</span>
+      )}
+      {pct !== null && pct < 1 && (
+        <span className="pointer-events-none absolute bottom-0.5 left-1 right-1 h-0.5 bg-zinc-700">
+          <span
+            className="block h-full"
+            style={{ width: `${pct * 100}%`, backgroundColor: pct > 0.3 ? '#4ade80' : '#ef4444' }}
+          />
+        </span>
       )}
     </button>
   );
