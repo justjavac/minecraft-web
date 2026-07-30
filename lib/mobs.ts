@@ -1000,27 +1000,29 @@ function tickPhantom(m: Mob, dt: number, playerPos: { x: number; y: number; z: n
   if (m.phaseTimer <= 0) m.phantomPhase = 'dive';
 }
 
-/** 每帧推进：生成/AI/攻击/箭/燃烧/清理；lureFood = 玩家手持的繁殖食物（引诱用） */
+/** 每帧推进：生成/AI/攻击/箭/燃烧/清理；lureFood = 玩家手持的繁殖食物（引诱用）；
+ *  hostile=false（创造模式）时正常刷怪但 AI 失去目标（MC 创造规则：生物存在但不追击不伤害玩家） */
 export function tickMobs(
   world: World,
   dt: number,
   playerPos: { x: number; y: number; z: number },
   onAttackPlayer: (damage: number) => void,
   lureFood?: string | null,
+  hostile = true,
 ): void {
   const night = isNight();
-  // 创造模式 playerPos 是 CREATIVE_NO_TARGET（约 1e9 假目标）：刷怪/幻翼/失眠需真实玩家位置，跳过——否则在 1e9 处刷怪、生成幻翼，并隐式生成数十万格外的 chunk
-  const fakeTarget = Math.abs(playerPos.x) > 1e8 || Math.abs(playerPos.z) > 1e8;
+  // 创造模式：刷怪/despawn/Boss 血条用真实位置；AI 仇恨目标用超远假目标（不追击、箭不伤人）
+  const targetPos = hostile ? playerPos : { x: 1e9, y: -999, z: 1e9 };
   spawnTimer -= dt;
   if (spawnTimer <= 0) {
     spawnTimer = SPAWN_INTERVAL;
     // 夜晚刷敌对（60%），白天刷被动（20%）
-    if (!fakeTarget && (night ? Math.random() < 0.6 : Math.random() < 0.2)) trySpawn(world, playerPos.x, playerPos.z);
+    if (night ? Math.random() < 0.6 : Math.random() < 0.2) trySpawn(world, playerPos.x, playerPos.z);
   }
 
-  // 失眠追踪（MC 幻翼前置）：时钟自然跨日（t 由 ~1 绕回 0）累计 1 天；睡觉（夜晚时钟直接回拨到日出 0）清零
+  // 失眠追踪（MC 幻翼前置，仅生存）：时钟自然跨日（t 由 ~1 绕回 0）累计 1 天；睡觉（夜晚时钟直接回拨到日出 0）清零
   const ct = worldClock.t;
-  if (!fakeTarget) {
+  if (hostile) {
     if (lastClockT > 0.9 && ct < 0.1) phantomState.insomniaDays += 1;
     else if (ct < lastClockT - 0.2) phantomState.insomniaDays = 0;
     lastClockT = ct;
@@ -1028,7 +1030,7 @@ export function tickMobs(
 
   // 幻翼（MC 失眠惩罚）：失眠 ≥3 天的夜晚，玩家头顶高空来袭 1-3 只（仅主世界，场上限 3 只）
   phantomState.timer -= dt;
-  if (!fakeTarget && night && world.terrain.kind !== 'nether' && world.terrain.kind !== 'end' && phantomState.insomniaDays >= 3 && phantomState.timer <= 0) {
+  if (hostile && night && world.terrain.kind !== 'nether' && world.terrain.kind !== 'end' && phantomState.insomniaDays >= 3 && phantomState.timer <= 0) {
     phantomState.timer = 30 + Math.random() * 30;
     const count = mobs.filter((m) => m.type === 'phantom').length;
     const n = Math.min(3 - count, 1 + Math.floor(Math.random() * 3));
@@ -1042,7 +1044,7 @@ export function tickMobs(
     }
   }
 
-  tickArrows(world, dt, playerPos, onAttackPlayer);
+  tickArrows(world, dt, targetPos, onAttackPlayer);
 
   // Boss 血条状态：凋灵/末影龙存活且玩家在附近（凋灵 48 格、龙全岛 96 格；无则清空）
   const boss = mobs.find((m) => (m.type === 'wither' && Math.hypot(m.x - playerPos.x, m.z - playerPos.z) < 48) || (m.type === 'ender_dragon' && Math.hypot(m.x - playerPos.x, m.z - playerPos.z) < 96));
@@ -1074,7 +1076,7 @@ export function tickMobs(
     if (m.aggroTimer !== undefined && m.aggroTimer > 0) m.aggroTimer -= dt;
     // 末影龙：完全自管理飞行（穿方块、无环境伤害），跳过通用管线
     if (m.type === 'ender_dragon') {
-      tickDragon(world, m, dt, playerPos, onAttackPlayer);
+      tickDragon(world, m, dt, targetPos, onAttackPlayer);
       continue;
     }
     // 白天自燃（需露天且头部不在水中；本地正在下雨则不烧——MC 只认雨，雪/干旱群系不保护）
@@ -1086,21 +1088,20 @@ export function tickMobs(
       }
     }
 
-    const dx = playerPos.x - m.x;
-    const dz = playerPos.z - m.z;
-    const dist = Math.hypot(dx, dz);
+    const dx = targetPos.x - m.x;
+    const dz = targetPos.z - m.z;
+    const dist = Math.hypot(dx, dz); // 追击/攻击距离（创造模式为 ~1e9 假目标，AI 自然不追不攻）
+    const distReal = Math.hypot(playerPos.x - m.x, playerPos.z - m.z); // despawn 用真实玩家距离
     let mx = 0;
     let mz = 0;
-    // 创造模式 playerPos 是 CREATIVE_NO_TARGET（约 1e9 的假目标）：despawn 需真实玩家距离，跳过——否则敌对 mob（含狼）在创造模式会 spawn 即消失（MC 创造模式怪物应存在，只是不主动攻击）
-    const hasRealPlayerDist = Math.abs(playerPos.x) < 1e8 && Math.abs(playerPos.z) < 1e8;
 
     // 距离消失（MC 简版）：敌对 >64 立即消失；32-64 持续远离 20-40s 随机刻消失；驯服/村民（非敌对）/Boss/铁傀儡不消失
-    if (hasRealPlayerDist && def.hostile && !m.tamed && m.type !== 'wither' && m.type !== 'shulker' && m.type !== 'iron_golem') {
-      if (dist > 64) {
+    if (def.hostile && !m.tamed && m.type !== 'wither' && m.type !== 'shulker' && m.type !== 'iron_golem') {
+      if (distReal > 64) {
         mobs.splice(i, 1);
         continue;
       }
-      if (dist > 32) {
+      if (distReal > 32) {
         m.despawnTimer = (m.despawnTimer ?? 20 + Math.random() * 20) - dt;
         if (m.despawnTimer <= 0) {
           mobs.splice(i, 1);
@@ -1112,7 +1113,7 @@ export function tickMobs(
     }
     // 幻翼：三态自管理飞行（盘旋/俯冲/拉升；无重力碰撞，白天自燃走上方通用判定）
     if (m.type === 'phantom') {
-      tickPhantom(m, dt, playerPos, onAttackPlayer);
+      tickPhantom(m, dt, targetPos, onAttackPlayer);
       continue;
     }
 

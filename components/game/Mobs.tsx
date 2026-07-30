@@ -11,9 +11,6 @@ import { getAtlasMaterials, type AtlasMaterials } from '@/lib/textures';
 import { useRendererKind } from './renderer-kind';
 
 // ——— 共享几何 ———
-/** 创造模式传给生物 AI 的「无目标」坐标（超远，敌对生物失去追击目标、不消失、不触发失眠/护主等玩家联动） */
-const CREATIVE_NO_TARGET = { x: 1e9, y: -999, z: 1e9 };
-
 const headGeo = new BoxGeometry(0.42, 0.42, 0.42);
 const bodyGeo = new BoxGeometry(0.5, 0.7, 0.28);
 const legGeo = new BoxGeometry(0.2, 0.75, 0.22);
@@ -457,16 +454,17 @@ export function Mobs() {
     const group = groupRef.current;
     if (!world || !group) return;
     const store = useGameStore.getState();
-    // MC 创造模式也有生物（游荡/刷怪），只是不追击、不伤害玩家——传超远位置让 AI 失去目标（简版 MC 规则）
+    // MC 创造模式也刷生物（动物/怪物都正常生成），只是敌对不追击不伤害玩家（tickMobs hostile=false 用假目标）
     if (store.paused) return;
     const dt = Math.min(delta, 0.05);
     const survival = store.worldMode === 'survival';
 
     const held = store.hotbarSlots[store.selectedSlot];
     const lureFood = held?.kind === 'material' ? held.material : null;
-    tickMobs(world, dt, survival ? playerPosition : CREATIVE_NO_TARGET, (dmg) => {
+    // MC 创造模式正常刷怪（动物/怪物都有），只是敌对不追击不伤害——hostile=false 时 AI 用假目标
+    tickMobs(world, dt, playerPosition, (dmg) => {
       if (survival && !useGameStore.getState().dead) useGameStore.getState().damagePlayer(dmg);
-    }, lureFood);
+    }, lureFood, survival);
 
     // 同步生物网格（材质表就绪后才创建）
     if (mobMats) {
