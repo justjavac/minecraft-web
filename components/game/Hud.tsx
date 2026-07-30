@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BLOCKS } from '@/lib/blocks';
 import { bossState, debugInfo, survivalStats } from '@/lib/game';
 import { clearMobs } from '@/lib/mobs';
-import { MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
+import { anyPanelOpen, MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
 import { effects, clearEffects } from '@/lib/effects';
 import { levelFromXp } from '@/lib/xp';
 import { loadWorldMeta, type WorldMeta } from '@/lib/persistence';
@@ -336,10 +336,7 @@ export function Hud() {
   const hotbarBlocks = useGameStore((s) => s.hotbarBlocks);
   const setSlot = useGameStore((s) => s.setSlot);
   const setCraftingOpen = useGameStore((s) => s.setCraftingOpen);
-  const craftingOpen = useGameStore((s) => s.craftingOpen);
-  const furnaceOpen = useGameStore((s) => s.furnaceOpen);
-  const storageOpen = useGameStore((s) => s.storageOpen);
-  const pickerOpen = useGameStore((s) => s.pickerOpen);
+  const panelOpen = useGameStore(anyPanelOpen);
 
   // 当前选中项名称（创造=方块，生存=槽位内容）
   const heldSlot = hotbarSlots[selectedSlot];
@@ -422,7 +419,7 @@ export function Hud() {
       {touchMode && !paused && <TouchControls />}
 
       {/* 暂停遮罩（指针未锁定；有界面打开时不显示，关掉界面即可直接继续） */}
-      {paused && !craftingOpen && !furnaceOpen && !storageOpen && !pickerOpen && <PauseOverlay />}
+      {paused && !panelOpen && <PauseOverlay />}
 
       {/* 死亡遮罩 */}
       {dead && <DeathOverlay />}

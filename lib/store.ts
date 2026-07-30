@@ -29,6 +29,29 @@ export const MAX_HUNGER = 20;
 export const MAX_SATURATION = 5;
 const HURT_COOLDOWN = 500; // ms 受击无敌帧
 
+/** 全部面板关闭态（界面互斥共享名单：打开任一界面时关掉其余；死亡时全关。此前 8 份手抄复制已漂移漏清） */
+const ALL_PANELS_CLOSED = {
+  pickerOpen: false,
+  craftingOpen: false,
+  furnaceOpen: null,
+  brewingOpen: null,
+  enchantOpen: null,
+  tradeMob: null,
+  storageOpen: null,
+} as const;
+
+/** 是否有任一面板打开（暂停遮罩抑制判断等） */
+export const anyPanelOpen = (s: {
+  pickerOpen: boolean;
+  craftingOpen: boolean;
+  furnaceOpen: string | null;
+  brewingOpen: string | null;
+  enchantOpen: string | null;
+  tradeMob: number | null;
+  storageOpen: string | null;
+}): boolean =>
+  s.pickerOpen || s.craftingOpen || s.furnaceOpen !== null || s.brewingOpen !== null || s.enchantOpen !== null || s.tradeMob !== null || s.storageOpen !== null;
+
 export interface Settings {
   /** 主音量 0..1 */
   volume: number;
@@ -291,8 +314,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     }),
   setPickerOpen: (pickerOpen) => {
     if (pickerOpen && typeof document !== 'undefined') document.exitPointerLock();
-    // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(pickerOpen ? { pickerOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, storageOpen: null } : { pickerOpen });
+    // 界面互斥：打开时关掉其余全部面板（关闭时不动其他的）
+    set(pickerOpen ? { ...ALL_PANELS_CLOSED, pickerOpen: true } : { pickerOpen });
   },
   pickBlock: (id) => {
     const s = get();
@@ -424,7 +447,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         armorSlots,
         xpTotal,
         // 死亡时关掉所有打开的界面（仅受伤未死不动）
-        ...(died ? { craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, pickerOpen: false } : {}),
+        ...(died ? ALL_PANELS_CLOSED : {}),
       };
     });
     return true;
@@ -442,30 +465,30 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     }),
   setCraftingOpen: (craftingOpen, withTable) => {
     if (craftingOpen && typeof document !== 'undefined') document.exitPointerLock(); // 打开界面先解锁指针，否则无法操作
-    // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
+    // 界面互斥：打开时关掉其余全部面板（关闭时不动其他的）
     set((s) => ({
+      ...(craftingOpen ? ALL_PANELS_CLOSED : {}),
       craftingOpen,
       craftingTable: craftingOpen ? (withTable ?? s.craftingTable) : s.craftingTable,
-      ...(craftingOpen ? { furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, pickerOpen: false } : {}),
     }));
   },
   setFurnaceOpen: (furnaceOpen) => {
     if (furnaceOpen && typeof document !== 'undefined') document.exitPointerLock();
-    // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(furnaceOpen ? { furnaceOpen, craftingOpen: false, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, pickerOpen: false } : { furnaceOpen });
+    // 界面互斥：打开时关掉其余全部面板（关闭时不动其他的）
+    set(furnaceOpen ? { ...ALL_PANELS_CLOSED, furnaceOpen } : { furnaceOpen });
   },
   setBrewingOpen: (brewingOpen) => {
     if (brewingOpen && typeof document !== 'undefined') document.exitPointerLock();
-    // 界面互斥：打开时关掉其余界面（关闭时不动其他的）
-    set(brewingOpen ? { brewingOpen, craftingOpen: false, furnaceOpen: null, storageOpen: null, pickerOpen: false } : { brewingOpen });
+    // 界面互斥：打开时关掉其余全部面板（关闭时不动其他的）
+    set(brewingOpen ? { ...ALL_PANELS_CLOSED, brewingOpen } : { brewingOpen });
   },
   setEnchantOpen: (enchantOpen) => {
     if (enchantOpen && typeof document !== 'undefined') document.exitPointerLock();
-    set(enchantOpen ? { enchantOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false } : { enchantOpen });
+    set(enchantOpen ? { ...ALL_PANELS_CLOSED, enchantOpen } : { enchantOpen });
   },
   setTradeMob: (tradeMob) => {
     if (tradeMob !== null && typeof document !== 'undefined') document.exitPointerLock();
-    set(tradeMob !== null ? { tradeMob, craftingOpen: false, furnaceOpen: null, brewingOpen: null, storageOpen: null, pickerOpen: false, enchantOpen: null } : { tradeMob });
+    set(tradeMob !== null ? { ...ALL_PANELS_CLOSED, tradeMob } : { tradeMob });
   },
   executeMobTrade: (i) => {
     const s = get();
@@ -491,8 +514,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   },
   setStorageOpen: (storageOpen) => {
     if (storageOpen && typeof document !== 'undefined') document.exitPointerLock();
-    // 界面互斥：打开时关掉其余三个界面（关闭时不动其他的）
-    set(storageOpen ? { storageOpen, craftingOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, pickerOpen: false } : { storageOpen });
+    // 界面互斥：打开时关掉其余全部面板（关闭时不动其他的）
+    set(storageOpen ? { ...ALL_PANELS_CLOSED, storageOpen } : { storageOpen });
   },
   storagePut: (area, slotIndex) => {
     const s = get();
