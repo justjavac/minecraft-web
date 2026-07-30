@@ -84,6 +84,26 @@ const BLOCK_RECIPES: Recipe[] = [
   // 泥砖（夯泥为捷径配方：原版需泥巴+小麦）
   { id: 'packed_mud', name: '夯泥 ×4', out: { kind: 'block', id: KID('packed_mud'), count: 4 }, cost: [{ item: K('mud'), count: 4 }], needsTable: false },
   { id: 'mud_bricks', name: '泥砖 ×4', out: { kind: 'block', id: KID('mud_bricks'), count: 4 }, cost: [{ item: K('packed_mud'), count: 4 }], needsTable: false },
+  // 台阶：同料 3 块 → 6 台阶（MC，需工作台；覆盖全部 SLAB_BASES 基材）
+  ...(['stone', 'smooth_stone', 'cobble', 'stone_bricks', 'deepslate_bricks', 'brick', 'sandstone', 'planks', 'spruce_planks', 'dark_oak_planks'] as const).map(
+    (b): Recipe => ({
+      id: `${b}_slab`,
+      name: `${BLOCK_BY_KEY[`${b}_slab`].name} ×6`,
+      out: { kind: 'block', id: KID(`${b}_slab`), count: 6 },
+      cost: [{ item: K(b), count: 3 }],
+      needsTable: true,
+    }),
+  ),
+  // 楼梯：同料 6 块 → 4 楼梯（MC，需工作台；覆盖全部 STAIR_BASES 基材）
+  ...(['cobble', 'stone_bricks', 'deepslate_bricks', 'brick', 'planks', 'spruce_planks', 'dark_oak_planks'] as const).map(
+    (b): Recipe => ({
+      id: `${b}_stairs`,
+      name: `${BLOCK_BY_KEY[`${b}_stairs`].name} ×4`,
+      out: { kind: 'block', id: KID(`${b}_stairs`), count: 4 },
+      cost: [{ item: K(b), count: 6 }],
+      needsTable: true,
+    }),
+  ),
 ];
 
 export const RECIPES: Recipe[] = [

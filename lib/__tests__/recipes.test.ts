@@ -50,4 +50,35 @@ describe('合成配方', () => {
     expect(slots.some((s) => s?.kind === 'armor' && s.piece === 'helmet' && s.durability === 55)).toBe(true);
     expect(canCraft(slots, recipe)).toBe(false); // 皮革已耗尽
   });
+
+  it('台阶/楼梯配方存在且符合 MC：3 块 → 6 台阶、6 块 → 4 楼梯（均需工作台）', () => {
+    // 全部基材都有对应配方（此前缺失导致木桶配方被 planks_slab 锁死）
+    const slabBases = ['stone', 'smooth_stone', 'cobble', 'stone_bricks', 'deepslate_bricks', 'brick', 'sandstone', 'planks', 'spruce_planks', 'dark_oak_planks'];
+    for (const b of slabBases) {
+      const r = RECIPES.find((x) => x.id === `${b}_slab`);
+      expect(r, `${b}_slab`).toBeDefined();
+      expect(r!.needsTable).toBe(true);
+      expect(r!.out).toMatchObject({ kind: 'block', count: 6 });
+      expect(r!.cost).toHaveLength(1);
+      expect(r!.cost[0].count).toBe(3);
+    }
+    const stairBases = ['cobble', 'stone_bricks', 'deepslate_bricks', 'brick', 'planks', 'spruce_planks', 'dark_oak_planks'];
+    for (const b of stairBases) {
+      const r = RECIPES.find((x) => x.id === `${b}_stairs`);
+      expect(r, `${b}_stairs`).toBeDefined();
+      expect(r!.needsTable).toBe(true);
+      expect(r!.out).toMatchObject({ kind: 'block', count: 4 });
+      expect(r!.cost[0].count).toBe(6);
+    }
+  });
+
+  it('木板 → 台阶 ×6 → 木桶可合成（配方链解锁）', () => {
+    const slabRecipe = RECIPES.find((r) => r.id === 'planks_slab')!;
+    const barrelRecipe = RECIPES.find((r) => r.id === 'barrel')!;
+    let slots = emptySlots();
+    slots = addStackToSlots(slots, { kind: 'block', id: PLANKS }, 9).slots;
+    expect(canCraft(slots, slabRecipe)).toBe(true);
+    slots = applyCraft(slots, slabRecipe, 0); // 3 木板 → 6 台阶
+    expect(canCraft(slots, barrelRecipe)).toBe(true); // 木桶需 6 木板 + 2 台阶
+  });
 });
