@@ -1,19 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BLOCKS } from '@/lib/blocks';
-import { armorDefOf } from '@/lib/armor';
-import { materialName, materialTile } from '@/lib/materials';
+import { materialTile } from '@/lib/materials';
 import { useGameStore } from '@/lib/store';
 import { TOOLS, type ToolDef } from '@/lib/tools';
 import { ENCHANTS, levelFromXp, rollOffers } from '@/lib/xp';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { AbsSlot, G, GuiHotbarSlots, GuiSlot, HOT_Y, hotX, McGuiFrame } from './McGui';
 import { TileIcon } from './TileIcon';
 
 const LAPIS_TILE = () => materialTile('lapis');
@@ -29,14 +22,22 @@ function kindOfTool(def: ToolDef): ItemKind {
 
 const enchName = (o: { ench: keyof typeof ENCHANTS; lvl: number }): string => `${ENCHANTS[o.ench].name} ${['', 'I', 'II', 'III', 'IV', 'V'][o.lvl]}`;
 
-/** 附魔台界面：选工具/装备 → 三选一附魔（耗青金石与整级经验） */
+/** 物品 / 青金石格（enchanting_table.png 内坐标 ×2） */
+const ITEM_SLOT: [number, number] = [30, 94];
+const LAPIS_SLOT: [number, number] = [70, 94];
+/** 右侧三条附魔选项带（×2） */
+const OFFER_X = 120;
+const OFFER_W = 216;
+const OFFER_H = 36;
+const offerY = (i: number) => 28 + i * 38;
+
+/** 附魔台界面（Faithful enchanting_table.png）：热键栏点工具/装备 → 三选一附魔（耗青金石与整级经验） */
 export function EnchantingDialog() {
   const open = useGameStore((s) => s.enchantOpen);
   const setOpen = useGameStore((s) => s.setEnchantOpen);
   const slots = useGameStore((s) => s.hotbarSlots);
   const xpTotal = useGameStore((s) => s.xpTotal);
   const enchantApply = useGameStore((s) => s.enchantApply);
-  const notice = useGameStore((s) => s.notice);
   const [selected, setSelected] = useState<number | null>(null);
   const [rollSeed, setRollSeed] = useState(0);
 
@@ -66,82 +67,74 @@ export function EnchantingDialog() {
         if (!o) setOpen(null);
       }}
     >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>附魔台</DialogTitle>
-          <DialogDescription>
-            等级 {level} · 青金石 {lapisCount} · 点击背包中的工具/装备，再从三个附魔项中选一个
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          {selected !== null && slots[selected] && (
-            <div className="space-y-2 rounded-md border p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">可选附魔（消耗 = 附魔等级的青金石与经验，封顶 3）</span>
-                <button
-                  className="text-xs text-muted-foreground underline"
-                  onClick={() => setRollSeed((n) => n + 1)}
-                  title="重摇（MC 里换一件物品即刷新）"
-                >
-                  重摇
-                </button>
-              </div>
-              {offers.map((o) => {
-                const afford = level >= o.levels && lapisCount >= o.lapis;
-                return (
-                  <button
-                    key={o.ench}
-                    disabled={!afford}
-                    onClick={() => {
-                      if (enchantApply(selected, o)) setSelected(null);
-                    }}
-                    className="flex w-full items-center justify-between rounded border border-purple-500/40 bg-purple-900/30 px-3 py-2 text-left text-sm disabled:opacity-40"
-                  >
-                    <span>{enchName(o)}</span>
-                    <span className="flex items-center gap-2 text-xs">
-                      <TileIcon tile={LAPIS_TILE()} size={16} /> ×{o.lapis}
-                      <span className="text-green-400">{o.levels} 级</span>
-                    </span>
-                  </button>
-                );
-              })}
-              {offers.length === 0 && <span className="text-xs text-muted-foreground">该物品没有可用附魔</span>}
-            </div>
+      <DialogContent className="border-0 bg-transparent p-0 shadow-none sm:max-w-none">
+        <McGuiFrame texture="/textures/gui/container/enchanting_table.png">
+          {/* 物品格：预览选中物品；点击重摇（MC 里换一件物品即刷新选项） */}
+          <GuiSlot
+            pos={ITEM_SLOT}
+            slot={selectedSlot}
+            onClick={selected !== null ? () => setRollSeed((n) => n + 1) : undefined}
+            title={selected !== null ? '点击重摇附魔项' : undefined}
+          />
+          {/* 青金石格：展示背包内青金石总数（附魔时自动扣除） */}
+          <AbsSlot pos={LAPIS_SLOT} stack={lapisCount > 0 ? { item: 'lapis', count: lapisCount } : null} />
+          {/* 三条附魔选项（消耗 = 附魔等级的青金石与经验，封顶 3） */}
+          {offers.map((o, i) => {
+            const afford = level >= o.levels && lapisCount >= o.lapis;
+            return (
+              <button
+                key={o.ench}
+                disabled={!afford}
+                onClick={() => {
+                  if (selected !== null && enchantApply(selected, o)) setSelected(null);
+                }}
+                className="absolute flex items-center justify-between px-3 text-left text-[13px] text-purple-100 [text-shadow:1px_1px_0_rgba(0,0,0,0.8)] hover:bg-white/15 disabled:opacity-40"
+                style={{ left: OFFER_X, top: offerY(i), width: OFFER_W, height: OFFER_H }}
+              >
+                <span>{enchName(o)}</span>
+                <span className="flex items-center gap-1 text-[11px]">
+                  <TileIcon tile={LAPIS_TILE()} size={14} />×{o.lapis}
+                  <span className="text-green-300">{o.levels} 级</span>
+                </span>
+              </button>
+            );
+          })}
+          {selected !== null && kind && offers.length === 0 && (
+            <span
+              className="absolute flex items-center justify-center text-[12px] text-white/60"
+              style={{ left: OFFER_X, top: offerY(0), width: OFFER_W, height: OFFER_H }}
+            >
+              该物品没有可用附魔
+            </span>
           )}
-          {notice && <div className="text-xs text-amber-400">{notice}</div>}
-          <div className="grid grid-cols-9 gap-1">
-            {slots.map((slot, i) => {
-              if (!slot) return <div key={i} className="h-9 w-9 rounded border border-white/10 bg-black/20" />;
-              const enchAble = slot.kind === 'tool' || slot.kind === 'armor';
-              const tile =
-                slot.kind === 'block'
-                  ? BLOCKS[slot.id].side
-                  : slot.kind === 'material'
-                    ? materialTile(slot.material)
-                    : slot.kind === 'tool'
-                      ? TOOLS[slot.tool].iconTile
-                      : armorDefOf(slot).iconTile;
-              const name = slot.kind === 'block' ? BLOCKS[slot.id].name : slot.kind === 'material' ? materialName(slot.material) : slot.kind === 'tool' ? TOOLS[slot.tool].name : armorDefOf(slot).name;
-              const enchList =
-                (slot.kind === 'tool' || slot.kind === 'armor') && slot.ench
-                  ? Object.entries(slot.ench)
-                      .map(([k, v]) => `${ENCHANTS[k as keyof typeof ENCHANTS].name} ${v}`)
-                      .join(' ')
-                  : '';
-              return (
-                <button
-                  key={i}
-                  disabled={!enchAble}
-                  onClick={() => setSelected(i)}
-                  title={enchList ? `${name}（${enchList}）` : name}
-                  className={`relative h-9 w-9 rounded border bg-black/30 disabled:opacity-30 ${selected === i ? 'border-purple-400' : 'border-white/20'} ${enchList ? 'ring-1 ring-purple-500/60' : ''}`}
-                >
-                  <TileIcon tile={tile} size={28} className="mx-auto" />
-                </button>
-              );
-            })}
-          </div>
-        </div>
+          {/* 热键栏：点击工具/装备选中附魔对象 */}
+          <GuiHotbarSlots
+            slots={slots}
+            onSlotClick={(i) => {
+              const s = slots[i];
+              if (s && (s.kind === 'tool' || s.kind === 'armor')) setSelected(i);
+            }}
+          />
+          {/* 已附魔物品紫色描边；选中物品加亮框 */}
+          {slots.map(
+            (s, i) =>
+              s &&
+              (s.kind === 'tool' || s.kind === 'armor') &&
+              s.ench && (
+                <div
+                  key={`e${i}`}
+                  className="pointer-events-none absolute border border-purple-400/70"
+                  style={{ left: hotX(i), top: HOT_Y, width: G, height: G }}
+                />
+              ),
+          )}
+          {selected !== null && (
+            <div
+              className="pointer-events-none absolute border-2 border-purple-300"
+              style={{ left: hotX(selected), top: HOT_Y, width: G, height: G }}
+            />
+          )}
+        </McGuiFrame>
       </DialogContent>
     </Dialog>
   );
