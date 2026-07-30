@@ -21,16 +21,31 @@ export const invY = (i: number) => 168 + Math.floor(i / 9) * G;
 export const hotX = (i: number) => 16 + i * G;
 export const HOT_Y = 284;
 
-/** GUI 框架：container 纹理背景（原始 512 不拉伸，352x332 裁剪面板，mx-auto 屏幕居中），children 放特有槽 */
-export function McGuiFrame({ texture, children }: { texture: string; children: ReactNode }) {
+/** GUI 框架：container 纹理背景（原始尺寸不拉伸、裁剪面板，mx-auto 屏幕居中），children 放特有槽。
+ *  标准面板 352x332（纹理 512x512）；交易台等宽面板用 width/imgW 覆盖（如 villager.png 为 552x332 / 1024x512） */
+export function McGuiFrame({
+  texture,
+  children,
+  width = 352,
+  height = 332,
+  imgW = 512,
+  imgH = 512,
+}: {
+  texture: string;
+  children: ReactNode;
+  width?: number;
+  height?: number;
+  imgW?: number;
+  imgH?: number;
+}) {
   return (
-    <div className="relative mx-auto select-none overflow-hidden" style={{ width: 352, height: 332 }}>
+    <div className="relative mx-auto select-none overflow-hidden" style={{ width, height }}>
       <img
         src={texture}
         alt=""
         draggable={false}
         className="absolute left-0 top-0 max-w-none select-none [image-rendering:pixelated]"
-        style={{ width: 512, height: 512 }}
+        style={{ width: imgW, height: imgH }}
       />
       {children}
     </div>
