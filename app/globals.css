@@ -181,6 +181,14 @@
   text-shadow: none;
   cursor: default;
 }
+/* 小号按钮（页签等） */
+.mc-btn-sm {
+  min-height: 26px;
+  padding: 0 6px;
+  border-width: 5px 12px;
+  font-size: 12px;
+  text-shadow: 1px 1px 0 #3f3f3f;
+}
 
 /* 文本输入框：MC 黑底灰边 */
 .mc-input {
