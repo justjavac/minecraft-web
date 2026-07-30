@@ -12,8 +12,7 @@ import { armorDefOf, armorPoints } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
 import { TOOLS } from '@/lib/tools';
 import type { Slot } from '@/lib/slots';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { McButton } from './McButton';
 import { TouchControls } from './TouchControls';
 import { SettingsDialog } from './SettingsDialog';
 import { CraftingDialog } from './CraftingDialog';
@@ -200,8 +199,9 @@ function SurvivalBars() {
   );
 }
 
-/** 死亡遮罩：重生回出生点并清空怪物（物品已掉落在死亡点）；末地死亡回主世界（MC 规则） */
+/** 死亡遮罩（对齐 MC Java 死亡界面：暗红渐变 + 大标题 + 按钮）；重生回出生点并清空怪物（物品已掉落在死亡点）；末地死亡回主世界（MC 规则） */
 function DeathOverlay() {
+  const backToMenu = useGameStore((s) => s.backToMenu);
   const respawn = () => {
     const s = useGameStore.getState();
     s.setHealth(MAX_HEALTH);
@@ -215,17 +215,12 @@ function DeathOverlay() {
     if (s.dimension === 'end') s.setDimension('overworld'); // MC：末地死亡回主世界重生点
   };
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-black/70">
-      <Card className="w-72">
-        <CardHeader>
-          <CardTitle className="text-red-500">你死了！</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Button className="w-full" onClick={respawn}>
-            重生
-          </Button>
-        </CardContent>
-      </Card>
+    <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-center bg-gradient-to-b from-red-900/70 via-red-950/60 to-black/70">
+      <h2 className="mb-8 text-4xl font-bold text-white [text-shadow:3px_3px_0_#3f3f3f]">你死了！</h2>
+      <div className="flex w-72 flex-col gap-2">
+        <McButton onClick={respawn}>重生</McButton>
+        <McButton onClick={backToMenu}>标题画面</McButton>
+      </div>
     </div>
   );
 }
@@ -282,34 +277,27 @@ function PauseOverlay() {
   };
 
   return (
-    <div className="pointer-events-auto absolute inset-0 flex items-center justify-center bg-black/50">
-      <Card className="w-72">
-        <CardHeader>
-          <CardTitle>{hasLocked ? '已暂停' : '准备进入'}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Button className="w-full" onClick={relock}>
-            {hasLocked ? '继续游戏' : '点击进入世界'}
-          </Button>
-          {lockFailed && (
-            <p className="text-xs text-destructive">
-              浏览器暂时拒绝了指针锁定（Esc 后需稍等片刻），请再点一次
-            </p>
-          )}
-          <Button variant="secondary" className="w-full" onClick={backToMenu}>
-            保存并回到主菜单
-          </Button>
-          <SettingsDialog />
-          <p className="pt-1 text-xs text-muted-foreground">
-            WASD 移动 · 空格 跳/上浮 · Shift 下降 · F 飞行 · 按住左键 挖掘 · 右键 放置 · 1-9/滚轮 选方块 · F3 调试
+    <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center bg-black/45">
+      {/* MC Java 游戏菜单：标题 + 按钮列 */}
+      <h2 className="mb-6 text-2xl font-bold text-white [text-shadow:2px_2px_0_#3f3f3f]">{hasLocked ? '游戏菜单' : '准备进入'}</h2>
+      <div className="flex w-72 flex-col gap-2">
+        <McButton onClick={relock}>{hasLocked ? '继续游戏' : '点击进入世界'}</McButton>
+        {lockFailed && (
+          <p className="text-center text-xs text-red-300 [text-shadow:1px_1px_0_#000]">
+            浏览器暂时拒绝了指针锁定（Esc 后需稍等片刻），请再点一次
           </p>
-          {meta && (
-            <p className="text-xs text-muted-foreground/70">
-              种子 {meta.seed} · 保存于 {new Date(meta.updatedAt).toLocaleTimeString()}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+        )}
+        <SettingsDialog />
+        <McButton onClick={backToMenu}>保存并回到主菜单</McButton>
+      </div>
+      <p className="mt-6 max-w-md px-4 text-center text-xs leading-5 text-white/70 [text-shadow:1px_1px_0_#000]">
+        WASD 移动 · 空格 跳/上浮 · Shift 下降 · F 飞行 · 按住左键 挖掘 · 右键 放置 · 1-9/滚轮 选方块 · F3 调试
+      </p>
+      {meta && (
+        <p className="mt-1 text-xs text-white/50 [text-shadow:1px_1px_0_#000]">
+          种子 {meta.seed} · 保存于 {new Date(meta.updatedAt).toLocaleTimeString()}
+        </p>
+      )}
     </div>
   );
 }
