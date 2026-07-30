@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { buildChunkGeometry, chunkBiomes, type GeometryData } from '@/lib/mesher';
 import { getMesherPool } from '@/lib/mesherPool';
@@ -31,6 +31,9 @@ export const ChunkMesh = memo(function ChunkMesh({ cx, cz, version, materials }:
   const groupRef = useRef<THREE.Group>(null);
   /** 当前展示中的 mesh（新几何就绪后才替换，消除加载闪烁） */
   const currentRef = useRef<THREE.Mesh[]>([]);
+  /** 邻居未齐推迟建网的重试预算（跨 effect 重跑保持） */
+  const retryRef = useRef(0);
+  const [retry, setRetry] = useState(0);
 
   // 网格化优先交给 Worker 池（后台线程）；Worker 不可用或出错时回退主线程同步构建。
   // 旧 mesh 保留到新几何就绪再交换；mesh 命令式创建（three#30398），几何与 effect 成对释放
@@ -49,14 +52,31 @@ export const ChunkMesh = memo(function ChunkMesh({ cx, cz, version, materials }:
     const datas: (Uint16Array | null)[] = [];
     const lights: (Uint8Array | null)[] = [];
     const skys: (Uint8Array | null)[] = [];
+    let missing = 0;
     for (let gz = -1; gz <= 1; gz++) {
       for (let gx = -1; gx <= 1; gx++) {
         const c = world.chunks.get(`${cx + gx},${cz + gz}`);
+        if (!c) missing++;
         datas.push(c?.data ?? null);
         lights.push(c?.light ?? null);
         skys.push(c?.sky ?? null);
       }
     }
+    // 3×3 邻居未齐：推迟建网（重试预算 3×250ms）。流式加载期邻居马上就到（到了会把本 chunk 标脏重建），
+    // 现在建网会产出黑边且每个邻居到达都触发一次全量重建（约 1.15MB 快照 ×N）；
+    // 渲染半径边缘 chunk 的邻居永远不会来——重试预算耗尽后照常建网（降级路径，现状行为）
+    if (missing > 0 && retryRef.current < 3) {
+      retryRef.current += 1;
+      const t = setTimeout(() => {
+        if (!cancelled) setRetry((n) => n + 1);
+      }, 250);
+      return () => {
+        cancelled = true;
+        clearTimeout(t);
+        getMesherPool()?.cancel(key);
+      };
+    }
+    retryRef.current = 0;
 
     const swap = (solid: GeometryData, water: GeometryData): void => {
       if (cancelled) return;
@@ -111,7 +131,7 @@ export const ChunkMesh = memo(function ChunkMesh({ cx, cz, version, materials }:
       cancelled = true;
       getMesherPool()?.cancel(key);
     };
-  }, [cx, cz, version, materials]);
+  }, [cx, cz, version, materials, retry]);
 
   // 组件卸载时清理当前 mesh（StrictMode 模拟卸载发生在任何构建完成之前，数组必为空，安全）
   useEffect(
