@@ -430,7 +430,7 @@ export function trySpawn(world: World, px: number, pz: number): boolean {
     if (trySpawnGolem(world, village)) return true;
   }
   const villageRoll = !night && village !== null && Math.random() < 0.85;
-  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile && m.type !== 'iron_golem').length;
+  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile && !m.tamed && m.type !== 'iron_golem').length;
   const passiveCount = mobs.filter((m) => !MOB_DEFS[m.type].hostile).length;
   if (night && hostileCount >= MAX_HOSTILE) return false;
   // 村民单独限额（每村最多 3 只，MC 村庄必有村民——不与普通动物共享被动上限，否则被猪牛挤满永不出村民）
@@ -522,7 +522,7 @@ function trySpawnGolem(world: World, village: { x: number; z: number }): boolean
 
 /** 下界刷怪：僵尸猪灵 2-3 只成群（下界岩/灵魂沙表面、岩浆海以上；MC 成群出没）；堡垒附近出凋灵骷髅/烈焰人 */
 function trySpawnNether(world: World, px: number, pz: number): boolean {
-  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
+  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile && !m.tamed && m.type !== 'iron_golem').length;
   if (hostileCount >= MAX_HOSTILE) return false;
   for (let attempt = 0; attempt < 8; attempt++) {
     const ang = Math.random() * Math.PI * 2;
@@ -594,7 +594,7 @@ function trySpawnNether(world: World, px: number, pz: number): boolean {
 
 /** 末地刷怪：末影人 1-3 只成群（末地石表面；MC 末地主岛遍布末影人，无昼夜限制） */
 function trySpawnEnd(world: World, px: number, pz: number): boolean {
-  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile).length;
+  const hostileCount = mobs.filter((m) => MOB_DEFS[m.type].hostile && !m.tamed && m.type !== 'iron_golem').length;
   if (hostileCount >= MAX_HOSTILE * 2) return false; // 末地密度更高（MC 末影人之岛）
   for (let attempt = 0; attempt < 8; attempt++) {
     const ang = Math.random() * Math.PI * 2;
