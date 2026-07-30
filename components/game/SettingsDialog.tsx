@@ -30,7 +30,7 @@ function SettingRow({ label, display, min, max, step, value, onChange }: Setting
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
-        <span className="text-sm tabular-nums text-muted-foreground">{display}</span>
+        <span className="text-sm tabular-nums text-white/60">{display}</span>
       </div>
       <Slider
         min={min}
@@ -72,12 +72,12 @@ export function SettingsDialog() {
       <DialogTrigger render={<McButton className="w-full" />}>
         设置
       </DialogTrigger>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="mc-dirt border-2 border-t-white border-l-white border-b-[#555555] border-r-[#555555] text-white sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>设置</DialogTitle>
-          <DialogDescription>改动即时生效，自动保存到浏览器本地</DialogDescription>
+          <DialogTitle className="text-white [text-shadow:2px_2px_0_#3f3f3f]">设置</DialogTitle>
+          <DialogDescription className="text-white/60">改动即时生效，自动保存到浏览器本地</DialogDescription>
         </DialogHeader>
-        <div className="space-y-5 pt-1">
+        <div className="max-h-[72vh] space-y-5 overflow-y-auto pt-1 pr-1">
           <SettingRow
             label="音量"
             display={`${Math.round(settings.volume * 100)}%`}
@@ -116,8 +116,8 @@ export function SettingsDialog() {
           />
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>自动跳跃</Label>
-              <span className="text-sm text-muted-foreground">着地行走自动跨上 1 格台阶（MC 辅助功能）</span>
+              <Label className="whitespace-nowrap">自动跳跃</Label>
+              <span className="text-sm text-white/60">着地行走自动跨上 1 格台阶（MC 辅助功能）</span>
             </div>
             <div className="flex gap-2">
               {[true, false].map((v) => (
@@ -134,7 +134,7 @@ export function SettingsDialog() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>云</Label>
-              <span className="text-sm text-muted-foreground">MC 云开关</span>
+              <span className="text-sm text-white/60">MC 云开关</span>
             </div>
             <div className="flex gap-2">
               {[true, false].map((v) => (
@@ -150,8 +150,8 @@ export function SettingsDialog() {
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>粒子效果</Label>
-              <span className="text-sm text-muted-foreground">方块破坏碎屑等</span>
+              <Label className="whitespace-nowrap">粒子效果</Label>
+              <span className="text-sm text-white/60">方块破坏碎屑等</span>
             </div>
             <div className="flex gap-2">
               {[true, false].map((v) => (
@@ -167,8 +167,8 @@ export function SettingsDialog() {
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>渲染器</Label>
-              <span className="text-sm text-muted-foreground">
+              <Label className="whitespace-nowrap">渲染器</Label>
+              <span className="text-sm text-white/60">
                 {settings.renderer === 'webgpu' ? 'WebGPU（不支持自动降级 WebGL）' : 'WebGL'}
               </span>
             </div>
@@ -183,14 +183,14 @@ export function SettingsDialog() {
                 </McButton>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/60">
               默认 WebGPU，浏览器不支持时自动降级 WebGL；切换后重新进入世界生效
             </p>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>贴图包</Label>
-              <span className="text-sm text-muted-foreground">{packName ?? '默认（Faithful 32x）'}</span>
+              <Label className="whitespace-nowrap">贴图包</Label>
+              <span className="text-sm text-white/60">{packName ?? '默认（Faithful 32x）'}</span>
             </div>
             <div className="flex gap-2">
               <McButton className="flex-1" onClick={() => zipRef.current?.click()}>
@@ -212,14 +212,14 @@ export function SettingsDialog() {
               )}
             </div>
             {packMsg && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-white/60">
                 {packMsg}{' '}
                 <button type="button" className="underline" onClick={() => window.location.reload()}>
                   立即刷新
                 </button>
               </p>
             )}
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/60">
               自动识别 Faithful 等现代 MC 包结构；贴图仅保存在你的浏览器本地，不会上传或分发
             </p>
             <input
