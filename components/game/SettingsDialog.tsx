@@ -61,7 +61,7 @@ export function SettingsDialog() {
     try {
       const r = await importFn();
       setPackName(r.name);
-      setPackMsg(`已导入 ${r.found}/13 张贴图（${r.tilePx}px），刷新页面后生效`);
+      setPackMsg(`已导入 ${r.found} 张贴图（${r.tilePx}px），刷新页面后生效`);
     } catch (e) {
       setPackMsg(e instanceof Error ? e.message : String(e));
     }

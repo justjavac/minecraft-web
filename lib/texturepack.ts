@@ -101,7 +101,7 @@ async function toDataUrl(blob: Blob): Promise<{ url: string; width: number }> {
 
 async function finishImport(name: string, matched: Map<number, string>, read: (path: string) => Promise<Blob>): Promise<ImportResult> {
   if (matched.size < MIN_FOUND) {
-    throw new Error(`无法识别的贴图包：仅匹配到 ${matched.size}/13 张方块贴图（需要现代 MC 包结构）`);
+    throw new Error(`无法识别的贴图包：仅匹配到 ${matched.size}/${TILE_NAMES.length} 张方块贴图（需要现代 MC 包结构）`);
   }
   const tiles: Record<string, string> = {};
   let tilePx = 16;
@@ -112,7 +112,12 @@ async function finishImport(name: string, matched: Map<number, string>, read: (p
   }
   tilePx = Math.min(tilePx, 64); // 防止超大贴图撑爆 atlas
   const pack: CustomPack = { name, tilePx, tiles };
-  window.localStorage.setItem(PACK_KEY, JSON.stringify(pack));
+  try {
+    window.localStorage.setItem(PACK_KEY, JSON.stringify(pack));
+  } catch {
+    // localStorage 配额满（贴图太大/隐私模式）：包已构建成功但无法持久化——如实告知而非冒泡浏览器原生报错
+    throw new Error('贴图包太大，浏览器本地存储空间不足——请用分辨率更小的包');
+  }
   return { name, found: matched.size, tilePx };
 }
 
