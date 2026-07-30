@@ -123,11 +123,10 @@ export function rollOffers(seed: number, kind: 'sword' | 'dig' | 'armor' | 'hoe'
   if (current?.fortune) pool = pool.filter((e) => e.key !== 'silk_touch');
   const rand = mulberry32(seed);
   const offers: EnchOffer[] = [];
-  const used = new Set<string>();
   for (let n = 0; n < 3 && pool.length > 0; n++) {
-    const def = pool[Math.floor(rand() * pool.length)];
-    if (used.has(def.key)) continue;
-    used.add(def.key);
+    const idx = Math.floor(rand() * pool.length);
+    const def = pool[idx];
+    pool.splice(idx, 1); // 抽走即从候选移除（原 used+continue 会浪费一次循环，pool 小时附魔选项少于 3 个；MC 附魔台恒 3 项）
     // 等级随玩家等级上探（MC：等级越高越容易出高等级附魔）
     const cap = Math.min(def.maxLvl, Math.max(1, Math.ceil(playerLevel / 5)));
     const lvl = 1 + Math.floor(rand() * cap);
