@@ -495,9 +495,23 @@ export class World {
     return chunk;
   }
 
+  /** getBlock 热路径缓存：上次访问的 chunk 引用（空间局部性极强，省掉每调用的字符串键分配 + Map 查找） */
+  private lastChunk: Chunk | null = null;
+  private lastChunkCx = 0;
+  private lastChunkCz = 0;
+
   getBlock(x: number, y: number, z: number): number {
     if (y < 0 || y >= WORLD_HEIGHT) return AIR;
-    return this.getChunk(x >> 4, z >> 4).data[localIndex(x & 15, y, z & 15)];
+    const cx = x >> 4;
+    const cz = z >> 4;
+    let c = this.lastChunk;
+    if (!c || cx !== this.lastChunkCx || cz !== this.lastChunkCz) {
+      c = this.getChunk(cx, cz);
+      this.lastChunk = c;
+      this.lastChunkCx = cx;
+      this.lastChunkCz = cz;
+    }
+    return c.data[localIndex(x & 15, y, z & 15)];
   }
 
   /** 该方块坐标所属 chunk 是否已加载（只读查询，不像 getBlock 那样隐式触发生成） */
@@ -617,6 +631,8 @@ export class World {
         this.saved.set(key, c.data);
       }
       this.chunks.delete(key);
+      // getBlock 缓存的引用若指向被卸载的 chunk：失效（否则读到游离旧数据、且不再触发生成）
+      if (c && this.lastChunk === c) this.lastChunk = null;
       this.generation++;
     }
     return missing.length - done;
