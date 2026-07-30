@@ -11,6 +11,7 @@ import { setGrowthDropHandler } from './growth';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler, isLeavesId, LEAF_TO_SAPLING } from './saplings';
 import { raycastBlock } from './raycast';
+import { explodeAt } from './explosion';
 import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { interactBeacon } from './beacon';
 import { trySummonWither } from './wither';
@@ -564,8 +565,18 @@ export function tryPlace(): boolean {
     s.setStorageOpen(`${bx},${by},${bz}`);
     return false;
   }
-  // 床：夜晚右键睡觉——跳到日出并把重生点设到床边；白天拒绝
+  // 床：下界/末地右击即爆炸（MC 经典维度规则，威力大于 TNT）；主世界夜晚右键睡觉——跳到日出并把重生点设到床边；白天拒绝
   if (hitId === BLOCK_BY_KEY.red_bed.id) {
+    if ((world.terrain.kind ?? 'overworld') !== 'overworld') {
+      world.setBlock(bx, by, bz, AIR);
+      explodeAt(world, bx + 0.5, by + 0.5, bz + 0.5, playerPosition, (dmg) => s.damagePlayer(dmg), {
+        radius: 5, // MC：床爆炸威力 5（TNT 为 4）
+        maxDamage: 43,
+        hurtRadius: 8,
+      });
+      lastPlace = now;
+      return true;
+    }
     if (dayFactorAt(worldClock.t) < 0.4) {
       worldClock.t = 0;
       onSlept(); // MC 睡过清零失眠（幻翼计数）；同步重置跨日基准，避免回拨误判为自然跨日

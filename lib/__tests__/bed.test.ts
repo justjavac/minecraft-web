@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Vector3, type Camera } from 'three';
 import { tryPlace } from '../actions';
 import { BLOCK_BY_KEY } from '../blocks';
-import { cameraRef, setActiveWorld, worldClock } from '../game';
+import { cameraRef, playerPosition, setActiveWorld, worldClock } from '../game';
 import { VOID_TERRAIN } from '../noise';
 import { useGameStore } from '../store';
 import { World } from '../world';
@@ -58,5 +58,24 @@ describe('床', () => {
     expect(worldClock.t).toBe(0.25);
     expect(useGameStore.getState().spawnPoint).toBeNull();
     expect(useGameStore.getState().notice).toBe('只能在夜晚睡觉');
+  });
+
+  it('下界右击床：立刻爆炸（MC 维度规则），不跳时间、不设重生点、伤到玩家', async () => {
+    const w = new World('bed-nether', undefined, { ...VOID_TERRAIN, kind: 'nether' });
+    w.setBlock(4, 30, 4, BLOCK_BY_KEY.red_bed.id);
+    setActiveWorld(w);
+    cameraRef.current = mockCamera();
+    // 玩家站在床边（与相机一致），否则伤害按 game.ts 默认 (0,0,0) 距离结算不到
+    playerPosition.x = 4.5;
+    playerPosition.y = 31;
+    playerPosition.z = 7.5;
+    useGameStore.setState({ worldMode: 'survival', spawnPoint: null, notice: null, health: 20, dead: false });
+    worldClock.t = 0.25; // 维度判定优先于昼夜
+    await wait(160);
+    tryPlace();
+    expect(w.getBlock(4, 30, 4)).toBe(0); // 床被炸掉
+    expect(worldClock.t).toBe(0.25);
+    expect(useGameStore.getState().spawnPoint).toBeNull();
+    expect(useGameStore.getState().health).toBeLessThan(20); // 贴脸爆炸伤到玩家
   });
 });
