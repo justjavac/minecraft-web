@@ -42,23 +42,18 @@ function Notice() {
   );
 }
 
-/** 一排 10 格像素计量条（心/鸡腿），支持半格 */
-function Meter({ value, color }: { value: number; color: string }) {
+/** 一排 10 格计量图标（心/鸡腿/护甲），用 Faithful 纹理对齐 MC Java（full=2 点、half=1 点、container/empty=背景） */
+function Meter({ value, kind }: { value: number; kind: 'heart' | 'food' | 'armor' }) {
   return (
-    <div className="flex gap-0.5">
+    <div className="flex">
       {Array.from({ length: 10 }, (_, i) => {
         const v = value - i * 2;
-        return (
-          <div
-            key={i}
-            className="h-2.5 w-2.5 rounded-[2px] drop-shadow"
-            style={{
-              backgroundColor: v >= 2 ? color : 'rgba(63,63,70,0.55)',
-              backgroundImage:
-                v === 1 ? `linear-gradient(to right, ${color} 50%, rgba(63,63,70,0.55) 50%)` : undefined,
-            }}
-          />
-        );
+        const state = v >= 2 ? 'full' : v === 1 ? 'half' : 'empty';
+        const src =
+          kind === 'heart'
+            ? `/textures/gui/hud/heart/${state === 'empty' ? 'container' : state}.png`
+            : `/textures/gui/hud/${kind}_${state}.png`;
+        return <img key={i} src={src} alt="" draggable={false} className="h-[18px] w-[18px] select-none drop-shadow [image-rendering:pixelated]" />;
       })}
     </div>
   );
@@ -164,12 +159,16 @@ function SurvivalBars() {
           ))}
         </div>
       )}
-      {armor > 0 && <Meter value={armor * 2} color="#9ca3af" />}
+      {armor > 0 && <Meter value={armor * 2} kind="armor" />}
       {(() => {
         const { level, progress } = levelFromXp(xpTotal);
         return (
-          <div className="relative">
-            <Meter value={progress * 20} color="#7efc20" />
+          <div className="relative h-[10px] w-[182px]">
+            {/* MC 经验条：experience_bar 底 + progress 按比例裁剪（Faithful 纹理） */}
+            <img src="/textures/gui/hud/experience_bar_background.png" alt="" draggable={false} className="h-full w-full select-none [image-rendering:pixelated]" />
+            <div className="absolute left-0 top-0 h-full overflow-hidden" style={{ width: `${progress * 100}%` }}>
+              <img src="/textures/gui/hud/experience_bar_progress.png" alt="" draggable={false} className="h-full w-[182px] select-none [image-rendering:pixelated]" />
+            </div>
             <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-green-400" style={{ textShadow: '1px 1px 0 #000' }}>
               {level}
             </span>
@@ -177,8 +176,8 @@ function SurvivalBars() {
         );
       })()}
       <div className="flex justify-between">
-        <Meter value={health} color="#ef4444" />
-        <Meter value={hunger} color="#d97706" />
+        <Meter value={health} kind="heart" />
+        <Meter value={hunger} kind="food" />
       </div>
     </div>
   );
