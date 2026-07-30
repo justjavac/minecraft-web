@@ -10,10 +10,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { clearCustomPack, importPackFolder, importPackZip, loadCustomPack } from '@/lib/texturepack';
+import { McButton } from './McButton';
 
 interface SettingRowProps {
   label: string;
@@ -69,7 +69,7 @@ export function SettingsDialog() {
 
   return (
     <Dialog>
-      <DialogTrigger render={<Button variant="outline" className="w-full" />}>
+      <DialogTrigger render={<McButton className="w-full" />}>
         设置
       </DialogTrigger>
       <DialogContent className="sm:max-w-sm">
@@ -121,15 +121,13 @@ export function SettingsDialog() {
             </div>
             <div className="flex gap-2">
               {[true, false].map((v) => (
-                <Button
+                <McButton
                   key={String(v)}
-                  type="button"
-                  variant={settings.autoJump === v ? 'default' : 'outline'}
-                  className="flex-1"
+                  className={`flex-1 ${settings.autoJump === v ? 'outline outline-2 outline-white' : ''}`}
                   onClick={() => updateSettings({ autoJump: v })}
                 >
                   {v ? '开' : '关'}
-                </Button>
+                </McButton>
               ))}
             </div>
           </div>
@@ -140,15 +138,13 @@ export function SettingsDialog() {
             </div>
             <div className="flex gap-2">
               {[true, false].map((v) => (
-                <Button
+                <McButton
                   key={String(v)}
-                  type="button"
-                  variant={settings.clouds === v ? 'default' : 'outline'}
-                  className="flex-1"
+                  className={`flex-1 ${settings.clouds === v ? 'outline outline-2 outline-white' : ''}`}
                   onClick={() => updateSettings({ clouds: v })}
                 >
                   {v ? '开' : '关'}
-                </Button>
+                </McButton>
               ))}
             </div>
           </div>
@@ -159,15 +155,13 @@ export function SettingsDialog() {
             </div>
             <div className="flex gap-2">
               {[true, false].map((v) => (
-                <Button
+                <McButton
                   key={String(v)}
-                  type="button"
-                  variant={settings.particles === v ? 'default' : 'outline'}
-                  className="flex-1"
+                  className={`flex-1 ${settings.particles === v ? 'outline outline-2 outline-white' : ''}`}
                   onClick={() => updateSettings({ particles: v })}
                 >
                   {v ? '开' : '关'}
-                </Button>
+                </McButton>
               ))}
             </div>
           </div>
@@ -180,15 +174,13 @@ export function SettingsDialog() {
             </div>
             <div className="flex gap-2">
               {(['webgpu', 'webgl'] as const).map((r) => (
-                <Button
+                <McButton
                   key={r}
-                  type="button"
-                  variant={settings.renderer === r ? 'default' : 'outline'}
-                  className="flex-1"
+                  className={`flex-1 ${settings.renderer === r ? 'outline outline-2 outline-white' : ''}`}
                   onClick={() => updateSettings({ renderer: r })}
                 >
                   {r === 'webgpu' ? 'WebGPU（默认）' : 'WebGL'}
-                </Button>
+                </McButton>
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -201,15 +193,14 @@ export function SettingsDialog() {
               <span className="text-sm text-muted-foreground">{packName ?? '默认（Faithful 32x）'}</span>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => zipRef.current?.click()}>
+              <McButton className="flex-1" onClick={() => zipRef.current?.click()}>
                 导入 zip
-              </Button>
-              <Button variant="outline" className="flex-1" onClick={() => dirRef.current?.click()}>
+              </McButton>
+              <McButton className="flex-1" onClick={() => dirRef.current?.click()}>
                 选择文件夹
-              </Button>
+              </McButton>
               {packName && (
-                <Button
-                  variant="outline"
+                <McButton
                   onClick={() => {
                     clearCustomPack();
                     setPackName(null);
@@ -217,7 +208,7 @@ export function SettingsDialog() {
                   }}
                 >
                   恢复默认
-                </Button>
+                </McButton>
               )}
             </div>
             {packMsg && (

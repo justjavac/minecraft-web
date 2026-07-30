@@ -149,3 +149,71 @@
     opacity: 0;
   }
 }
+
+/* ——— MC Java 风格组件（Faithful widgets 纹理） ——— */
+/* 按钮：widgets/button 三态（普通/悬停/禁用），九宫格 border-image 拉伸 */
+.mc-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 10px;
+  border-style: solid;
+  border-width: 8px 22px;
+  border-image: url('/textures/gui/widget/button.png') 8 40 fill stretch;
+  image-rendering: pixelated;
+  background: none;
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.2;
+  text-shadow: 2px 2px 0 #3f3f3f;
+  cursor: pointer;
+  user-select: none;
+}
+.mc-btn:hover:not(:disabled) {
+  border-image-source: url('/textures/gui/widget/button_highlighted.png');
+  color: #ffffa0;
+}
+.mc-btn:disabled {
+  border-image-source: url('/textures/gui/widget/button_disabled.png');
+  color: #a0a0a0;
+  text-shadow: none;
+  cursor: default;
+}
+
+/* 文本输入框：MC 黑底灰边 */
+.mc-input {
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 10px;
+  background: #000;
+  border: 2px solid #a0a0a0;
+  border-radius: 0;
+  color: #e0e0e0;
+  font-size: 15px;
+  outline: none;
+}
+.mc-input:focus {
+  border-color: #fff;
+}
+
+/* 泥土背景（主菜单/暂停菜单），32x32 平铺放大 2 倍 */
+.mc-dirt {
+  background-image: url('/textures/gui/menu/menu_background.png');
+  background-size: 64px 64px;
+  image-rendering: pixelated;
+}
+
+/* 主菜单黄色标语脉动 */
+.mc-splash {
+  animation: mc-splash-pulse 0.45s ease-in-out infinite alternate;
+}
+@keyframes mc-splash-pulse {
+  from {
+    transform: rotate(-20deg) scale(1);
+  }
+  to {
+    transform: rotate(-20deg) scale(1.1);
+  }
+}
