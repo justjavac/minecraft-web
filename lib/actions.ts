@@ -69,6 +69,13 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
       world.setBlock(x, otherY, z, AIR);
     }
   }
+  // 床被破坏：清掉该床设的重生点（MC：床遗失后重生点失效，回世界出生点）
+  if (oldId === BLOCK_BY_KEY.red_bed.id) {
+    const rp = useGameStore.getState().respawnPoint;
+    if (rp && Math.abs(rp.x - (x + 0.5)) <= 1 && Math.abs(rp.y - (y + 1)) <= 1 && Math.abs(rp.z - (z + 0.5)) <= 1) {
+      useGameStore.getState().setRespawnPoint(null);
+    }
+  }
   // 双格高植物：破坏任一段另一段同步消失（顶段不掉落，dropBlock 已归底段）
   if (def?.twoHigh && BLOCKS[world.getBlock(x, y + 1, z)]?.plantTop) world.setBlock(x, y + 1, z, AIR);
   if (def?.plantTop && BLOCKS[world.getBlock(x, y - 1, z)]?.twoHigh) world.setBlock(x, y - 1, z, AIR);
@@ -590,7 +597,7 @@ export function tryPlace(): boolean {
     if (dayFactorAt(worldClock.t) < 0.4) {
       worldClock.t = 0;
       onSlept(); // MC 睡过清零失眠（幻翼计数）；同步重置跨日基准，避免回拨误判为自然跨日
-      s.setSpawnPoint({ x: bx + 0.5, y: by + 1, z: bz + 0.5 });
+      s.setRespawnPoint({ x: bx + 0.5, y: by + 1, z: bz + 0.5 }); // MC：床设置重生点（死亡/虚空回这里）
       s.setNotice('重生点已设置');
       playSound('place');
     } else {

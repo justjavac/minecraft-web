@@ -37,6 +37,8 @@ export interface SurvivalSnapshot {
 export interface SaveExtras {
   /** 上次保存时的玩家位置（继续游戏时回到这里） */
   player?: PlayerPos;
+  /** 床设的重生点（MC：死亡/虚空回这里） */
+  respawnPoint?: PlayerPos;
   /** 昼夜时刻（0..1） */
   dayTime?: number;
   /** 世界模式：创造 / 生存 */

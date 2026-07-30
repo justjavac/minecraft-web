@@ -104,6 +104,8 @@ interface GameStore {
   settings: Settings;
   /** 本局出生点（继续游戏时取存档位置，新游戏为 null 用默认出生点） */
   spawnPoint: { x: number; y: number; z: number } | null;
+  /** 床设的重生点（MC：死亡/虚空回这里；未睡过床为 null 回世界出生点）。与 spawnPoint（上次位置/维度落点）分离 */
+  respawnPoint: { x: number; y: number; z: number } | null;
   /** 世界模式：创造 / 生存（开局定，随存档） */
   worldMode: WorldMode;
   /** 当前维度（主世界 / 下界，随存档） */
@@ -158,6 +160,7 @@ interface GameStore {
   retryWorld: () => void;
   setHasLocked: (locked: boolean) => void;
   setSpawnPoint: (p: { x: number; y: number; z: number } | null) => void;
+  setRespawnPoint: (p: { x: number; y: number; z: number } | null) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   setWorldMode: (m: WorldMode) => void;
   setDimension: (d: import('./dimension').Dimension) => void;
@@ -242,6 +245,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   hasLocked: false,
   settings: loadSettings(),
   spawnPoint: null,
+  respawnPoint: null,
   worldMode: 'creative',
   dimension: 'overworld' as import('./dimension').Dimension,
   health: MAX_HEALTH,
@@ -268,15 +272,15 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     survivalStats.exhaustion = 0;
     set({
       screen: 'playing', mode: 'new', seed, paused: false, flying: false, worldReady: false, loadError: null,
-      hasLocked: false, spawnPoint: null,
+      hasLocked: false, spawnPoint: null, respawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION, xpTotal: 0,
       dimension: 'overworld',
       dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, dead: false, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, respawnPoint: null, dead: false, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, respawnPoint: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
@@ -325,6 +329,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   retryWorld: () => set((s) => ({ loadError: null, worldReady: false, worldRetry: s.worldRetry + 1 })),
   setHasLocked: (hasLocked) => set({ hasLocked }),
   setSpawnPoint: (spawnPoint) => set({ spawnPoint }),
+  setRespawnPoint: (respawnPoint) => set({ respawnPoint }),
   updateSettings: (patch) =>
     set((s) => {
       const settings = { ...s.settings, ...patch };

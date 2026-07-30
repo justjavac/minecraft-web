@@ -24,7 +24,7 @@ function setup(): World {
   w.setBlock(4, 30, 4, BLOCK_BY_KEY.red_bed.id);
   setActiveWorld(w);
   cameraRef.current = mockCamera();
-  useGameStore.setState({ worldMode: 'creative', spawnPoint: null, notice: null });
+  useGameStore.setState({ worldMode: 'creative', respawnPoint: null, notice: null });
   return w;
 }
 
@@ -46,7 +46,7 @@ describe('床', () => {
     await wait(160); // 放置冷却
     tryPlace();
     expect(worldClock.t).toBe(0);
-    expect(useGameStore.getState().spawnPoint).toEqual({ x: 4.5, y: 31, z: 4.5 });
+    expect(useGameStore.getState().respawnPoint).toEqual({ x: 4.5, y: 31, z: 4.5 });
     expect(useGameStore.getState().notice).toBe('重生点已设置');
   });
 
@@ -56,7 +56,7 @@ describe('床', () => {
     await wait(160);
     tryPlace();
     expect(worldClock.t).toBe(0.25);
-    expect(useGameStore.getState().spawnPoint).toBeNull();
+    expect(useGameStore.getState().respawnPoint).toBeNull();
     expect(useGameStore.getState().notice).toBe('只能在夜晚睡觉');
   });
 
@@ -69,13 +69,13 @@ describe('床', () => {
     playerPosition.x = 4.5;
     playerPosition.y = 31;
     playerPosition.z = 7.5;
-    useGameStore.setState({ worldMode: 'survival', spawnPoint: null, notice: null, health: 20, dead: false });
+    useGameStore.setState({ worldMode: 'survival', respawnPoint: null, notice: null, health: 20, dead: false });
     worldClock.t = 0.25; // 维度判定优先于昼夜
     await wait(160);
     tryPlace();
     expect(w.getBlock(4, 30, 4)).toBe(0); // 床被炸掉
     expect(worldClock.t).toBe(0.25);
-    expect(useGameStore.getState().spawnPoint).toBeNull();
+    expect(useGameStore.getState().respawnPoint).toBeNull();
     expect(useGameStore.getState().health).toBeLessThan(20); // 贴脸爆炸伤到玩家
   });
 });

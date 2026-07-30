@@ -345,9 +345,9 @@ export function Player() {
     const flying = useGameStore.getState().flying;
     const gs = useGameStore.getState();
 
-    // 重生传送（dead → alive 边沿）：回出生点并重置生存状态
+    // 重生传送（dead → alive 边沿）：回床设的重生点（未睡过床回世界出生点，MC）并重置生存状态
     if (wasDead.current && !gs.dead) {
-      const sp = gs.spawnPoint;
+      const sp = gs.respawnPoint;
       const fb = findSpawn(world);
       p.x = sp?.x ?? fb.x;
       p.z = sp?.z ?? fb.z;
@@ -618,9 +618,9 @@ export function Player() {
       stepAcc.current = 0;
     }
 
-    // 掉出世界 → 回出生点
+    // 掉出世界 → 回床设的重生点（未睡过床回世界出生点）
     if (p.y < -20) {
-      const sp = useGameStore.getState().spawnPoint;
+      const sp = useGameStore.getState().respawnPoint;
       const fb = findSpawn(world);
       p.x = sp?.x ?? fb.x;
       p.z = sp?.z ?? fb.z;

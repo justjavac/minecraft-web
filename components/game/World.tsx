@@ -92,6 +92,7 @@ function currentExtras(d: Dimension): SaveExtras {
   const s = useGameStore.getState();
   return {
     player: { ...playerPosition },
+    respawnPoint: s.respawnPoint ?? undefined,
     dayTime: worldClock.t,
     mode: s.worldMode,
     dimension: d,
@@ -172,6 +173,7 @@ export function WorldRenderer() {
           }
           const store = useGameStore.getState();
           if (meta?.player) store.setSpawnPoint(meta.player);
+          if (meta?.respawnPoint) store.setRespawnPoint(meta.respawnPoint); // 床设的重生点随存档恢复
           store.setWorldMode(meta?.mode ?? 'creative');
           // MC：死亡后重进世界回满血（存档可能在死亡瞬间写入 health 0，避免载入「尸体态」）
           const sv = meta?.survival ?? { health: MAX_HEALTH, hunger: MAX_HUNGER, slots: emptySlots() };
