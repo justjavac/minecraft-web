@@ -27,7 +27,8 @@ import { dropStorageContents } from './storage';
 import { useGameStore, MAX_HEALTH } from './store';
 import { igniteTnt } from './tnt';
 import { TOOLS } from './tools';
-import { WORLD_HEIGHT, type World } from './world';
+import { type World } from './world';
+import { WORLD_HEIGHT } from './grid';
 
 // 树叶凋零掉的树苗走方块掉落物管线
 setSaplingDropHandler((id, x, y, z) => spawnBlockDrop(id, x, y, z));

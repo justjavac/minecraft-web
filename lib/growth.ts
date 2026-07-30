@@ -3,7 +3,8 @@
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, type BlockId } from './blocks';
 import { mulberry32 } from './noise';
-import { WORLD_HEIGHT, type World } from './world';
+import { type World } from './world';
+import { WORLD_HEIGHT } from './grid';
 
 /** 柱高上限（竹子为复刻简化值，MC 为 12-16） */
 const MAX_HEIGHT: Record<string, number> = { cactus: 3, sugar_cane: 3, bamboo: 6 };

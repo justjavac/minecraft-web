@@ -6,7 +6,8 @@
 
 import { BLOCK_BY_KEY, BLOCKS } from './blocks';
 import { effects, type Effects } from './effects';
-import { WORLD_HEIGHT, type World } from './world';
+import { type World } from './world';
+import { WORLD_HEIGHT } from './grid';
 
 /** 可搭建金字塔的矿物块（MC：铁块/金块/钻石块/绿宝石块） */
 const PYRAMID_IDS = new Set(

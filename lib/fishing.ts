@@ -3,7 +3,8 @@
 
 import { AIR, BLOCKS } from './blocks';
 import { weather, precipAt } from './weather';
-import { WORLD_HEIGHT, type World } from './world';
+import { type World } from './world';
+import { WORLD_HEIGHT } from './grid';
 
 export type BobberState = 'flying' | 'waiting' | 'bite';
 

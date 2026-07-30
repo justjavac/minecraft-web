@@ -3,7 +3,7 @@
 import { AIR, BLOCK_BY_KEY, COBBLE, DIRT, GLASS, LOG, PLANKS, WATER, WHEAT_CROP_0, type BlockId } from './blocks';
 import { hash2, mulberry32, SEA_LEVEL, type Terrain } from './noise';
 import { getStorage } from './storage';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
+import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './grid';
 
 const REGION = 64; // 结构区域边长（格）
 

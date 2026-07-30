@@ -2,7 +2,7 @@
 
 import { AIR, BLOCK_BY_KEY } from './blocks';
 import { hash2, type Terrain } from './noise';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
+import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './grid';
 
 const REGION = 32; // 区域边长（格）
 const R_OUT = 5.5; // 玄武岩外壳半径

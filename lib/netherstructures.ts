@@ -4,7 +4,7 @@
 import { AIR, BLOCK_BY_KEY } from './blocks';
 import { hash2, type Terrain } from './noise';
 import { fillChest, type LootEntry } from './structures';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
+import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './grid';
 import { LAVA_SEA } from './nether';
 
 const REGION = 64;

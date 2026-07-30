@@ -3,7 +3,8 @@
 import { AIR, BLOCKS, BLOCK_BY_KEY, isWaterId, type BlockId } from './blocks';
 import { mulberry32, type TreeKind } from './noise';
 import { TREE_MAX_H, writeTree } from './trees';
-import { WORLD_HEIGHT, type World } from './world';
+import { type World } from './world';
+import { WORLD_HEIGHT } from './grid';
 
 /** 原木（含去皮）判定：叶子的供养来源 */
 export function isLogId(id: BlockId): boolean {

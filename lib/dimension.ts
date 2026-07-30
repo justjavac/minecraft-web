@@ -4,7 +4,8 @@ import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId } from './blocks';
 import { LAVA_SEA } from './nether';
 import { SEA_LEVEL } from './noise';
 import { isPortalId, tryIgnitePortal } from './portal';
-import { WORLD_HEIGHT, type World } from './world';
+import { type World } from './world';
+import { WORLD_HEIGHT } from './grid';
 
 export type Dimension = 'overworld' | 'nether' | 'end';
 

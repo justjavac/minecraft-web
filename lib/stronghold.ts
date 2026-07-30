@@ -3,7 +3,8 @@
 
 import { AIR, BLOCK_BY_KEY } from './blocks';
 import { fillChest, type LootEntry } from './structures';
-import { CHUNK_SIZE, localIndex, WORLD_HEIGHT, type World } from './world';
+import { type World } from './world';
+import { CHUNK_SIZE, localIndex, WORLD_HEIGHT } from './grid';
 
 const K = (key: string) => BLOCK_BY_KEY[key].id;
 const STONE_BRICKS = () => K('stone_bricks');

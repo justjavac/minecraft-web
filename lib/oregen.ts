@@ -5,7 +5,7 @@
 
 import { BLOCK_BY_KEY } from './blocks';
 import { mulberry32, type Biome, type Terrain } from './noise';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
+import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './grid';
 
 const STONE = BLOCK_BY_KEY.stone.id;
 const DEEPSLATE = BLOCK_BY_KEY.deepslate.id;

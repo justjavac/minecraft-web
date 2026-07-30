@@ -7,7 +7,7 @@ import { BIOME_SURFACE } from './biomes';
 import { applyNetherStructures } from './netherstructures';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
 import { hash2, hashString, mulberry32, type Biome, type Terrain } from './noise';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './world';
+import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './grid';
 
 export const LAVA_SEA = 31; // 岩浆海平面（MC 一致）
 const BEDROCK_TOP = 122; // 天花板基岩起始（向上参差到 127）

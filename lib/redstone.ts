@@ -15,7 +15,8 @@ import { mobs } from './mobs';
 import { cleanupOrphanHeads, FACING_VEC, isExtended, isPistonId, retract, tryExtend } from './pistons';
 import { noteBlock } from './sound';
 import { igniteTnt } from './tnt';
-import { CHUNK_SIZE, CHUNK_VOLUME, chunkKey, type World } from './world';
+import { type World } from './world';
+import { CHUNK_SIZE, CHUNK_VOLUME, chunkKey } from './grid';
 
 const key = (x: number, y: number, z: number): string => `${x},${y},${z}`;
 

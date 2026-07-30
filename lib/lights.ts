@@ -1,7 +1,8 @@
 // 方块光照：chunk lightmap（0-15），光源播种 + BFS 衰减传播，跨 chunk 边界接力级联
 
 import { BLOCKS } from './blocks';
-import { CHUNK_SIZE, CHUNK_VOLUME, WORLD_HEIGHT, chunkKey, localIndex, type Chunk, type World } from './world';
+import { type Chunk, type World } from './world';
+import { CHUNK_SIZE, CHUNK_VOLUME, WORLD_HEIGHT, chunkKey, localIndex } from './grid';
 
 const DIRS = [
   [1, 0, 0],

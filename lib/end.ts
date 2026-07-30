@@ -4,7 +4,7 @@
 import { AIR, BLOCK_BY_KEY } from './blocks';
 import { hash2, hashString, type Terrain } from './noise';
 import { fillChest, type LootEntry } from './structures';
-import { CHUNK_SIZE, localIndex, WORLD_HEIGHT } from './world';
+import { CHUNK_SIZE, localIndex, WORLD_HEIGHT } from './grid';
 
 const K = (key: string) => BLOCK_BY_KEY[key].id;
 

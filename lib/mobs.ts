@@ -17,7 +17,8 @@ import { villageCenterNear } from './structures';
 import { weather, precipAt, type WeatherKind } from './weather';
 // 循环引用说明：redstone.ts 的 tickPlates 引用本文件 mobs 列表；此处 strikeTarget 仅运行时调用，ESM live binding 安全
 import { strikeTarget } from './redstone';
-import { chunkKey, localIndex, WORLD_HEIGHT, type World } from './world';
+import { type World } from './world';
+import { chunkKey, localIndex, WORLD_HEIGHT } from './grid';
 
 export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon' | 'shulker' | 'slime' | 'phantom' | 'iron_golem';
 
