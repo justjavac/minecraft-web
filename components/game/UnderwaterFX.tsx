@@ -47,12 +47,14 @@ export function UnderwaterFX() {
       fog.far = LAVA_FOG_FAR;
     } else {
       const { near, far } = skyFog(useGameStore.getState().settings.renderDistance);
-      if (fog.near !== near || fog.far !== far) {
+      // 下界雾浓（MC 下界能见度低、红雾弥漫）；末地/主世界正常雾距
+      const target = useGameStore.getState().dimension === 'nether' ? { near: near * 0.3, far: far * 0.5 } : { near, far };
+      if (fog.near !== target.near || fog.far !== target.far) {
         // 恢复天空：颜色取 DayNight 当前计算的大气色
         bg.setRGB(atmosphere.r, atmosphere.g, atmosphere.b);
         fog.color.setRGB(atmosphere.r, atmosphere.g, atmosphere.b);
-        fog.near = near;
-        fog.far = far;
+        fog.near = target.near;
+        fog.far = target.far;
       }
     }
   });

@@ -132,14 +132,19 @@ export function DayNight() {
     // 昼夜系数与黄昏系数（日出日落附近）；天气压暗，雷暴闪电瞬间增亮
     const dayFactor = smoothstep(-0.12, 0.15, elevation);
     const duskFactor = Math.max(0, 1 - Math.abs(elevation) / 0.22) * 0.55;
-    const dim = weatherDim(weather.kind);
+    // 维度：末地恒暗、下界恒暗红（MC 两维度均无昼夜与天气）
+    const dimension = useGameStore.getState().dimension;
+    const isEnd = dimension === 'end';
+    const isNether = dimension === 'nether';
+    const overworld = !isEnd && !isNether;
+    const dim = overworld ? weatherDim(weather.kind) : 1;
+    const flash = overworld ? weather.flash : 0;
     sky.lerpColors(SKY_NIGHT, SKY_DAY, dayFactor);
     sky.lerp(SKY_DUSK, duskFactor);
     sky.multiplyScalar(dim);
-    if (weather.flash > 0) sky.lerp(SKY_FLASH, weather.flash * 0.75);
-    // 末地：天空恒黑、光照恒暗（MC 末地无昼夜）
-    const isEnd = useGameStore.getState().dimension === 'end';
+    if (flash > 0) sky.lerp(SKY_FLASH, flash * 0.75);
     if (isEnd) sky.setRGB(0.012, 0.006, 0.024);
+    if (isNether) sky.setRGB(0.13, 0.03, 0.018); // MC 下界：暗红环境光
     atmosphere.r = sky.r;
     atmosphere.g = sky.g;
     atmosphere.b = sky.b;
@@ -160,11 +165,11 @@ export function DayNight() {
       (scene.fog as Fog | null)?.color.copy(sky);
     }
 
-    // 光照随昼夜与天气渐变；闪电瞬间打亮
+    // 光照随昼夜与天气渐变；闪电瞬间打亮（下界/末地恒定，MC 无昼夜）
     sunDir.set(Math.cos(a), elevation, 0.25).normalize();
     const dir = dirRef.current;
     if (dir) {
-      dir.intensity = (isEnd ? 0.32 : (0.15 + dayFactor * 0.95) * dim) + weather.flash * 2.2;
+      dir.intensity = (isEnd ? 0.32 : isNether ? 0.45 : (0.15 + dayFactor * 0.95) * dim) + flash * 2.2;
       dir.position.set(
         camera.position.x + sunDir.x * 120,
         camera.position.y + sunDir.y * 120,
@@ -176,12 +181,12 @@ export function DayNight() {
       dir.target = lightTarget;
     }
     const amb = ambRef.current;
-    if (amb) amb.intensity = (0.35 + dayFactor * 0.45) * (0.55 + 0.45 * dim) + weather.flash * 0.7;
+    if (amb) amb.intensity = isNether ? 0.65 : (0.35 + dayFactor * 0.45) * (0.55 + 0.45 * dim) + flash * 0.7;
 
-    // 太阳 / 月亮沿轨道（跟随相机，保持视距）；雨雪天被云遮住
+    // 太阳 / 月亮沿轨道（跟随相机，保持视距）；雨雪天被云遮住（下界/末地无日月，MC）
     const sun = sunRef.current;
     if (sun) {
-      sun.visible = weather.kind === 'clear';
+      sun.visible = overworld && weather.kind === 'clear';
       sun.position.set(
         camera.position.x + sunDir.x * ORBIT_RADIUS,
         camera.position.y + sunDir.y * ORBIT_RADIUS,
@@ -190,7 +195,7 @@ export function DayNight() {
     }
     const moon = moonRef.current;
     if (moon) {
-      moon.visible = weather.kind === 'clear';
+      moon.visible = overworld && weather.kind === 'clear';
       moon.position.set(
         camera.position.x - sunDir.x * ORBIT_RADIUS,
         camera.position.y - sunDir.y * ORBIT_RADIUS,
@@ -198,10 +203,10 @@ export function DayNight() {
       );
     }
 
-    // 云层跟随相机平移 + 纹理漂移；雨雪天云层变灰变厚；设置里可关闭云（MC 云开关）
+    // 云层跟随相机平移 + 纹理漂移；雨雪天云层变灰变厚；设置里可关闭云（MC 云开关）；下界/末地无云（MC）
     const cloud = cloudRef.current;
     if (cloud) {
-      cloud.visible = useGameStore.getState().settings.clouds;
+      cloud.visible = overworld && useGameStore.getState().settings.clouds;
       cloud.position.set(camera.position.x, CLOUD_Y, camera.position.z);
       const mat = cloud.material as MeshBasicMaterial;
       const gray = 0.45 + 0.55 * dim;
