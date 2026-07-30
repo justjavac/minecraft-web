@@ -31,6 +31,9 @@ import { tickGrowth } from '@/lib/growth';
 import { tickSaplings, clearSaplings } from '@/lib/saplings';
 import { clearRedstone, rescanSources, tickRedstone } from '@/lib/redstone';
 import { clearDrops } from '@/lib/items';
+import { clearTnt, primedTnt, type PrimedTnt } from '@/lib/tnt';
+import { activeBeacons, clearBeacons, type ActiveBeacon } from '@/lib/beacon';
+import { clearEffects } from '@/lib/effects';
 import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
@@ -110,6 +113,9 @@ interface DimState {
   storages: [string, Slot[]][];
   furnaces: [string, FurnaceState][];
   brews: [string, BrewState][];
+  /** 点燃的 TNT 与激活的信标（同属世界作用域状态，随维度暂存/恢复，否则跨维度泄漏/误删） */
+  tnt: PrimedTnt[];
+  beacons: [string, ActiveBeacon][];
 }
 
 export function WorldRenderer() {
@@ -180,6 +186,7 @@ export function WorldRenderer() {
           worlds[dimension] = makeDimWorld(dimension, seed);
           clearStorages(); // 清空上一个世界的容器残留
           clearRedstone(); // 清空上一个世界的红石残留
+          clearEffects(); // 新世界清空药水效果（上个世界的效果不带入）
           await saveWorldMeta(worldMeta(seed, { mode: useGameStore.getState().worldMode, dimension: 'overworld' }));
         }
         // 切换维度/首次造访：取缓存或读档新建
@@ -194,10 +201,14 @@ export function WorldRenderer() {
         clearStorages();
         clearFurnaces();
         clearBrews();
+        clearTnt();
+        clearBeacons();
         if (ds) {
           for (const [k, v] of ds.storages) storages.set(k, v);
           for (const [k, v] of ds.furnaces) furnaces.set(k, v);
           for (const [k, v] of ds.brews) brews.set(k, v);
+          primedTnt.push(...ds.tnt);
+          for (const [k, v] of ds.beacons) activeBeacons.set(k, v);
           useGameStore.getState().setSpawnPoint(ds.player);
         }
         // 跨维度传送：落点扫描 + 无门造门 + 传送坐标落定（末地落固定出生平台，不造下界门；末地返回主世界不造门）
@@ -243,12 +254,14 @@ export function WorldRenderer() {
       useGameStore.getState().setWorldReady(false);
       const w = worlds[dimension];
       if (w) void saveModifiedChunks(w, currentExtras(dimension), dimPrefix(dimension));
-      // 暂存本维度模块状态（位置/容器/熔炉），其余运行时状态清掉
+      // 暂存本维度模块状态（位置/容器/熔炉/酿造/TNT/信标），其余运行时状态清掉
       dimStates[dimension] = {
         player: { ...playerPosition },
         storages: [...storages],
         furnaces: [...furnaces],
         brews: [...brews],
+        tnt: [...primedTnt],
+        beacons: [...activeBeacons],
       };
       clearMobs();
       clearFurnaces();
@@ -259,6 +272,8 @@ export function WorldRenderer() {
       clearSaplings();
       clearCrops();
       clearRedstone();
+      clearTnt();
+      clearBeacons(); // 信标/TNT 同属世界作用域：不清则主世界 TNT 在下界继续 tick 爆炸、信标被当下界方块校验误删
       clearDrops(); // 掉落物也随维度/世界清理（否则主世界掉落物跟到下界继续 tick，回菜单再开新图旧掉落物残留）
       worldRef.current = null;
       setActiveWorld(null);
