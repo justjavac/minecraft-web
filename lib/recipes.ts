@@ -97,9 +97,9 @@ export const RECIPES: Recipe[] = [
   { id: 'furnace', name: '熔炉', out: { kind: 'block', id: FURNACE, count: 1 }, cost: [{ item: `block:${COBBLE}`, count: 8 }], needsTable: true },
   // 床：3 羊毛 + 3 木板（MC 配方）
   { id: 'red_bed', name: '红色床', out: { kind: 'block', id: KID('red_bed'), count: 1 }, cost: [{ item: K('white_wool'), count: 3 }, { item: PLANKS_ITEM, count: 3 }], needsTable: true },
-  // 弓：3 线 + 3 木棍（MC 配方）；箭：羽毛+木棍（简化，无燧石）
+  // 弓：3 线 + 3 木棍（MC 配方）；箭：燧石 + 木棍 + 羽毛（MC 配方，对齐原版）
   { id: 'bow', name: '弓', out: { kind: 'tool', tool: 'bow' }, cost: [{ item: 'material:string', count: 3 }, { item: STICK, count: 3 }], needsTable: true },
-  { id: 'arrow', name: '箭 ×4', out: { kind: 'material', material: 'arrow', count: 4 }, cost: [{ item: 'material:feather', count: 1 }, { item: STICK, count: 1 }], needsTable: false },
+  { id: 'arrow', name: '箭 ×4', out: { kind: 'material', material: 'arrow', count: 4 }, cost: [{ item: 'material:flint', count: 1 }, { item: STICK, count: 1 }, { item: 'material:feather', count: 1 }], needsTable: false },
   // 容器：箱子 8 木板（MC）；木桶 6 木板 + 2 台阶（MC）
   { id: 'chest', name: '箱子', out: { kind: 'block', id: KID('chest'), count: 1 }, cost: [{ item: PLANKS_ITEM, count: 8 }], needsTable: true },
   { id: 'barrel', name: '木桶', out: { kind: 'block', id: KID('barrel'), count: 1 }, cost: [{ item: PLANKS_ITEM, count: 6 }, { item: K('planks_slab'), count: 2 }], needsTable: true },
@@ -109,6 +109,9 @@ export const RECIPES: Recipe[] = [
   { id: 'bread', name: '面包', out: { kind: 'material', material: 'bread', count: 1 }, cost: [{ item: 'material:wheat', count: 3 }], needsTable: false },
   // 骨粉：1 骨头 → 3 骨粉（MC）
   { id: 'bonemeal', name: '骨粉 ×3', out: { kind: 'material', material: 'bonemeal', count: 3 }, cost: [{ item: 'material:bone', count: 1 }], needsTable: false },
+  // 火把：1 煤/木炭 + 1 木棍 → 4（MC；生存第一夜照明——火把方块本就有（光照 14），但原缺配方，玩家做不了火把）
+  { id: 'torch', name: '火把 ×4', out: { kind: 'block', id: KID('torch'), count: 4 }, cost: [{ item: 'material:coal', count: 1 }, { item: STICK, count: 1 }], needsTable: false },
+  { id: 'torch_charcoal', name: '火把 ×4（木炭）', out: { kind: 'block', id: KID('torch'), count: 4 }, cost: [{ item: 'material:charcoal', count: 1 }, { item: STICK, count: 1 }], needsTable: false },
   // —— 红石（配方与 MC 一致；红石灯用海晶灯替代萤石） ——
   { id: 'redstone_torch', name: '红石火把', out: { kind: 'block', id: KID('redstone_torch'), count: 1 }, cost: [{ item: 'material:redstone', count: 1 }, { item: STICK, count: 1 }], needsTable: false },
   { id: 'lever', name: '拉杆', out: { kind: 'block', id: KID('lever'), count: 1 }, cost: [{ item: STICK, count: 1 }, { item: COBBLE_ITEM, count: 1 }], needsTable: false },
