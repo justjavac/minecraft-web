@@ -3,35 +3,8 @@
 import { useState } from 'react';
 import { getStorage } from '@/lib/storage';
 import { useGameStore } from '@/lib/store';
-import type { Slot } from '@/lib/slots';
-import { slotCount, slotName, slotTile } from './slotDisplay';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { TileIcon } from './TileIcon';
-
-function Cell({ slot, onClick }: { slot: Slot; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      title={slotName(slot)}
-      className="relative h-9 w-9 rounded border border-white/20 bg-black/30 hover:border-white/50"
-    >
-      {slot && (
-        <>
-          <TileIcon tile={slotTile(slot)} size={28} className="mx-auto" />
-          {slotCount(slot) > 1 && (
-            <span className="absolute bottom-0 right-0.5 text-[10px] font-bold text-white">{slotCount(slot)}</span>
-          )}
-        </>
-      )}
-    </button>
-  );
-}
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { GuiSlot, McGuiFrame } from './McGui';
 
 /** 容器界面（箱子/木桶）：27 格容器 + 27 背包 + 9 热键栏，点击互相转移整叠 */
 export function StorageDialog() {
@@ -55,49 +28,43 @@ export function StorageDialog() {
         if (!o) setOpen(null);
       }}
     >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>容器</DialogTitle>
-          <DialogDescription>点击物品在物品栏与容器之间转移（整叠）</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="grid grid-cols-9 gap-1 rounded-md border p-2">
-            {storage.map((slot, i) => (
-              <Cell
-                key={i}
-                slot={slot}
-                onClick={() => {
-                  storageTake(i);
-                  refresh();
-                }}
-              />
-            ))}
-          </div>
-          <div className="grid grid-cols-9 gap-1 rounded-md border p-2">
-            {mainSlots.map((slot, i) => (
-              <Cell
-                key={i}
-                slot={slot}
-                onClick={() => {
-                  storagePut('main', i);
-                  refresh();
-                }}
-              />
-            ))}
-          </div>
-          <div className="grid grid-cols-9 gap-1 rounded-md border border-white/40 p-2">
-            {hotbarSlots.map((slot, i) => (
-              <Cell
-                key={i}
-                slot={slot}
-                onClick={() => {
-                  storagePut('hotbar', i);
-                  refresh();
-                }}
-              />
-            ))}
-          </div>
-        </div>
+      <DialogContent className="border-0 bg-transparent p-0 shadow-none sm:max-w-none">
+        {/* MC 容器 GUI：shulker_box.png 纹理（27 格容器 + 背包 + 热键栏），格子按 MC 坐标 absolute 对齐 */}
+        <McGuiFrame texture="/textures/gui/container/shulker_box.png">
+          {storage.map((slot, i) => (
+            <GuiSlot
+              key={'c' + i}
+              pos={[16 + (i % 9) * 36, 34 + Math.floor(i / 9) * 36]}
+              slot={slot}
+              onClick={() => {
+                storageTake(i);
+                refresh();
+              }}
+            />
+          ))}
+          {mainSlots.map((slot, i) => (
+            <GuiSlot
+              key={'m' + i}
+              pos={[16 + (i % 9) * 36, 166 + Math.floor(i / 9) * 36]}
+              slot={slot}
+              onClick={() => {
+                storagePut('main', i);
+                refresh();
+              }}
+            />
+          ))}
+          {hotbarSlots.map((slot, i) => (
+            <GuiSlot
+              key={'h' + i}
+              pos={[16 + i * 36, 282]}
+              slot={slot}
+              onClick={() => {
+                storagePut('hotbar', i);
+                refresh();
+              }}
+            />
+          ))}
+        </McGuiFrame>
       </DialogContent>
     </Dialog>
   );
