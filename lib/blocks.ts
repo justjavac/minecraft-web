@@ -145,6 +145,9 @@ export interface BlockDef {
   doorOpen?: boolean;
   /** 挖掘掉落的方块 id 覆盖（楼梯各朝向/顶半砖统一掉基础型） */
   dropBlock?: BlockId;
+  /** 非精准采集掉落（MC）：'nothing' 不掉落（玻璃/冰类），否则掉材料（书架→3 书、黏土→4 黏土球）；
+   *  精准采集（silk_touch）时一律掉方块自身，忽略本字段 */
+  nonSilkDrop?: 'nothing' | { material: string; count: [number, number] };
   /** 树苗对应的木材种类（长成该种树；lib/saplings.ts 驱动） */
   treeWood?: string;
   /** 双格高植物的底段（破坏/放置上下联动；顶段用 plantTop 标记） */
@@ -219,7 +222,7 @@ defs[LEAVES] = {
 defs[GLASS] = {
   id: GLASS, key: 'glass', name: '玻璃',
   top: t('glass'), bottom: t('glass'), side: t('glass'),
-  opaque: false, solid: true, digTime: 0.45, cat: 'color', ...GLASS_SND,
+  opaque: false, solid: true, digTime: 0.45, cat: 'color', nonSilkDrop: 'nothing', ...GLASS_SND, // MC：玻璃非精准采集无掉落
 };
 add('brick', '砖块', 'bricks', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 10 });
 defs[WATER] = {
@@ -304,7 +307,7 @@ add('chiseled_red_sandstone', '雕纹红砂岩', 'chiseled_red_sandstone', { cat
 add('cut_red_sandstone', '切制红砂岩', 'cut_red_sandstone', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 4 });
 add('smooth_red_sandstone', '平滑红砂岩', 'red_sandstone_top', { cat: 'stone', tool: 'pickaxe', needsPick: true, digTime: 4 });
 add('gravel', '沙砾', 'gravel', { cat: 'earth', tool: 'shovel', digTime: 0.9, ...DIRT_SND });
-add('clay', '黏土块', 'clay', { cat: 'earth', tool: 'shovel', digTime: 0.9, ...DIRT_SND });
+add('clay', '黏土块', 'clay', { cat: 'earth', tool: 'shovel', digTime: 0.9, nonSilkDrop: { material: 'clay_ball', count: [4, 4] }, ...DIRT_SND }); // MC：非精准掉 4 黏土球
 add('terracotta', '陶瓦', 'terracotta', { cat: 'color', tool: 'pickaxe', needsPick: true, digTime: 6 });
 
 // ——— 16 色家族 ———
@@ -319,7 +322,7 @@ for (const [c, cn] of COLORS16) {
   add(`${c}_wool`, `${cn}羊毛`, `${c}_wool`, { cat: 'color', digTime: 1.2, ...GRASS_SND });
   add(`${c}_concrete`, `${cn}混凝土`, `${c}_concrete`, { cat: 'color', tool: 'pickaxe', needsPick: true, digTime: 9 });
   add(`${c}_concrete_powder`, `${cn}混凝土粉末`, `${c}_concrete_powder`, { cat: 'color', tool: 'shovel', digTime: 0.75, ...SAND_SND });
-  add(`${c}_stained_glass`, `${cn}染色玻璃`, `${c}_stained_glass`, { cat: 'color', opaque: false, digTime: 0.45, ...GLASS_SND });
+  add(`${c}_stained_glass`, `${cn}染色玻璃`, `${c}_stained_glass`, { cat: 'color', opaque: false, digTime: 0.45, nonSilkDrop: 'nothing', ...GLASS_SND }); // MC：非精准无掉落
 }
 
 // ——— 矿石/金属块/紫水晶 ———
@@ -375,7 +378,7 @@ for (const [w, cn] of WOODS) {
 add('prismarine', '海晶石', 'prismarine', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
 add('prismarine_bricks', '海晶石砖', 'prismarine_bricks', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
 add('dark_prismarine', '暗海晶石', 'dark_prismarine', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
-add('sea_lantern', '海晶灯', 'sea_lantern', { cat: 'ocean', digTime: 0.45, light: 15, ...GLASS_SND });
+add('sea_lantern', '海晶灯', 'sea_lantern', { cat: 'ocean', digTime: 0.45, light: 15, nonSilkDrop: { material: 'prismarine_crystals', count: [2, 3] }, ...GLASS_SND }); // MC：非精准掉 2-3 海晶砂粒
 add('sponge', '海绵', 'sponge', { cat: 'ocean', digTime: 0.9, ...GRASS_SND });
 add('wet_sponge', '湿海绵', 'wet_sponge', { cat: 'ocean', digTime: 0.9, ...GRASS_SND });
 add('tube_coral_block', '管珊瑚块', 'tube_coral_block', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
@@ -383,19 +386,19 @@ add('brain_coral_block', '脑纹珊瑚块', 'brain_coral_block', { cat: 'ocean',
 add('bubble_coral_block', '气泡珊瑚块', 'bubble_coral_block', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
 add('fire_coral_block', '火珊瑚块', 'fire_coral_block', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
 add('horn_coral_block', '鹿角珊瑚块', 'horn_coral_block', { cat: 'ocean', tool: 'pickaxe', needsPick: true });
-add('snow_block', '雪块', 'snow', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...GRASS_SND });
-add('ice', '冰', 'ice', { cat: 'earth', tool: 'pickaxe', opaque: false, digTime: 0.75, ...GLASS_SND });
-add('packed_ice', '浮冰', 'packed_ice', { cat: 'earth', tool: 'pickaxe', digTime: 0.75 });
-add('blue_ice', '蓝冰', 'blue_ice', { cat: 'earth', tool: 'pickaxe', digTime: 14 });
+add('snow_block', '雪块', 'snow', { cat: 'earth', tool: 'shovel', digTime: 0.75, nonSilkDrop: { material: 'snowball', count: [4, 4] }, ...GRASS_SND }); // MC：非精准掉 4 雪球
+add('ice', '冰', 'ice', { cat: 'earth', tool: 'pickaxe', opaque: false, digTime: 0.75, nonSilkDrop: 'nothing', ...GLASS_SND }); // MC：冰非精准无掉落（原地化水，简化为不掉）
+add('packed_ice', '浮冰', 'packed_ice', { cat: 'earth', tool: 'pickaxe', digTime: 0.75, nonSilkDrop: 'nothing' }); // MC：非精准无掉落
+add('blue_ice', '蓝冰', 'blue_ice', { cat: 'earth', tool: 'pickaxe', digTime: 14, nonSilkDrop: 'nothing' }); // MC：非精准无掉落
 
 // ——— 功能/杂项 ———
-add('bookshelf', '书架', 'bookshelf', { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
+add('bookshelf', '书架', 'bookshelf', { cat: 'utility', tool: 'axe', digTime: 3, nonSilkDrop: { material: 'book', count: [3, 3] }, ...WOOD_SND }); // MC：非精准掉 3 本书
 add('chiseled_bookshelf', '雕纹书架', { side: 'chiseled_bookshelf_empty', top: 'chiseled_bookshelf_top' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
 add('tnt', 'TNT', { side: 'tnt_side', top: 'tnt_top', bottom: 'tnt_bottom' }, { cat: 'utility', digTime: 0.05, ...GRASS_SND });
 add('note_block', '音符盒', 'note_block', { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
 add('jukebox', '唱片机', { side: 'jukebox_side', top: 'jukebox_top' }, { cat: 'utility', tool: 'axe', digTime: 3, ...WOOD_SND });
 add('pumpkin', '南瓜', { side: 'pumpkin_side', top: 'pumpkin_top' }, { cat: 'utility', tool: 'axe', digTime: 1.5, ...WOOD_SND });
-add('melon', '西瓜', { side: 'melon_side', top: 'melon_top' }, { cat: 'utility', tool: 'axe', digTime: 1.5, ...WOOD_SND });
+add('melon', '西瓜', { side: 'melon_side', top: 'melon_top' }, { cat: 'utility', tool: 'axe', digTime: 1.5, nonSilkDrop: { material: 'melon_slice', count: [3, 7] }, ...WOOD_SND }); // MC：非精准掉 3-7 西瓜片
 add('hay_block', '干草捆', { side: 'hay_block_side', top: 'hay_block_top' }, { cat: 'utility', digTime: 0.75, ...GRASS_SND });
 add('dried_kelp_block', '干海带块', { side: 'dried_kelp_side', top: 'dried_kelp_top' }, { cat: 'utility', digTime: 0.75, ...GRASS_SND });
 add('honeycomb_block', '蜜脾块', 'honeycomb_block', { cat: 'utility', digTime: 0.9, ...GRASS_SND });
@@ -598,7 +601,7 @@ add('nether_bricks', '下界砖块', 'nether_bricks', { cat: 'stone', tool: 'pic
 add('nether_wart', '地狱疣', 'nether_wart_stage2', { cat: 'earth', shape: 'cross', opaque: false, solid: false, digTime: 0.05, drop: { material: 'nether_wart', count: [1, 2] }, ...GRASS_SND });
 // 雪层：薄板（1/8 高，无碰撞），寒带地表覆盖
 add('snow_layer', '雪层', 'snow', {
-  cat: 'earth', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, solid: false, tool: 'shovel', digTime: 0.2, ...GRASS_SND,
+  cat: 'earth', shape: 'slab', box3: [0, 0, 0, 1, 0.125, 1], opaque: false, solid: false, tool: 'shovel', digTime: 0.2, nonSilkDrop: { material: 'snowball', count: [1, 1] }, ...GRASS_SND, // MC：单层雪掉 1 雪球
 });
 
 // ——— 红石（供能网络见 lib/redstone.ts） ———

@@ -142,8 +142,18 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
         spawnBlockDrop(BLOCK_BY_KEY[saplingKey].id, x + 0.5, y + 0.4, z + 0.5);
       }
     } else if (tierOk) {
-      // 精准采集：跳过 dropBlock 转换掉自身（石头掉石头而非圆石，MC）
-      spawnBlockDrop(silk ? oldId : (def.dropBlock ?? oldId), x + 0.5, y + 0.4, z + 0.5);
+      // 精准采集：掉方块自身（石头掉石头而非圆石；玻璃/冰/书架等也掉自身，MC）
+      if (silk) {
+        spawnBlockDrop(oldId, x + 0.5, y + 0.4, z + 0.5);
+      } else if (def.nonSilkDrop === 'nothing') {
+        // MC：玻璃/冰类非精准采集无掉落
+      } else if (def.nonSilkDrop) {
+        // MC：书架→3 书、黏土→4 黏土球、西瓜→3-7 片、雪块→4 雪球、海晶灯→2-3 海晶砂粒
+        const [min, max] = def.nonSilkDrop.count;
+        spawnMaterialDrop(def.nonSilkDrop.material, x + 0.5, y + 0.4, z + 0.5, min + Math.floor(Math.random() * (max - min + 1)));
+      } else {
+        spawnBlockDrop(def.dropBlock ?? oldId, x + 0.5, y + 0.4, z + 0.5);
+      }
     }
     // 熔炉被破坏：炉内容物一并掉落
     if (oldId === FURNACE) dropFurnaceContents(`${x},${y},${z}`, x, y, z);
