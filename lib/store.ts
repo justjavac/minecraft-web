@@ -697,21 +697,25 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       slots[s.selectedSlot] = durability > 0 ? { ...slot, durability } : null;
       return { hotbarSlots: slots };
     }),
+  // 从全物品栏（热键栏 + 背包）消耗材料（MC：消耗品如箭/青金石在背包也算数；原先只查热键栏，箭全在背包时弓误报"没有箭了"）
   consumeMaterial: (material, count = 1) => {
     let ok = false;
     set((s) => {
       let remaining = count;
-      const slots = s.hotbarSlots.map((slot) => {
-        if (remaining > 0 && slot?.kind === 'material' && slot.material === material) {
-          const take = Math.min(slot.count, remaining);
-          remaining -= take;
-          return slot.count > take ? { ...slot, count: slot.count - take } : null;
-        }
-        return slot;
-      });
+      const drain = (slots: Slot[]): Slot[] =>
+        slots.map((slot) => {
+          if (remaining > 0 && slot?.kind === 'material' && slot.material === material) {
+            const take = Math.min(slot.count, remaining);
+            remaining -= take;
+            return slot.count > take ? { ...slot, count: slot.count - take } : null;
+          }
+          return slot;
+        });
+      const hotbarSlots = drain(s.hotbarSlots);
+      const mainSlots = drain(s.mainSlots);
       if (remaining > 0) return s; // 不够，一个都不扣
       ok = true;
-      return { hotbarSlots: slots };
+      return { hotbarSlots, mainSlots };
     });
     return ok;
   },
