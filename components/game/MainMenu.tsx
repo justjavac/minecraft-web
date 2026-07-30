@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { loadWorldMeta } from '@/lib/persistence';
 import { randomSeed, useGameStore, type WorldMode } from '@/lib/store';
+import { getAtlasMaterials } from '@/lib/textures';
 import { SettingsDialog } from './SettingsDialog';
 
 export function MainMenu() {
@@ -28,6 +29,8 @@ export function MainMenu() {
     void loadWorldMeta()
       .then((m) => setHasSave(m !== null))
       .catch(() => setHasSave(false));
+    // 打开游戏即预载纹理图集（构建 atlas 并缓存；进世界时不再因首次加载图集而卡顿）
+    void getAtlasMaterials();
   }, []);
 
   return (
