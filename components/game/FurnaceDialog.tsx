@@ -10,11 +10,22 @@ import { TOOLS } from '@/lib/tools';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog';
 import { TileIcon } from './TileIcon';
+import type { Slot } from '@/lib/slots';
+
+/** MC 格 18px × 2（Faithful 32x 纹理为 176×166 的 2 倍） */
+const G = 36;
+/** 熔炉三槽（furnace.png 内坐标 ×2） */
+const SLOT_INPUT: [number, number] = [112, 34];
+const SLOT_FUEL: [number, number] = [112, 106];
+const SLOT_OUTPUT: [number, number] = [232, 70];
+/** 进度箭头 / 火焰区（×2） */
+const ARROW: [number, number, number, number] = [158, 68, 44, 34];
+const FLAME: [number, number, number, number] = [112, 74, 28, 28];
+/** 背包 9 格热键栏（(8,142)×2 起） */
+const hotX = (i: number) => 16 + i * G;
+const HOT_Y = 284;
 
 function itemName(item: string): string {
   const [kind, idStr] = item.split(':');
@@ -26,16 +37,61 @@ function itemTile(item: string): number {
   return kind === 'block' ? BLOCKS[Number(idStr)].side : materialTile(idStr);
 }
 
-function SlotView({ label, stack }: { label: string; stack: FurnaceStack | null }) {
+/** 熔炉槽（absolute 定位到 furnace.png 格子上）：图标 + 数量 */
+function AbsSlot({ pos, stack, onClick }: { pos: [number, number]; stack: FurnaceStack | null; onClick?: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="flex h-10 w-10 items-center justify-center rounded border border-white/20 bg-black/30">
-        {stack && <TileIcon tile={itemTile(stack.item)} size={30} />}
-      </div>
-      <span className="text-center text-xs text-muted-foreground">
-        {label}
-        {stack ? ` ${itemName(stack.item)} ×${stack.count}` : ''}
-      </span>
+    <button
+      onClick={onClick}
+      className="absolute flex items-center justify-center"
+      style={{ left: pos[0], top: pos[1], width: G, height: G }}
+    >
+      {stack && <TileIcon tile={itemTile(stack.item)} size={30} />}
+      {stack && stack.count > 1 && (
+        <span className="absolute bottom-0 right-0.5 text-[10px] font-bold text-white drop-shadow">{stack.count}</span>
+      )}
+    </button>
+  );
+}
+
+/** 热键栏格（absolute 定位）：图标 + 数量 + 点击放入；双重身份物品给「燃 / 烧」两去向 */
+function AbsInvSlot({ pos, slot, index }: { pos: [number, number]; slot: Slot; index: number }) {
+  const furnacePut = useGameStore((s) => s.furnacePut);
+  const item =
+    slot?.kind === 'block' ? `block:${slot.id}` : slot?.kind === 'material' ? `material:${slot.material}` : null;
+  const usable = item !== null && (FUELS[item] !== undefined || SMELTING[item] !== undefined);
+  const both = item !== null && FUELS[item] !== undefined && SMELTING[item] !== undefined;
+  const tile = !slot
+    ? 0
+    : slot.kind === 'block'
+      ? BLOCKS[slot.id].side
+      : slot.kind === 'material'
+        ? materialTile(slot.material)
+        : slot.kind === 'tool'
+          ? TOOLS[slot.tool].iconTile
+          : armorDefOf(slot).iconTile;
+  return (
+    <div className="absolute" style={{ left: pos[0], top: pos[1], width: G, height: G }}>
+      <button
+        disabled={slot !== null && !usable}
+        onClick={() => furnacePut(index)}
+        title={item ? itemName(item) : ''}
+        className="flex h-full w-full items-center justify-center disabled:opacity-30"
+      >
+        {slot && <TileIcon tile={tile} size={30} />}
+      </button>
+      {slot && slot.kind !== 'tool' && slot.kind !== 'armor' && slot.count > 1 && (
+        <span className="pointer-events-none absolute bottom-0 right-0.5 text-[10px] font-bold text-white drop-shadow">{slot.count}</span>
+      )}
+      {both && (
+        <div className="absolute inset-x-0 -bottom-4 z-10 flex justify-center gap-0.5">
+          <button onClick={() => furnacePut(index, 'fuel')} className="rounded-sm bg-orange-600/90 px-1 text-[9px] leading-3 text-white">
+            燃
+          </button>
+          <button onClick={() => furnacePut(index, 'input')} className="rounded-sm bg-sky-600/90 px-1 text-[9px] leading-3 text-white">
+            烧
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -57,7 +113,6 @@ export function FurnaceDialog() {
   }, [furnaceKey]);
 
   const f = furnaceKey ? getFurnace(furnaceKey) : null;
-  const smeltDef = f?.input ? SMELTING[f.input.item] : undefined;
 
   return (
     <Dialog
@@ -66,87 +121,25 @@ export function FurnaceDialog() {
         if (!o) setOpen(null);
       }}
     >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>熔炉</DialogTitle>
-          <DialogDescription>点击背包物品放入：燃料进燃料槽，可烧物进烧炼槽，每件 10 秒</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="border-0 bg-transparent p-0 shadow-none sm:max-w-none">
         {f && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between rounded-md border p-3">
-              <SlotView label="烧炼物" stack={f.input} />
-              <div className="flex flex-col items-center gap-1 px-2">
-                <div className="h-1.5 w-20 rounded bg-zinc-700">
-                  <div
-                    className="h-full rounded bg-orange-500 transition-[width]"
-                    style={{ width: `${(f.progress / SMELT_TIME) * 100}%` }}
-                  />
-                </div>
-                <span className="text-xs text-muted-foreground">{smeltDef ? `→ ${smeltDef.name}` : ''}</span>
-              </div>
-              <button onClick={takeOutput} title="取出产出">
-                <SlotView label="产出" stack={f.output} />
-              </button>
+          <div className="relative mx-auto select-none overflow-hidden" style={{ width: 352, height: 332 }}>
+            {/* MC 熔炉 GUI：furnace.png 原始 512 尺寸（面板在左上 352x332），容器裁剪不拉伸，格子按 352 坐标对齐 */}
+            <img src="/textures/gui/container/furnace.png" alt="" draggable={false} className="absolute left-0 top-0 max-w-none select-none [image-rendering:pixelated]" style={{ width: 512, height: 512 }} />
+            <AbsSlot pos={SLOT_INPUT} stack={f.input} />
+            <AbsSlot pos={SLOT_FUEL} stack={f.fuel} />
+            <AbsSlot pos={SLOT_OUTPUT} stack={f.output} onClick={takeOutput} />
+            {/* 进度箭头区：按烧炼进度叠加 */}
+            <div className="absolute overflow-hidden" style={{ left: ARROW[0], top: ARROW[1], width: ARROW[2], height: ARROW[3] }}>
+              <div className="h-full bg-white/60 transition-[width]" style={{ width: `${(f.progress / SMELT_TIME) * 100}%` }} />
             </div>
-            <div className="flex items-center gap-3 rounded-md border p-3">
-              <SlotView label="燃料" stack={f.fuel} />
-              {f.burnLeft > 0 && (
-                <span className="text-xs text-orange-500">燃烧中 {f.burnLeft.toFixed(0)}s</span>
-              )}
-            </div>
-            <div className="grid grid-cols-9 gap-1">
-              {slots.map((slot, i) => {
-                if (!slot) return <div key={i} className="h-9 w-9 rounded border border-white/10 bg-black/20" />;
-                const item =
-                  slot.kind === 'block'
-                    ? `block:${slot.id}`
-                    : slot.kind === 'material'
-                      ? `material:${slot.material}`
-                      : null;
-                const usable = item !== null && (FUELS[item] !== undefined || SMELTING[item] !== undefined);
-                const both = item !== null && FUELS[item] !== undefined && SMELTING[item] !== undefined;
-                const tile =
-                  slot.kind === 'block'
-                    ? BLOCKS[slot.id].side
-                    : slot.kind === 'material'
-                      ? materialTile(slot.material)
-                      : slot.kind === 'tool'
-                        ? TOOLS[slot.tool].iconTile
-                        : armorDefOf(slot).iconTile;
-                // 双重身份物品（如原木）：提供「燃 / 烧」两个去向按钮
-                if (both) {
-                  return (
-                    <div key={i} className="relative h-9 w-9 rounded border border-white/20 bg-black/30" title={itemName(item)}>
-                      <TileIcon tile={tile} size={28} className="mx-auto" />
-                      <div className="absolute inset-x-0 bottom-0 flex justify-center gap-0.5">
-                        <button onClick={() => furnacePut(i, 'fuel')} className="rounded-sm bg-orange-600/90 px-1 text-[9px] leading-3 text-white">
-                          燃
-                        </button>
-                        <button onClick={() => furnacePut(i, 'input')} className="rounded-sm bg-sky-600/90 px-1 text-[9px] leading-3 text-white">
-                          烧
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <button
-                    key={i}
-                    disabled={!usable}
-                    onClick={() => furnacePut(i)}
-                    title={item ? itemName(item) : ''}
-                    className="relative h-9 w-9 rounded border border-white/20 bg-black/30 disabled:opacity-30"
-                  >
-                    <TileIcon tile={tile} size={28} className="mx-auto" />
-                    {slot.kind !== 'tool' && slot.kind !== 'armor' && slot.count > 1 && (
-                      <span className="absolute bottom-0 right-0.5 text-[10px] font-bold text-white">
-                        {slot.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            {/* 火焰区：燃料燃烧中 */}
+            {f.burnLeft > 0 && (
+              <div className="absolute rounded-sm bg-orange-500/60" style={{ left: FLAME[0], top: FLAME[1], width: FLAME[2], height: FLAME[3] }} />
+            )}
+            {slots.map((slot, i) => (
+              <AbsInvSlot key={i} pos={[hotX(i), HOT_Y]} slot={slot} index={i} />
+            ))}
           </div>
         )}
       </DialogContent>
