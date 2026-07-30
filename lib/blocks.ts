@@ -199,7 +199,7 @@ add('air', '空气', 'stone', {
 defs[GRASS] = {
   id: GRASS, key: 'grass', name: '草方块',
   top: t('grass_block_top'), bottom: t('dirt'), side: t('grass_block_side'),
-  opaque: true, solid: true, tool: 'shovel', digTime: 0.9, cat: 'earth', ...GRASS_SND,
+  opaque: true, solid: true, tool: 'shovel', digTime: 0.9, cat: 'earth', dropBlock: DIRT, ...GRASS_SND, // MC：无精准采集掉泥土
 };
 add('dirt', '泥土', 'dirt', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
 add('stone', '石头', 'stone', { cat: 'stone', tool: 'pickaxe', needsPick: true, dropBlock: COBBLE }); // MC：无精准采集掉圆石
@@ -286,8 +286,8 @@ add('crying_obsidian', '哭泣的黑曜石', 'crying_obsidian', { cat: 'stone', 
 
 // ——— 土/泥/沙 ———
 add('coarse_dirt', '砂土', 'coarse_dirt', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
-add('podzol', '灰化土', { side: 'podzol_side', top: 'podzol_top', bottom: 'dirt' }, { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
-add('mycelium', '菌丝体', { side: 'mycelium_side', top: 'mycelium_top', bottom: 'dirt' }, { cat: 'earth', tool: 'shovel', digTime: 0.75, ...GRASS_SND });
+add('podzol', '灰化土', { side: 'podzol_side', top: 'podzol_top', bottom: 'dirt' }, { cat: 'earth', tool: 'shovel', digTime: 0.75, dropBlock: DIRT, ...DIRT_SND }); // MC：无精准采集掉泥土
+add('mycelium', '菌丝体', { side: 'mycelium_side', top: 'mycelium_top', bottom: 'dirt' }, { cat: 'earth', tool: 'shovel', digTime: 0.75, dropBlock: DIRT, ...GRASS_SND }); // MC：无精准采集掉泥土
 add('snowy_grass', '覆雪草方块', { side: 'grass_block_snow', top: 'snow', bottom: 'dirt' }, { cat: 'earth', tool: 'shovel', digTime: 0.9, ...GRASS_SND });
 add('rooted_dirt', '缠根泥土', 'rooted_dirt', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
 add('mud', '泥巴', 'mud', { cat: 'earth', tool: 'shovel', digTime: 0.75, ...DIRT_SND });
