@@ -578,8 +578,8 @@ export function tryPlace(): boolean {
     lastPlace = now;
     return false;
   }
-  // TNT：仅手持打火石右键点燃（MC；红石信号引爆见 redstone.ts），生成引信实体而非放置
-  if (hitId === BLOCK_BY_KEY.tnt.id && heldSlot?.kind === 'material' && heldSlot.material === 'flint_and_steel') {
+  // TNT：手持打火石右键点燃（MC；红石信号引爆见 redstone.ts），生成引信实体而非放置。创造模式视同有打火机（创造拿不到材料，右击即点燃——打掉 TNT 用左键）
+  if (hitId === BLOCK_BY_KEY.tnt.id && (s.worldMode === 'creative' || (heldSlot?.kind === 'material' && heldSlot.material === 'flint_and_steel'))) {
     world.setBlock(bx, by, bz, AIR);
     igniteTnt(bx, by, bz);
     playSound('place');
@@ -638,8 +638,8 @@ export function tryPlace(): boolean {
   const px = bx + fx;
   const py = by + fy;
   const pz = bz + fz;
-  // 打火石：右键黑曜石框内侧，点燃下界传送门
-  if (heldSlot?.kind === 'material' && heldSlot.material === 'flint_and_steel' && hitId === BLOCK_BY_KEY.obsidian.id) {
+  // 打火石：右键黑曜石框内侧，点燃下界传送门。创造模式视同有打火机（创造拿不到材料，右击即点燃）
+  if ((s.worldMode === 'creative' || (heldSlot?.kind === 'material' && heldSlot.material === 'flint_and_steel')) && hitId === BLOCK_BY_KEY.obsidian.id) {
     if (tryIgnitePortal(world, px, py, pz)) {
       playSound('place');
       lastPlace = now;

@@ -684,7 +684,8 @@ export function Player() {
     attackCd.current = Math.max(0, attackCd.current - dt);
     if (digHeld.current || touchInput.dig) {
       let attacked = false;
-      if (gs.worldMode === 'survival' && attackCd.current <= 0) {
+      // 近战攻击：创造模式也可（MC 创造左键可杀怪；伤害按手持，创造徒手 1 点，不耗耐久——damageHeldTool 创造已豁免）
+      if (attackCd.current <= 0) {
         // 恶魂爆裂球：挥击打回（MC 标志玩法）——沿视线掉头反飞，命中恶魂即秒杀（结算见下方每帧检查）
         const fb = fireballInReach(
           camera.position.x, camera.position.y, camera.position.z,
