@@ -57,7 +57,7 @@ export const BREWING: Record<string, string> = {
 export const BREW_TIME = 20; // MC 20 秒一轮
 export const FUEL_USES = 20; // 一份烈焰粉酿 20 轮（MC）
 
-const INGREDIENTS = ['nether_wart', 'sugar', 'blaze_powder', 'glistering_melon', 'magma_cream', 'ghast_tear', 'pufferfish', 'redstone', 'glowstone_dust'];
+export const INGREDIENTS = ['nether_wart', 'sugar', 'blaze_powder', 'glistering_melon', 'magma_cream', 'ghast_tear', 'pufferfish', 'redstone', 'glowstone_dust'];
 
 export interface BrewStack {
   item: string;

@@ -43,11 +43,13 @@ export function GuiSlot({
   slot,
   onClick,
   title,
+  disabled,
 }: {
   pos: [number, number];
   slot: Slot;
   onClick?: () => void;
   title?: string;
+  disabled?: boolean;
 }) {
   const tile = !slot
     ? 0
@@ -62,12 +64,44 @@ export function GuiSlot({
     <button
       onClick={onClick}
       title={title}
-      className="absolute flex items-center justify-center"
+      disabled={disabled}
+      className="absolute flex items-center justify-center disabled:opacity-30"
       style={{ left: pos[0], top: pos[1], width: G, height: G }}
     >
       {slot && <TileIcon tile={tile} size={30} />}
       {slot && slot.kind !== 'tool' && slot.kind !== 'armor' && slot.count > 1 && (
         <span className="pointer-events-none absolute bottom-0 right-0.5 text-[10px] font-bold text-white drop-shadow">{slot.count}</span>
+      )}
+    </button>
+  );
+}
+
+/** 材料名 → tile（兼容 'block:X' / 'material:X' 前缀与裸材料名） */
+function stackTile(item: string): number {
+  if (item.startsWith('block:')) return BLOCKS[Number(item.slice(6))].side;
+  if (item.startsWith('material:')) return materialTile(item.slice(9));
+  return materialTile(item);
+}
+
+/** 熔炉/酿造槽格（absolute）：{ item, count } 图标 + 数量（熔炉烧炼物/燃料/产出，酿造材料/药水/燃料） */
+export function AbsSlot({
+  pos,
+  stack,
+  onClick,
+}: {
+  pos: [number, number];
+  stack: { item: string; count: number } | null;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="absolute flex items-center justify-center"
+      style={{ left: pos[0], top: pos[1], width: G, height: G }}
+    >
+      {stack && <TileIcon tile={stackTile(stack.item)} size={30} />}
+      {stack && stack.count > 1 && (
+        <span className="pointer-events-none absolute bottom-0 right-0.5 text-[10px] font-bold text-white drop-shadow">{stack.count}</span>
       )}
     </button>
   );
