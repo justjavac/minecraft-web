@@ -181,10 +181,10 @@ export function TouchControls() {
         </Button>
       </div>
 
-      {/* 返回主菜单（WorldRenderer 卸载时自动存档） */}
-      <Button variant="outline" size="sm" className="absolute right-2 top-2" onClick={backToMenu}>
+      {/* 返回主菜单（WorldRenderer 卸载时自动存档）；MC widgets 小按钮 */}
+      <button className="mc-btn mc-btn-sm absolute right-2 top-2" onClick={backToMenu}>
         菜单
-      </Button>
+      </button>
     </div>
   );
 }
