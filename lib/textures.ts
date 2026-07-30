@@ -372,6 +372,15 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
 
   // 预载全部贴图：默认从单文件 atlas 裁格（一次请求）；导入包按 stem 整格覆盖
   const atlas = await loadImage('/textures/atlas.png');
+  // stem → 文件 atlas 格号（build-pack 构建顺序清单）。运行时注册顺序取决于模块图（armor 先于 materials 等），
+  // 与构建顺序可能不同——无清单时按序号对齐会让全部物品图标错位（见 atlas.json 注释）
+  let fileStems: string[] = [];
+  try {
+    fileStems = (await (await fetch('/textures/atlas.json')).json()) as string[];
+  } catch {
+    fileStems = [];
+  }
+  const fileIdxOf = new Map<string, number>(fileStems.map((s, idx) => [s, idx]));
   // atlas 格距 = 内容 + 两侧挤出（mipmap 防跨格混色；挤出比例 1/8）
   const padPx = Math.max(1, Math.round(tilePx * ATLAS_PAD_RATIO));
   const cellPx = tilePx + padPx * 2;
@@ -389,8 +398,10 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
     if (img) {
       ctx.drawImage(img, dx + padPx, dy + padPx, tilePx, tilePx);
     } else {
-      sx = (i % ATLAS_COLS) * DEFAULT_TILE_PX;
-      sy = Math.floor(i / ATLAS_COLS) * DEFAULT_TILE_PX;
+      // 按 stem 名从清单查文件格号；清单缺失（旧部署/未重建）退回按运行时序号（旧行为）
+      const bi = fileIdxOf.get(stem) ?? i;
+      sx = (bi % ATLAS_COLS) * DEFAULT_TILE_PX;
+      sy = Math.floor(bi / ATLAS_COLS) * DEFAULT_TILE_PX;
       ctx.drawImage(atlas, sx, sy, DEFAULT_TILE_PX, DEFAULT_TILE_PX, dx + padPx, dy + padPx, tilePx, tilePx);
     }
     // 灰度贴图染绿：multiply 上色后按原图 alpha 裁回（树叶镂空不被填色）。

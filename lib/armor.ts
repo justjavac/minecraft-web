@@ -67,7 +67,10 @@ function buildDefs(): Record<ArmorMaterial, Record<ArmorPiece, ArmorDef>> {
         points: POINTS[material][piece],
         durability: DURABILITY[material][piece],
         cost: PIECE_COST[piece],
-        iconTile: material === 'leather' ? LEATHER_ICON[piece] : tileIcon(material === 'elytra' ? 'item/elytra' : `item/${material}_${piece}`),
+        iconTile:
+          material === 'leather'
+            ? LEATHER_ICON[piece]
+            : tileIcon(material === 'elytra' ? 'item/elytra' : material === 'gold' ? `item/golden_${piece}` : `item/${material}_${piece}`), // MC 现代命名：金甲为 golden_xxx
       };
     }
   }

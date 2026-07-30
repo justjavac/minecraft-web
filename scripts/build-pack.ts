@@ -4,9 +4,11 @@
 // 注意：water_still 动画条带由 python+PIL 裁首帧（与方块动画一致处理）
 
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-// 副作用导入：材料/工具注册会把物品图标 stem 一并 intern 进 TILE_STEMS
+// 副作用导入：材料/工具/盔甲注册会把物品图标 stem 一并 intern 进 TILE_STEMS
+// 必须与应用运行时一致地覆盖全部注册模块（漏一个，atlas 格号就会与运行时错位）
+import '../lib/armor';
 import '../lib/materials';
 import '../lib/tools';
 import { TILE_STEMS } from '../lib/blocks';
@@ -71,3 +73,8 @@ atlas.save(sys.argv[3])`,
   `${OUT}/../atlas.png`,
 ]);
 console.log(`atlas: ${OUT}/../atlas.png`);
+
+// 输出 stem 清单（构建顺序）：运行时按 stem 名映射 atlas 格号，与模块求值顺序解耦
+// （应用里 armor/tools/materials 的注册先后取决于模块图，与本脚本可能不同——无清单时物品图标会整体错位）
+writeFileSync(fileURLToPath(new URL('../public/textures/atlas.json', import.meta.url)), JSON.stringify(TILE_STEMS));
+console.log(`stems manifest: ${OUT}/../atlas.json (${TILE_STEMS.length})`);
