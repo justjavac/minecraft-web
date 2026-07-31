@@ -95,6 +95,9 @@ export function tickSurvival(
     mem.regenPotionTick = 0;
   }
 
+  // 饥饿效果（腐肉/生鸡肉概率获得，MC Hunger）：效果期内 exhaustion 每秒额外 +0.1，加速饥饿消耗
+  if (effects.hunger > 0) survivalStats.exhaustion += 0.1 * env.dt;
+
   // 消耗度（MC exhaustion）：满 4 先扣饱和度，饱和耗尽后扣饥饿
   if (survivalStats.exhaustion >= 4) {
     survivalStats.exhaustion -= 4;

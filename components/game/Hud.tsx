@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { eatState } from '@/lib/actions';
 import { attackState, bossState, debugInfo, survivalStats } from '@/lib/game';
 import { clearMobs } from '@/lib/mobs';
 import { anyPanelOpen, MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
@@ -136,8 +137,24 @@ function AttackIndicator() {
   );
 }
 
-/** 氧气气泡条（MC：头入水时显示在饥饿行上方；剩余 <15s 才显示，气泡随剩余秒数逐个变空，快耗尽时最后几个爆泡） */
-function AirBubbles() {
+/** 进食读条（MC Java 按住右键进食：准星上方小进度条，读满/取消即隐藏）；50ms 轮询运行时单例，不进 React 状态 */
+function EatIndicator() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 50);
+    return () => clearInterval(t);
+  }, []);
+  if (!eatState.active) return null;
+  return (
+    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-8 mix-blend-difference">
+      <div className="h-[3px] w-10 bg-black/60">
+        <div className="h-full bg-amber-300" style={{ width: `${Math.min(1, eatState.progress) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** 氧气气泡条（MC：头入水时显示在饥饿行上方；剩余 <15s 才显示，气泡随剩余秒数逐个变空，快耗尽时最后几个爆泡） */function AirBubbles() {
   const [, setTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 200);
@@ -179,6 +196,7 @@ function SurvivalBars() {
   if (effects.resistance > 0) active.push(['抗性', effects.resistance]);
   if (effects.jumpBoost > 0) active.push(['跳跃', effects.jumpBoost]);
   if (effects.levitation > 0) active.push(['漂浮', effects.levitation]);
+  if (effects.hunger > 0) active.push(['饥饿', effects.hunger]);
   return (
     <div className="w-full space-y-1 pb-0.5">
       {active.length > 0 && (
@@ -403,6 +421,9 @@ export function Hud() {
 
       {/* 攻击冷却蓄力条（MC 1.9，准星下方） */}
       {!dead && <AttackIndicator />}
+
+      {/* 进食读条（MC Java，准星上方） */}
+      {!dead && <EatIndicator />}
 
       {/* Boss 血条 */}
       <BossBar />

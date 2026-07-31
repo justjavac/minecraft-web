@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Euler, PerspectiveCamera, Vector3 } from 'three';
 import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
-import { breakBlock, tryPlace } from '@/lib/actions';
+import { breakBlock, cancelEating, eatState, sweepAround, tickEating, tryPlace, useButton } from '@/lib/actions';
 import { isFarmlandId, isWheatCropId } from '@/lib/crops';
 import { effectiveDigTime } from '@/lib/dig';
 import { attackState, cameraRef, debugInfo, digState, getActiveWorld, hurtState, panelUnlock, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput, worldClock } from '@/lib/game';
@@ -16,6 +16,7 @@ import { outerHeightAt, pickOuterIsland } from '@/lib/end';
 import { gatewayState } from '@/lib/endfight';
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
+import { resolveAnchorRespawn } from '@/lib/respawnanchor';
 import { arrows, checkEndermanStare, damageMob, mobInReach, mobs, spawnMobAt, type Arrow } from '@/lib/mobs';
 import { crystalInReach, hitCrystal, tickCrystals } from '@/lib/endfight';
 import { tickFishing } from '@/lib/fishing';
@@ -243,6 +244,7 @@ export function Player() {
       if (!locked) {
         keys.current = {};
         digHeld.current = false;
+        useButton.held = false; // 退锁视同松开右键：进食读条随下一帧 tickEating 取消
       }
     };
     document.addEventListener('pointerlockchange', onLockChange);
@@ -295,8 +297,10 @@ export function Player() {
     const onMouseDown = (e: MouseEvent) => {
       if (document.pointerLockElement !== gl.domElement) return;
       if (e.button === 0) digHeld.current = true;
-      else if (e.button === 2) tryPlace();
-      else if (e.button === 1) {
+      else if (e.button === 2) {
+        useButton.held = true; // 进食读条等的「按住使用」状态（lib/actions.ts）
+        tryPlace();
+      } else if (e.button === 1) {
         // 中键选块（MC pick block）：取准星方块到手上
         e.preventDefault(); // 阻止浏览器中键自动滚动
         const hit = targetBlock.hit;
@@ -307,6 +311,7 @@ export function Player() {
     };
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) digHeld.current = false;
+      else if (e.button === 2) useButton.held = false;
     };
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mouseup', onMouseUp);
@@ -396,9 +401,22 @@ export function Player() {
     const flying = useGameStore.getState().flying;
     const gs = useGameStore.getState();
 
-    // 重生传送（dead → alive 边沿）：回床设的重生点（未睡过床回世界出生点，MC）并重置生存状态
+    // 重生传送（dead → alive 边沿）：回床/重生锚设的重生点（未设回世界出生点，MC）并重置生存状态
     if (wasDead.current && !gs.dead) {
-      const sp = gs.respawnPoint;
+      let sp = gs.respawnPoint;
+      if (sp) {
+        // 重生锚（MC）：锚在且有剩余档位 → 耗 1 档在锚旁重生；档尽/锚失效 → 重生点失效
+        const ar = resolveAnchorRespawn(world, sp);
+        if (ar === 'exhausted') {
+          // 本次仍回锚旁（耗掉最后一档），此后重生点失效
+          gs.setRespawnPoint(null);
+          gs.setNotice('重生锚能量耗尽，重生点已失效');
+        } else if (ar === 'depleted') {
+          gs.setRespawnPoint(null);
+          gs.setNotice('重生锚没有能量，重生点已失效');
+          sp = null;
+        }
+      }
       const fb = findSpawn(world);
       p.x = sp?.x ?? fb.x;
       p.z = sp?.z ?? fb.z;
@@ -410,7 +428,11 @@ export function Player() {
     }
     wasDead.current = gs.dead;
     // 死亡：冻结等待重生界面操作
-    if (gs.dead) return;
+    if (gs.dead) {
+      useButton.held = false;
+      if (eatState.active) cancelEating(); // 死亡打断进食读条（MC：死亡取消使用动作）
+      return;
+    }
     // Esc 暂停（指针解锁）：物理/挖掘/生存 tick 全部冻结；触屏 paused 恒 false 不受影响
     if (gs.paused) return;
 
@@ -455,7 +477,8 @@ export function Player() {
     const speed =
       (flying ? FLY_SPEED : inFluid ? WALK_SPEED * (inLava ? 0.4 : 0.6) : WALK_SPEED) *
       (effects.speed > 0 ? 1 + 0.2 * Math.max(effectLvls.speed, beaconTiers.get('speed') ?? 1) : 1) * // 迅捷药水 +20%/级（II 级 +40%）
-      (sneaking ? 0.3 : sprinting ? 1.3 : 1); // MC 潜行 ~30%、冲刺 ~130% 走速
+      (sneaking ? 0.3 : sprinting ? 1.3 : 1) * // MC 潜行 ~30%、冲刺 ~130% 走速
+      (eatState.active ? 0.3 : 1); // MC Java：进食中移动速度大减（≈潜行速度）
     // 摇杆为模拟量：mLen ≤ 1 时保留力度，超过 1（键盘对角线）才归一化
     const scale = mLen > 1 ? speed / mLen : speed;
     mx *= scale;
@@ -650,6 +673,8 @@ export function Player() {
     }
     // 药水效果计时（创造模式也递减，MC 一致）
     tickEffects(dt);
+    // 进食读条推进（MC Java 按住右键 1.61s；取消/结算逻辑在 lib/actions.ts）
+    tickEating(dt);
     // 信标：校验金字塔并给范围内玩家刷新所选效果（MC）
     tickBeacons(world, p.x, p.y, p.z);
     // 末影水晶：龙在存活水晶附近时缓慢回血（MC 治疗光束）
@@ -808,8 +833,9 @@ export function Player() {
           const held = gs.hotbarSlots[gs.selectedSlot];
           const tool = held?.kind === 'tool' ? TOOLS[held.tool] : null;
           const T = tool?.attackCd ?? 0.25; // 总冷却 = 1/攻速（MC 拳头 4，剑 1.6，斧 0.8-1.0）
+          const fullCharge = attackCd.current <= 0; // 冷却全满（横扫判定用，须在重置冷却前捕获）
           // MC 1.9 冷却伤害缩放：0.2 + ((t+0.5)/T)²×0.8（t=冷却已走过时间；走满=1 满额）
-          const cdScale = attackCd.current <= 0 ? 1 : attackCooldownScale(T - attackCd.current, T);
+          const cdScale = fullCharge ? 1 : attackCooldownScale(T - attackCd.current, T);
           attackCd.current = T;
           attackCdTotal.current = T;
           // MC 暴击：下落中（velY<0、不着地、非水中/飞行/滑翔）命中伤害 ×1.5
@@ -824,6 +850,8 @@ export function Player() {
           }
           const baseDmg = (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? ((held.ench?.sharpness ?? 0) * 0.5 + ((held.ench?.sharpness ?? 0) > 0 ? 0.5 : 0)) : 0) + (effects.strength > 0 ? 3 * Math.max(effectLvls.strength, beaconTiers.get('strength') ?? 1) : 0); // 拳头 1 点（半心），锋利 +0.5×级+0.5（MC Java），力量药水 +3/级（MC）
           damageMob(mob, baseDmg * cdScale * (crit ? 1.5 : 1), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0, world, kb); // 抢夺加掉落
+          // MC Java 横扫攻击：剑 + 冷却全满 + 非冲刺命中时，主目标周围 1 格内其他敌对生物各受 1 点横扫伤害
+          if (tool?.kind === 'sword' && fullCharge && !sprinting) sweepAround(mob, playerPosition, world);
           if (tool) gs.damageHeldTool(tool.kind === 'sword' ? 1 : 2); // MC：剑耗 1，工具作武器耗 2
           playSound('dig_choppy', 0.8);
           survivalStats.exhaustion += 0.1; // MC：攻击消耗

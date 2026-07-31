@@ -19,9 +19,11 @@ export interface Effects {
   jumpBoost: number;
   /** 漂浮：匀速上浮（潜影贝弹命中，MC） */
   levitation: number;
+  /** 饥饿：exhaustion 持续额外消耗（腐肉 80%/生鸡肉 30% 概率获得 30s，MC；消耗速率见 lib/survival.ts） */
+  hunger: number;
 }
 
-export const effects: Effects = { speed: 0, strength: 0, fireRes: 0, regen: 0, waterBreath: 0, haste: 0, resistance: 0, jumpBoost: 0, levitation: 0 };
+export const effects: Effects = { speed: 0, strength: 0, fireRes: 0, regen: 0, waterBreath: 0, haste: 0, resistance: 0, jumpBoost: 0, levitation: 0, hunger: 0 };
 
 /** 药水效果等级（荧石粉增强版 = 2；仅时长字段 > 0 时有意义，读取处须先判时长） */
 export const effectLvls: { speed: 1 | 2; strength: 1 | 2; regen: 1 | 2 } = { speed: 1, strength: 1, regen: 1 };
@@ -37,6 +39,7 @@ export function tickEffects(dt: number): void {
   effects.resistance = Math.max(0, effects.resistance - dt);
   effects.jumpBoost = Math.max(0, effects.jumpBoost - dt);
   effects.levitation = Math.max(0, effects.levitation - dt);
+  effects.hunger = Math.max(0, effects.hunger - dt);
 }
 
 export function clearEffects(): void {
@@ -49,6 +52,7 @@ export function clearEffects(): void {
   effects.resistance = 0;
   effects.jumpBoost = 0;
   effects.levitation = 0;
+  effects.hunger = 0;
   effectLvls.speed = 1;
   effectLvls.strength = 1;
   effectLvls.regen = 1;

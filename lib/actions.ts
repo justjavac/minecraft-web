@@ -19,14 +19,15 @@ import { trySummonWither } from './wither';
 import { pistonIdFor } from './pistons';
 import { cycleRepeaterDelay, isComparatorId, isRepeaterId, observerIdFor, pressButton, toggleComparatorMode, toggleLever, tuneNoteBlock } from './redstone';
 import { XP_ORE } from './xp';
-import { BREED_FOOD, barterWith, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, mobs, onSlept, woolBlockId } from './mobs';
+import { BREED_FOOD, barterWith, damageMob, feedMob, fireEnderPearl, fireEyeOfEnder, firePlayerArrow, MOB_DEFS, mobInReach, mobs, onSlept, woolBlockId, type Mob } from './mobs';
 import { fillPortalFrame, nearestStronghold } from './stronghold';
 import { bobber, castBobber, reelIn } from './fishing';
 import { MATERIAL_INFO, materialTile } from './materials';
 import { blockIntersectsPlayer } from './physics';
-import { playSound } from './sound';
+import { anchorCharges, anchorKey, getAnchorCharge, MAX_ANCHOR_CHARGE, setAnchorCharge } from './respawnanchor';
+import { eatSound, playSound } from './sound';
 import { dropStorageContents } from './storage';
-import { useGameStore, MAX_HEALTH } from './store';
+import { useGameStore, MAX_HEALTH, MAX_HUNGER } from './store';
 import { igniteTnt } from './tnt';
 import { TOOLS } from './tools';
 import { clearWeather, isThundering } from './weather';
@@ -63,6 +64,118 @@ export function isSneaking(): boolean {
   return shiftHeld || touchInput.sneak;
 }
 
+// ——— 进食读条（MC Java：手持食物按住右键 1.61s = 32 tick 吃完；松手/换槽/手持切换取消，受伤不打断） ———
+
+/** 进食读条时长（秒），MC Java 32 tick */
+export const EAT_DURATION = 1.61;
+
+/** 进食读条状态（Player 每帧 tickEating 推进，Hud 准星进度条读取） */
+export const eatState = {
+  active: false,
+  /** 0..1，达到 1 结算进食 */
+  progress: 0,
+  /** 开始时的热键栏槽位与食物：换槽/换物即取消 */
+  slot: -1,
+  material: '',
+  /** 触屏按住「放」的连发 tryPlace 最近一次续期时间戳（桌面无连发，靠 useButton.held） */
+  nudgedAt: 0,
+  /** 嚼音计时（读条中每 ~0.5s 一声低音量嚼音） */
+  chewAcc: 0,
+};
+
+/** 桌面右键按住状态（Player mousedown/mouseup/指针解锁维护；触屏无此信号，用 eatState.nudgedAt 近似） */
+export const useButton = { held: false };
+
+/** 触屏连发间隔 150ms（PLACE_INTERVAL），超过 250ms 没续期视为已松手 */
+const EAT_NUDGE_TIMEOUT = 250;
+
+/** 是否仍按住使用键（桌面看 useButton，触屏看连发续期是否超时） */
+function isUseHeld(): boolean {
+  return useButton.held || performance.now() - eatState.nudgedAt <= EAT_NUDGE_TIMEOUT;
+}
+
+/** 开始进食读条。quiet = 读满自动续吃下一份时不弹「还不饿」（Java 吃饱自动停，无提示） */
+export function startEating(s: ReturnType<typeof useGameStore.getState>, quiet = false): boolean {
+  const held = s.hotbarSlots[s.selectedSlot];
+  if (held?.kind !== 'material' || !FOODS[held.material]) return false;
+  if (s.hunger >= MAX_HUNGER) {
+    if (!quiet) s.setNotice('还不饿'); // MC：满饥饿不能进食；拒绝要给反馈，不静默吞掉操作
+    return false;
+  }
+  eatState.active = true;
+  eatState.progress = 0;
+  eatState.slot = s.selectedSlot;
+  eatState.material = held.material;
+  eatState.nudgedAt = performance.now();
+  eatState.chewAcc = 0;
+  return true;
+}
+
+export function cancelEating(): void {
+  eatState.active = false;
+  eatState.progress = 0;
+}
+
+/** 读满结算：真正进食（eatSelectedFood 播 eatSound）+ 紫颂果传送 + 腐肉/生鸡肉饥饿效果 roll */
+function finishEating(s: ReturnType<typeof useGameStore.getState>, world: World | null): void {
+  const material = eatState.material;
+  if (!s.eatSelectedFood()) return;
+  // 紫颂果：食用后随机传送 ±8 格（MC 特色）——试 8 次找上方两格空的实心面
+  if (material === 'chorus_fruit' && world) {
+    for (let t = 0; t < 8; t++) {
+      const tx = Math.floor(playerPosition.x + (Math.random() - 0.5) * 16);
+      const tz = Math.floor(playerPosition.z + (Math.random() - 0.5) * 16);
+      let ty = Math.min(WORLD_HEIGHT - 2, Math.floor(playerPosition.y) + 8);
+      while (ty > 1 && !BLOCKS[world.getBlock(tx, ty - 1, tz)]?.solid) ty--;
+      if (ty <= 1 || BLOCKS[world.getBlock(tx, ty, tz)]?.solid || BLOCKS[world.getBlock(tx, ty + 1, tz)]?.solid) continue;
+      pearlTeleport.pending = { x: tx + 0.5, y: ty, z: tz + 0.5 };
+      break;
+    }
+  }
+  // MC：腐肉 80%、生鸡肉 30% 概率获得 30s 饥饿效果（效果期内 exhaustion 额外消耗，见 lib/survival.ts）
+  const hungerChance = material === 'rotten_flesh' ? 0.8 : material === 'raw_chicken' ? 0.3 : 0;
+  if (hungerChance > 0 && Math.random() < hungerChance) effects.hunger = 30;
+}
+
+/** 每帧推进进食读条（Player useFrame 调用）：松手/换槽/换物取消；读满结算，仍按住且还饿则自动续吃下一份（MC） */
+export function tickEating(dt: number): void {
+  if (!eatState.active) return;
+  const s = useGameStore.getState();
+  const held = s.hotbarSlots[s.selectedSlot];
+  // MC Java 进食被松手/换槽/手持切换打断；受伤不打断（Java 如此）
+  if (!isUseHeld() || s.selectedSlot !== eatState.slot || held?.kind !== 'material' || held.material !== eatState.material) {
+    cancelEating();
+    return;
+  }
+  eatState.progress += dt / EAT_DURATION;
+  // 读条中的嚼音反馈：每 0.5s 一声，低音量避免吵（完整 eatSound 三连嚼由 eatSelectedFood 在完成时播）
+  eatState.chewAcc += dt;
+  if (eatState.chewAcc >= 0.5 && eatState.progress < 1) {
+    eatState.chewAcc = 0;
+    eatSound(0.12);
+  }
+  if (eatState.progress < 1) return;
+  finishEating(s, getActiveWorld());
+  // MC：按住不放接着吃下一份（还有食物且仍饿时；吃不下/没食物则停）。重新取 state：进食已更新饥饿
+  if (!startEating(useGameStore.getState(), true)) cancelEating();
+}
+
+/**
+ * MC Java 横扫攻击：剑 + 冷却全满 + 非冲刺命中时调用（条件判定在 Player 攻击分支），
+ * 主目标水平 1 格、垂直 1 格内的其他敌对生物各受 1 点横扫伤害（带小击退）。返回命中数。
+ */
+export function sweepAround(target: Mob, attackerPos: { x: number; z: number }, world: World): number {
+  let hits = 0;
+  for (const m of mobs) {
+    if (m === target || !MOB_DEFS[m.type].hostile) continue;
+    if (Math.abs(m.x - target.x) > 1 || Math.abs(m.z - target.z) > 1 || Math.abs(m.y - target.y) > 1) continue;
+    damageMob(m, 1, attackerPos, 0, world, 0.4); // 横扫固定 1 点伤害 + 小击退（返回值是是否击杀，非命中）
+    hits++;
+  }
+  return hits;
+}
+
+
 /** 破坏指定方块并播放音效、生成碎块粒子；生存模式按 MC 规则掉落（石头系需镐），创造模式无掉落 */
 export function breakBlock(world: World, x: number, y: number, z: number): void {
   const oldId = world.getBlock(x, y, z);
@@ -79,6 +192,14 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
   }
   // 床被破坏：清掉该床设的重生点（MC：床遗失后重生点失效，回世界出生点）
   if (oldId === BLOCK_BY_KEY.red_bed.id) {
+    const rp = useGameStore.getState().respawnPoint;
+    if (rp && Math.abs(rp.x - (x + 0.5)) <= 1 && Math.abs(rp.y - (y + 1)) <= 1 && Math.abs(rp.z - (z + 0.5)) <= 1) {
+      useGameStore.getState().setRespawnPoint(null);
+    }
+  }
+  // 重生锚被破坏：清档位；重生点设在该锚则同步失效（MC：锚没了重生点失效，同床的规则）
+  if (oldId === BLOCK_BY_KEY.respawn_anchor.id) {
+    anchorCharges.delete(anchorKey(x, y, z));
     const rp = useGameStore.getState().respawnPoint;
     if (rp && Math.abs(rp.x - (x + 0.5)) <= 1 && Math.abs(rp.y - (y + 1)) <= 1 && Math.abs(rp.z - (z + 0.5)) <= 1) {
       useGameStore.getState().setRespawnPoint(null);
@@ -394,20 +515,14 @@ export function tryPlace(): boolean {
       lastPlace = now;
       return false;
     }
-    if (held?.kind === 'material' && FOODS[held.material] && s.eatSelectedFood()) {
-      // 紫颂果：食用后随机传送 ±8 格（MC 特色）——试 8 次找上方两格空的实心面
-      if (held.material === 'chorus_fruit') {
-        for (let t = 0; t < 8; t++) {
-          const tx = Math.floor(playerPosition.x + (Math.random() - 0.5) * 16);
-          const tz = Math.floor(playerPosition.z + (Math.random() - 0.5) * 16);
-          let ty = Math.min(WORLD_HEIGHT - 2, Math.floor(playerPosition.y) + 8);
-          while (ty > 1 && !BLOCKS[world.getBlock(tx, ty - 1, tz)]?.solid) ty--;
-          if (ty <= 1 || BLOCKS[world.getBlock(tx, ty, tz)]?.solid || BLOCKS[world.getBlock(tx, ty + 1, tz)]?.solid) continue;
-          pearlTeleport.pending = { x: tx + 0.5, y: ty, z: tz + 0.5 };
-          break;
-        }
+    if (held?.kind === 'material' && FOODS[held.material]) {
+      // 进食读条（MC Java 按住右键 1.61s）：首次按下启动读条；触屏按住「放」的连发调用只续期不重启。
+      // 右键优先级保持现状：食物判定在方块交互之前（Java 潜行/不可交互时才吃的精细优先级未做）
+      if (eatState.active && eatState.slot === s.selectedSlot && eatState.material === held.material) {
+        eatState.nudgedAt = performance.now();
+        return false;
       }
-      lastPlace = now;
+      if (startEating(s)) lastPlace = now;
       return false;
     }
     // 鞘翅：手持右击装备到胸甲槽（MC；原胸甲回手）
@@ -595,6 +710,46 @@ export function tryPlace(): boolean {
     if (hitId === BLOCK_BY_KEY.chest.id || hitId === BLOCK_BY_KEY.barrel.id) {
       s.setStorageOpen(`${bx},${by},${bz}`);
       return false;
+    }
+    // 重生锚（MC）：荧石粉右键充能（最多 4 档）；下界已充能时右键（空手/非荧石）设重生点；
+    // 主世界/末地右键爆炸（威力 5，同床的维度规则）；死亡重生耗档逻辑见 Player.tsx resolveAnchorRespawn
+    if (hitId === BLOCK_BY_KEY.respawn_anchor.id) {
+      const charge = getAnchorCharge(bx, by, bz);
+      const heldForAnchor = s.hotbarSlots[s.selectedSlot];
+      const heldGlowstone = heldForAnchor?.kind === 'material' && heldForAnchor.material === 'glowstone_dust';
+      if (heldGlowstone) {
+        if (charge >= MAX_ANCHOR_CHARGE) {
+          s.setNotice('重生锚已充满能量');
+        } else {
+          setAnchorCharge(bx, by, bz, charge + 1);
+          if (s.worldMode === 'survival') s.consumeMaterial('glowstone_dust', 1);
+          s.setNotice(`重生锚充能 ${charge + 1}/${MAX_ANCHOR_CHARGE}`);
+          playSound('place');
+        }
+        lastPlace = now;
+        return false;
+      }
+      if ((world.terrain.kind ?? 'overworld') === 'nether') {
+        if (charge >= 1) {
+          s.setRespawnPoint({ x: bx + 0.5, y: by + 1, z: bz + 0.5 });
+          s.setNotice('重生点已设置');
+          playSound('place');
+        } else {
+          s.setNotice('重生锚需要荧石粉充能');
+        }
+        lastPlace = now;
+        return false;
+      }
+      // 主世界/末地：右键即爆炸（MC；未充能也炸，威力 5 同床）
+      world.setBlock(bx, by, bz, AIR);
+      anchorCharges.delete(anchorKey(bx, by, bz));
+      explodeAt(world, bx + 0.5, by + 0.5, bz + 0.5, playerPosition, (dmg) => s.damagePlayer(dmg), {
+        radius: 5, // MC：重生锚爆炸威力 5（TNT 为 4）
+        maxDamage: 43,
+        hurtRadius: 8,
+      });
+      lastPlace = now;
+      return true;
     }
     // 床：下界/末地右击即爆炸（MC 经典维度规则，威力大于 TNT）；主世界夜晚（或雷暴白天）睡觉——跳到日出、
     // 睡醒放晴、重生点设到床边；白天右键只设重生点不睡觉（Java 1.15+）
