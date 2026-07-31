@@ -12,6 +12,7 @@ import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler, isLeavesId, LEAF_TO_SAPLING } from './saplings';
 import { raycastBlock } from './raycast';
 import { explodeAt } from './explosion';
+import { checkGravityAt } from './gravity';
 import { clearBrokenPortals, tryIgnitePortal } from './portal';
 import { interactBeacon } from './beacon';
 import { trySummonWither } from './wither';
@@ -92,6 +93,8 @@ export function breakBlock(world: World, x: number, y: number, z: number): void 
   }
   // 传送门联动：邻近门块的框若已不完整，整片门熄灭
   clearBrokenPortals(world, x, y, z);
+  // 重力方块：破坏后本格上方与四邻上方的沙/沙砾等可能失撑坠落（MC 方块更新）
+  for (const [gx, gz] of [[x, z], [x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]] as const) checkGravityAt(world, gx, y, gz);
   // 耕地被破坏：上面的作物一律清掉（创造模式也清，否则留浮空作物）；种子掉落物只在生存模式产生
   if (isFarmlandId(oldId) && isWheatCropId(world.getBlock(x, y + 1, z))) {
     world.setBlock(x, y + 1, z, AIR);
@@ -781,6 +784,8 @@ export function tryPlace(): boolean {
   // 校验全部通过：扣减并放置
   if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;
   world.setBlock(px, py, pz, id);
+  // 重力方块：放下即检查自身与上方是否悬空（MC：沙子无支撑即落）
+  checkGravityAt(world, px, py, pz);
   // 凋灵骷髅头放下：检测 T 形召唤（MC 凋灵仪式）
   if (id === BLOCK_BY_KEY.wither_skeleton_skull.id) trySummonWither(world, px, py, pz, (d) => s.damagePlayer(d));
   playSound(BLOCKS[id]?.placeSound ?? 'place');

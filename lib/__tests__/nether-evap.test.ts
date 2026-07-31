@@ -20,7 +20,7 @@ function mockCamera(): Camera {
   } as unknown as Camera;
 }
 
-function setupNether(held: Parameters<typeof useGameStore.setState>[0] extends never ? never : never): World {
+function setupNether(): World {
   const w = new World('nether-evap', undefined, { ...VOID_TERRAIN, kind: 'nether' });
   w.setBlock(4, 40, 4, BLOCK_BY_KEY.stone.id); // 地面目标（y40，高于岩浆海）
   setActiveWorld(w);

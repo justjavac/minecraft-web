@@ -2,6 +2,7 @@
 
 import { AIR, BLOCKS, BLOCK_BY_KEY, FURNACE, isLavaId, isWaterId, tileOf } from './blocks';
 import { dropFurnaceContents } from './furnace';
+import { checkGravityAt } from './gravity';
 import { breakParticles } from './game';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { boom, playSound } from './sound';
@@ -58,6 +59,7 @@ export function explodeAt(
           if (s.storageOpen === key) s.setStorageOpen(null);
           if (s.furnaceOpen === key) s.setFurnaceOpen(null);
           world.setBlock(bx, by, bz, AIR);
+          checkGravityAt(world, bx, by, bz); // 爆炸后上方重力方块失撑坠落（MC 方块更新）
           // TNT 被波及：转为点燃实体连锁引爆（MC 一致，不再掉方块）
           if (id === BLOCK_BY_KEY.tnt.id) {
             igniteTnt(bx, by, bz);

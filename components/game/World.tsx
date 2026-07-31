@@ -25,6 +25,7 @@ import { clearStorages, storages } from '@/lib/storage';
 import { clearMobs, makeEnderDragon, mobs } from '@/lib/mobs';
 import { clearEndFight, dragonState, initEndFight } from '@/lib/endfight';
 import { tickFluids, clearFluids } from '@/lib/fluids';
+import { clearGravity, tickGravity } from '@/lib/gravity';
 import { clearFishing } from '@/lib/fishing';
 import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
@@ -274,6 +275,7 @@ export function WorldRenderer() {
       clearSaplings();
       clearCrops();
       clearRedstone();
+      clearGravity(); // 下落中的重力方块同属世界作用域
       clearTnt();
       clearBeacons(); // 信标/TNT 同属世界作用域：不清则主世界 TNT 在下界继续 tick 爆炸、信标被当下界方块校验误删
       clearDrops(); // 掉落物也随维度/世界清理（否则主世界掉落物跟到下界继续 tick，回菜单再开新图旧掉落物残留）
@@ -330,6 +332,7 @@ export function WorldRenderer() {
       lastFluid.current = now;
       try {
         tickFluids(w);
+        tickGravity(w, 0.2); // 重力方块下落推进（与流体同节奏）
         tickSaplings(w, 0.4); // 内部按 2s 累计触发生长/凋零
         tickCrops(w, 0.4); // 同上节奏推进小麦生长
         tickGrowth(w, 0.4); // 柱状作物随机刻（仙人掌/甘蔗/竹子）
