@@ -13,6 +13,8 @@ import { itemDrops } from '@/lib/items';
 import { otherDimension } from '@/lib/dimension';
 import { END_SPAWN } from '@/lib/end';
 import { isPortalId } from '@/lib/portal';
+import { outerHeightAt, pickOuterIsland } from '@/lib/end';
+import { gatewayState } from '@/lib/endfight';
 import { spawnMaterialDrop } from '@/lib/items';
 import { raycastBlock } from '@/lib/raycast';
 import { arrows, checkEndermanStare, damageMob, mobInReach, mobs, spawnMobAt, type Arrow } from '@/lib/mobs';
@@ -649,6 +651,22 @@ export function Player() {
     {
       const feet = world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
       const eye = world.getBlock(Math.floor(p.x), Math.floor(p.y) + 1, Math.floor(p.z));
+      // 折跃门：末地内接触即传送到外岛（MC；判定优先于返回门——折跃门中心也是 end_portal 方块）
+      if (gs.dimension === 'end' && gatewayState.active) {
+        const gd = Math.hypot(p.x - gatewayState.x, p.y + 0.5 - gatewayState.y, p.z - gatewayState.z);
+        if (gd < 1.4) {
+          const isle = pickOuterIsland(world.seedHash);
+          if (isle) {
+            p.x = isle.x + 0.5;
+            p.y = outerHeightAt(world.seedHash, isle.x, isle.z) + 1;
+            p.z = isle.z + 0.5;
+            velY.current = 0;
+            survivalMem.current.fallDist = 0;
+            prevStep.current = { x: p.x, z: p.z };
+            return;
+          }
+        }
+      }
       // 末地传送门：接触即传送（MC 即时，无读秒）；主世界→末地落固定出生平台，末地→主世界回维度暂存位（MC 返回门）
       if (feet === BLOCK_BY_KEY.end_portal.id || eye === BLOCK_BY_KEY.end_portal.id) {
         if (gs.dimension === 'end') {

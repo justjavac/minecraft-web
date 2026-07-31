@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BLOCK_BY_KEY } from '../blocks';
 import { createEndTerrain, endPillars } from '../end';
-import { dragonState, endCrystals, hitCrystal, initEndFight, resetEndFight, tickCrystals } from '../endfight';
+import { dragonState, endCrystals, gatewayState, hitCrystal, initEndFight, resetEndFight, tickCrystals } from '../endfight';
 import { bossState } from '../game';
 import { arrows, clearMobs, damageMob, makeEnderDragon, mobs, tickMobs } from '../mobs';
 import { hashString } from '../noise';
@@ -169,6 +169,14 @@ describe('击杀结算', () => {
       for (let dz = -1; dz <= 1; dz++) expect(w.getBlock(dx, ay + 1, dz)).toBe(K('end_portal'));
     }
     expect(w.getBlock(0, ay + 3, 0)).toBe(K('dragon_egg'));
+    // 折跃门（MC：主岛缘浮空基岩台 + 门块，通外岛）
+    expect(gatewayState.active).toBe(true);
+    const gy = Math.max(w.terrain.heightAt(90, 0), w.terrain.heightAt(80, 0), 60) + 8;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) expect(w.getBlock(90 + dx, gy, dz)).toBe(K('bedrock'));
+    }
+    expect(w.getBlock(90, gy + 1, 0)).toBe(K('end_portal'));
+    expect(gatewayState.y).toBe(gy + 1);
   });
 
   it('玩家箭命中水晶即爆（MC 远程击毁标准打法）', () => {

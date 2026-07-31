@@ -26,6 +26,9 @@ export const crystalVersion = { v: 0 };
 /** 龙是否已被击杀（杀死后重进末地不再生成龙，祭坛保持激活；经 lib/persistence.ts 持久化，刷新页面后读档恢复） */
 export const dragonState = { slain: false };
 
+/** 折跃门位置与激活状态（MC：杀龙后在主岛缘生成通外岛的折跃门；世界作用域，init/clear 时重置） */
+export const gatewayState = { x: 0.5, y: 0, z: 0.5, active: false };
+
 /** 进入末地时初始化：未屠龙则每根柱顶放一颗水晶；惰性注册击杀回调（避免模块加载期触发循环依赖 TDZ）。
  *  返回的 Promise 在读档恢复屠龙标记后落定：已屠龙则清掉刚放的水晶与调用方在恢复前误生成的龙（World.tsx 不等恢复就生成龙，这里纠错） */
 let handlerRegistered = false;
@@ -36,7 +39,10 @@ export function initEndFight(world: World): Promise<void> {
   }
   endCrystals.length = 0;
   crystalVersion.v++;
-  if (dragonState.slain) return Promise.resolve();
+  if (dragonState.slain) {
+    spawnGateway(world); // 已屠龙：折跃门结构补齐（旧档/重进——同位置同方块，幂等）
+    return Promise.resolve();
+  }
   for (const p of endPillars(world.seedHash)) {
     endCrystals.push({ x: p.x + 0.5, y: p.top + 1.2, z: p.z + 0.5, alive: true });
   }
@@ -53,6 +59,7 @@ export function initEndFight(world: World): Promise<void> {
 export function clearEndFight(): void {
   endCrystals.length = 0;
   crystalVersion.v++;
+  gatewayState.active = false;
 }
 
 /** 击毁水晶：爆炸（MC 威力 6，比 TNT 强），龙失去一条回血来源 */
@@ -100,7 +107,20 @@ export function tickCrystals(dragon: { x: number; y: number; z: number; hp: numb
   if (near) dragon.hp = Math.min(200, dragon.hp + 1);
 }
 
-/** 击杀结算（damageMob 注入回调）：标记屠龙并写入存档（刷新不复活）、清空水晶、祭坛激活——中心 3×3 变返回门（end_portal），中心柱顶放龙蛋（MC） */
+/** 杀龙后生成折跃门（MC：主岛缘浮空基岩台 + 门块，通外岛）；位置确定性（重进幂等重建） */
+function spawnGateway(world: World): void {
+  const gy = Math.max(world.terrain.heightAt(90, 0), world.terrain.heightAt(80, 0), 60) + 8;
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) world.setBlock(90 + dx, gy, dz, K('bedrock'));
+  }
+  world.setBlock(90, gy + 1, 0, K('end_portal'));
+  gatewayState.x = 90.5;
+  gatewayState.y = gy + 1;
+  gatewayState.z = 0.5;
+  gatewayState.active = true;
+}
+
+/** 击杀结算（damageMob 注入回调）：标记屠龙并写入存档（刷新不复活）、清空水晶、祭坛激活——中心 3×3 变返回门（end_portal），中心柱顶放龙蛋（MC）；主岛缘生成折跃门（MC） */
 function onDragonKilled(world: World): void {
   dragonState.slain = true;
   void saveDragonSlain(world.seed);
@@ -112,6 +132,7 @@ function onDragonKilled(world: World): void {
     for (let dz = -1; dz <= 1; dz++) world.setBlock(dx, ay + 1, dz, K('end_portal'));
   }
   world.setBlock(0, ay + 3, 0, K('dragon_egg')); // 中心柱（ay+2 基岩）顶
+  spawnGateway(world);
 }
 
 /** 测试/重置用 */
@@ -120,4 +141,5 @@ export function resetEndFight(): void {
   endCrystals.length = 0;
   healAcc = 0;
   crystalVersion.v++;
+  gatewayState.active = false;
 }

@@ -129,6 +129,16 @@ export function outerHeightAt(seedHash: number, x: number, z: number): number {
   return best;
 }
 
+/** 折跃门传送目标：按确定顺序找最近的可落外岛（杀龙后通外岛，MC 折跃门落点简化） */
+export function pickOuterIsland(seedHash: number): OuterIsland | null {
+  const cands: [number, number][] = [[2, 0], [0, 2], [2, 2], [3, 1], [1, 3], [3, 3], [4, 0], [0, 4]];
+  for (const [rx, rz] of cands) {
+    const isle = outerIslandAt(seedHash, rx, rz);
+    if (isle) return isle;
+  }
+  return null;
+}
+
 /** 包含 (x,z) 的外岛（末地城生成/刷怪定位用；无则 null） */
 export function outerIslandContaining(seedHash: number, x: number, z: number): OuterIsland | null {
   const rx = Math.floor(x / OUTER_REGION);
