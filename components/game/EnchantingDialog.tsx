@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { materialTile } from '@/lib/materials';
+import { getActiveWorld } from '@/lib/game';
 import { useGameStore } from '@/lib/store';
 import { TOOLS, type ToolDef } from '@/lib/tools';
-import { ENCHANTS, levelFromXp, rollOffers } from '@/lib/xp';
+import { bookshelfPower, ENCHANTS, enchantLevelCap, levelFromXp, rollOffers } from '@/lib/xp';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { AbsSlot, G, GuiHotbarSlots, GuiSlot, HOT_Y, hotX, McGuiFrame } from './McGui';
 import { TileIcon } from './TileIcon';
@@ -44,6 +45,16 @@ export function EnchantingDialog() {
   const { level } = levelFromXp(xpTotal);
   const lapisCount = slots.reduce((n, s) => n + (s?.kind === 'material' && s.material === 'lapis' ? s.count : 0), 0);
 
+  // MC 书架规则：2 格环内书架数（0-15）决定附魔档位上限——无书架最高 8 级档、满 15 书架 30 级档
+  const power = useMemo(() => {
+    if (!open) return 0;
+    const world = getActiveWorld();
+    if (!world) return 0;
+    const [x, y, z] = open.split(',').map(Number);
+    return bookshelfPower(world, x, y, z);
+  }, [open]);
+  const effectiveLevel = Math.min(level, enchantLevelCap(power));
+
   const kind: ItemKind | null = useMemo(() => {
     const slot = selected !== null ? slots[selected] : null;
     if (!slot) return null;
@@ -56,8 +67,8 @@ export function EnchantingDialog() {
   const currentEnch = selectedSlot && (selectedSlot.kind === 'tool' || selectedSlot.kind === 'armor') ? selectedSlot.ench : undefined;
   // 已有附魔参与摇项（精准采集与时运互斥，见 lib/xp.ts rollOffers）
   const offers = useMemo(
-    () => (kind && selected !== null ? rollOffers((selected + 1) * 0x9e37 ^ rollSeed, kind, Math.max(1, level), currentEnch) : []),
-    [kind, selected, rollSeed, level, currentEnch],
+    () => (kind && selected !== null ? rollOffers((selected + 1) * 0x9e37 ^ rollSeed, kind, Math.max(1, effectiveLevel), currentEnch) : []),
+    [kind, selected, rollSeed, effectiveLevel, currentEnch],
   );
 
   return (
@@ -99,6 +110,13 @@ export function EnchantingDialog() {
               </button>
             );
           })}
+          {/* 书架功率（MC：无书架最高 8 级档、满 15 书架 30 级档） */}
+          <span
+            className="absolute text-[10px] text-white/50"
+            style={{ left: OFFER_X, top: offerY(2) + OFFER_H + 3, width: OFFER_W }}
+          >
+            书架 {power}/15{power === 0 ? '（无书架：最高 8 级档）' : power < 15 ? `（最高 ${enchantLevelCap(power)} 级档）` : '（满级 30 级档）'}
+          </span>
           {selected !== null && kind && offers.length === 0 && (
             <span
               className="absolute flex items-center justify-center text-[12px] text-white/60"

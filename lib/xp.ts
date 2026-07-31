@@ -1,7 +1,9 @@
 // 经验与附魔：XP 数值表、MC 等级公式、附魔定义与适用规则
 
+import { BLOCK_BY_KEY } from './blocks';
 import type { MobType } from './mobs';
 import { mulberry32 } from './noise';
+import type { World } from './world';
 
 /** 杀怪经验（MC：敌对 5、烈焰人 10、被动 1-3 取中） */
 export const XP_MOB: Record<MobType, number> = {
@@ -114,6 +116,25 @@ export function enchantsFor(kind: 'sword' | 'dig' | 'armor' | 'hoe' | 'bow'): En
 export function enchCost(lvl: number): { lapis: number; levels: number } {
   const cost = Math.min(Math.max(1, lvl), 3);
   return { lapis: cost, levels: cost };
+}
+
+/** 附魔台书架功率（MC：2 格环内的书架数，0-15；内圈 3×3 要留空气间隔不算） */
+export function bookshelfPower(world: World, x: number, y: number, z: number): number {
+  let n = 0;
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -1; dy <= 2; dy++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1 && dy >= 0 && dy <= 1) continue; // 内圈：MC 要求一格空气间隔
+        if (world.getBlock(x + dx, y + dy, z + dz) === BLOCK_BY_KEY.bookshelf.id) n++;
+      }
+    }
+  }
+  return Math.min(15, n);
+}
+
+/** 书架功率对应的附魔等级上限（MC：无书架最高 8 级档，满 15 书架 30 级档） */
+export function enchantLevelCap(power: number): number {
+  return Math.max(8, Math.min(30, power * 2));
 }
 
 /** 为物品生成 3 个附魔选项（选中即定型，不重摇；MC：精准采集与时运互斥，已有其一则另一个不出现） */
