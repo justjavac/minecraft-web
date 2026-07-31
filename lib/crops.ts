@@ -2,7 +2,9 @@
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, isWaterId, WHEAT_CROP_0, type BlockId } from './blocks';
 import { dayFactorAt, worldClock } from './game';
+import { WORLD_HEIGHT } from './grid';
 import type { World } from './world';
+import { registerWorldScope } from './worldScope';
 
 const WHEAT_CROP_7 = WHEAT_CROP_0 + 7;
 
@@ -68,6 +70,28 @@ export function clearCrops(): void {
 }
 
 /**
+ * chunk 首次进入世界（新生成/读档恢复）或数据被存档整体替换时重扫登记：
+ * 世界生成与存档恢复都直写 chunk data，不走 world.setBlock 钩子，登记只能事后补扫。
+ * 幂等（重复扫描只是重复 add）；数据替换留下的失效登记由 tickCrops 自检除名，无需在此对账。
+ */
+export function rescanCropsChunk(world: World, cx: number, cz: number): void {
+  const c = world.chunks.get(`${cx},${cz}`);
+  if (!c) return;
+  const bx = cx << 4;
+  const bz = cz << 4;
+  // localIndex 公式与 world.ts 一致（此处内联避免运行时循环依赖）
+  for (let y = 0; y < WORLD_HEIGHT; y++) {
+    for (let z = 0; z < 16; z++) {
+      for (let x = 0; x < 16; x++) {
+        const id = c.data[(y * 16 + z) * 16 + x];
+        if (isWheatCropId(id)) crops.add(key(bx + x, y, bz + z));
+        else if (isFarmlandId(id)) farmlands.add(key(bx + x, y, bz + z));
+      }
+    }
+  }
+}
+
+/**
  * 每 ~2s 调用：
  * - 耕地：4 格内有水变湿润（作物 2 倍速），干旱且空着的缓慢退化回泥土；
  *   每 tick 限量处理 FARMLAND_BATCH 块（大农场分摊到多个 tick，避免主线程卡顿），
@@ -126,3 +150,6 @@ export function tickCrops(world: World, dt: number): void {
     if (rand() < chance) world.setBlock(x, y, z, id + 1);
   }
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：作物/耕地登记随世界清理
+registerWorldScope({ name: 'crops', clear: clearCrops });

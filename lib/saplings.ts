@@ -5,6 +5,7 @@ import { mulberry32, type TreeKind } from './noise';
 import { TREE_MAX_H, writeTree } from './trees';
 import { type World } from './world';
 import { WORLD_HEIGHT } from './grid';
+import { registerWorldScope } from './worldScope';
 
 /** 原木（含去皮）判定：叶子的供养来源 */
 export function isLogId(id: BlockId): boolean {
@@ -101,9 +102,13 @@ export function tickSaplings(world: World, dt: number): void {
   for (const k of [...saplings]) {
     const [x, y, z] = k.split(',').map(Number);
     if (!world.chunks.has(`${x >> 4},${z >> 4}`)) continue; // 未加载的不管
+    const def = BLOCKS[world.getBlock(x, y, z)];
+    if (!def?.treeWood) {
+      saplings.delete(k); // 已非树苗（被移除/存档覆盖的失效登记），立即除名
+      continue;
+    }
     if (rand() < 1 / 25) {
-      const def = BLOCKS[world.getBlock(x, y, z)];
-      if (def?.treeWood) growTree(world, x, y, z, def.treeWood);
+      growTree(world, x, y, z, def.treeWood);
       saplings.delete(k);
     }
   }
@@ -142,3 +147,25 @@ export function clearSaplings(): void {
   saplings.clear();
   leafQueue.clear();
 }
+
+/**
+ * chunk 首次进入世界（新生成/读档恢复）或数据被存档整体替换时重扫登记树苗：
+ * 世界生成与存档恢复都直写 chunk data，不走 world.setBlock 钩子，登记只能事后补扫。
+ * 幂等（重复扫描只是重复 add）；数据替换留下的失效登记由 tickSaplings 自检除名。
+ */
+export function rescanSaplingsChunk(world: World, cx: number, cz: number): void {
+  const c = world.chunks.get(`${cx},${cz}`);
+  if (!c) return;
+  const bx = cx << 4;
+  const bz = cz << 4;
+  for (let y = 0; y < WORLD_HEIGHT; y++) {
+    for (let z = 0; z < 16; z++) {
+      for (let x = 0; x < 16; x++) {
+        if (BLOCKS[c.data[(y * 16 + z) * 16 + x]]?.treeWood) saplings.add(key(bx + x, y, bz + z));
+      }
+    }
+  }
+}
+
+// 世界作用域自注册（lib/worldScope.ts）：树苗/树叶队列随世界清理
+registerWorldScope({ name: 'saplings', clear: clearSaplings });
