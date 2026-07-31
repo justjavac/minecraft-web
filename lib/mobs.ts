@@ -1640,7 +1640,8 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
     }
     const i2 = mobs.indexOf(mob);
     if (i2 >= 0) removeMob(mob);
-    useGameStore.getState().addXp((mob.slimeSize ?? 4) === 4 ? 4 : 2); // MC：大 4 / 中 2
+    // MC：大 4 / 中 2，仅玩家击杀发经验（环境击杀不发）
+    if (attackerPos) useGameStore.getState().addXp((mob.slimeSize ?? 4) === 4 ? 4 : 2);
     return true;
   }
   // 击杀掉落（数量在区间内随机；抢夺附魔每件 +0~lvl）与杀怪经验（MC）
