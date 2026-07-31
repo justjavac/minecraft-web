@@ -18,6 +18,7 @@ import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS } from './tools';
 import { executeTrade, MAX_TRADE_USES, professionOf, TRADES, tradeDay, tradeStockLeft, deductTradeStock } from './trading';
 import { levelFromXp, subtractLevels } from './xp';
+import { spawnXpOrbs } from './xporb';
 
 // 类型与共享常量在 lib/store-types.ts（slice 组合需要）；此处再导出保持既有 import 路径不变
 export type { Screen, GameMode, WorldMode, Settings, GameStore } from './store-types';
@@ -191,9 +192,11 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       let mainSlots = s.mainSlots;
       let xpTotal = s.xpTotal;
       if (died) {
-        // 死亡掉落：热键栏 + 背包 + 装备槽全部物品散落在死亡点（与 MC 一致）；经验清零
-        xpTotal = 0;
+        // 死亡掉落：热键栏 + 背包 + 装备槽全部物品散落在死亡点（与 MC 一致）；经验化球散落可捡回（MC：约 min(等级×7,100)）
         const { x, y, z } = playerPosition;
+        const dropXp = Math.min(levelFromXp(s.xpTotal).level * 7, 100);
+        if (dropXp > 0) spawnXpOrbs(x, y + 0.5, z, dropXp);
+        xpTotal = 0;
         for (const slot of [...s.hotbarSlots, ...s.mainSlots]) {
           if (!slot) continue;
           if (slot.kind === 'block') spawnBlockDrop(slot.id, x, y + 0.5, z, slot.count);

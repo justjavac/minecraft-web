@@ -14,6 +14,7 @@ import { BeaconBeams } from './BeaconBeams';
 import { EndCrystals } from './EndCrystals';
 import { FishingBobber } from './FishingBobber';
 import { ItemDrops } from './ItemDrops';
+import { XpOrbs } from './XpOrbs';
 import { Tnt } from './Tnt';
 import { DayNight } from './DayNight';
 import { Rain } from './Rain';
@@ -98,6 +99,7 @@ export function GameCanvas() {
         <EndCrystals />
         <FishingBobber />
         <ItemDrops />
+        <XpOrbs />
         <Tnt />
         <BlockHighlight />
         <PlacePreview />

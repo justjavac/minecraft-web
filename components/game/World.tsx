@@ -26,6 +26,7 @@ import { clearMobs, makeEnderDragon, mobs } from '@/lib/mobs';
 import { clearEndFight, dragonState, initEndFight } from '@/lib/endfight';
 import { tickFluids, clearFluids } from '@/lib/fluids';
 import { clearGravity, tickGravity } from '@/lib/gravity';
+import { clearXpOrbs } from '@/lib/xporb';
 import { clearFishing } from '@/lib/fishing';
 import { tickCrops, clearCrops } from '@/lib/crops';
 import { tickGrowth } from '@/lib/growth';
@@ -276,6 +277,7 @@ export function WorldRenderer() {
       clearCrops();
       clearRedstone();
       clearGravity(); // 下落中的重力方块同属世界作用域
+      clearXpOrbs(); // 经验球同属世界作用域
       clearTnt();
       clearBeacons(); // 信标/TNT 同属世界作用域：不清则主世界 TNT 在下界继续 tick 爆炸、信标被当下界方块校验误删
       clearDrops(); // 掉落物也随维度/世界清理（否则主世界掉落物跟到下界继续 tick，回菜单再开新图旧掉落物残留）
