@@ -41,6 +41,10 @@ export const touchInput = {
   down: false,
   /** 按住「挖」按钮 */
   dig: false,
+  /** 潜行开关（TouchControls 切换按钮；Player 与桌面 Shift 合并消费） */
+  sneak: false,
+  /** 冲刺开关（TouchControls 切换按钮；Player 与桌面 Ctrl 合并消费） */
+  sprint: false,
 };
 
 /** 长按挖掘进度，Player 每帧写入，CrackOverlay 读取 */
@@ -49,6 +53,9 @@ export const digState = {
   /** 0..1，达到 1 时破坏方块 */
   progress: 0,
 };
+
+/** 攻击冷却蓄力进度（MC 1.9 战斗）：Player 每帧写入（1 = 冷却走满可满额出手），Hud 准星下方蓄力条读取 */
+export const attackState = { progress: 1 };
 
 export interface BreakParticleEvent {
   x: number;
@@ -82,6 +89,13 @@ export const targetBlock: { hit: RaycastHit | null } = { hit: null };
 
 /** 方块破坏粒子事件队列，actions 写入，BreakParticles 每帧消费 */
 export const breakParticles: BreakParticleEvent[] = [];
+
+/** 因打开面板而主动退出指针锁的标记：store-panels 打开面板时写入，Player 在面板全关后消费。
+ * 区分「面板退锁」与「用户主动 Esc 暂停」——仅前者在面板全关后自动回锁（用户 Esc 仍出暂停遮罩） */
+export const panelUnlock = { pending: false };
+
+/** 加载阶段（GameCanvas 写入，page.tsx LoadingOverlay 轮询显示）：detect = 渲染器检测中，world = 世界生成中（进度读 debugInfo.chunks） */
+export const loadingState = { phase: 'detect' as 'detect' | 'world' };
 
 /** F3 调试面板的共享数据，Player / WorldRenderer / BlockHighlight 每帧写入 */
 export const debugInfo = {

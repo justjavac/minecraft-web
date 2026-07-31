@@ -23,7 +23,8 @@ export const viewport: Viewport = {
   themeColor: "#5d9445",
   // 游戏内双指缩放/滚动由触控层接管，禁用页面缩放
   maximumScale: 1,
-  userScalable: false,
+  // viewport-fit=cover：配合 black-translucent 状态栏，内容延伸到刘海区（safe-area 适配）
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -32,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="zh-CN" className="h-full antialiased">
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

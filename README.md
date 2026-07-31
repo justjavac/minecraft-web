@@ -29,7 +29,8 @@ pnpm dev         # 打开 http://localhost:3000
 - Next.js (App Router) + shadcn/ui + Three.js (@react-three/fiber)，pnpm 管理
 - 多噪声场群系与山脊地形（lib/noise.ts）+ 确定性矿脉（lib/oregen.ts）+ 流体传播（lib/fluids.ts）
 - chunk 网格化在 Web Worker 池中执行（lib/mesherPool.ts）
-- 脚本：`pnpm dev` / `pnpm test`（vitest）/ `pnpm lint` / `pnpm build`（静态导出 `out/`，可部署到任意静态托管）
+- 脚本：`pnpm dev` / `pnpm test`（vitest）/ `pnpm lint` / `pnpm typecheck` / `pnpm build`（静态导出 `out/`，可部署到任意静态托管）
+- 离线缓存：`pnpm build` 前自动执行 `scripts/gen-sw-precache.mjs`，扫描 `public/` 生成 SW precache 清单（贴图/音效/字体），新增资产无需手改 `public/sw.js`
 - CI：GitHub Actions（push/PR 跑 lint + test + build）
 - 贴图工具：`scripts/build-pack.ts` 从 Faithful 源包重提取 atlas（需 python+PIL）
 

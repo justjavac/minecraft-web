@@ -225,3 +225,17 @@
     transform: rotate(-20deg) scale(1.1);
   }
 }
+
+/* ——— 触屏控件固定定位（safe-area 避让；env() 在无刘海设备/桌面为 0，布局不变） ——— */
+.touch-joy-pos {
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+  left: calc(1rem + env(safe-area-inset-left, 0px));
+}
+.touch-actions-pos {
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+  right: calc(0.75rem + env(safe-area-inset-right, 0px));
+}
+.touch-menu-pos {
+  top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  right: calc(0.5rem + env(safe-area-inset-right, 0px));
+}

@@ -1,10 +1,25 @@
 // kimi-mc Service Worker：离线可玩
-// 策略：页面 network-first（保证新版本及时生效）；纹理 network-first（atlas 会随版本变化，旧缓存会错位）；
+// 策略：install 期 precache 关键静态资产（贴图/音效/字体，清单由 scripts/gen-sw-precache.mjs 生成）；
+// 页面 network-first（保证新版本及时生效）；纹理 network-first（atlas 会随版本变化，旧缓存会错位）；
 // 其余静态资源 cache-first（JS chunk 带内容哈希，安全长缓存）
 
-const CACHE = 'kimi-mc-v4';
+const CACHE = 'kimi-mc-v5';
 
-self.addEventListener('install', () => {
+// precache 清单（构建时由 prebuild 生成；缺失时静默降级为纯懒缓存）
+try {
+  importScripts('/sw-precache-manifest.js');
+} catch {
+  // ignore
+}
+const PRECACHE = self.__PRECACHE_MANIFEST__ || [];
+
+self.addEventListener('install', (event) => {
+  // 逐个 fetch 写入，个别资产 404 不阻塞 SW 安装
+  event.waitUntil(
+    caches.open(CACHE).then((cache) =>
+      Promise.all(PRECACHE.map((url) => cache.add(url).catch(() => {}))),
+    ),
+  );
   self.skipWaiting();
 });
 

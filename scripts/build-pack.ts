@@ -3,7 +3,7 @@
 // 用法：pnpm tsx scripts/build-pack.ts <贴图包目录>（需包含 assets/minecraft/textures/block/）
 // 注意：water_still 动画条带由 python+PIL 裁首帧（与方块动画一致处理）
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 // 副作用导入：材料/工具/盔甲注册会把物品图标 stem 一并 intern 进 TILE_STEMS
@@ -12,6 +12,9 @@ import '../lib/armor';
 import '../lib/materials';
 import '../lib/tools';
 import { TILE_STEMS } from '../lib/blocks';
+
+// macOS/多数 Linux 只有 python3；个别环境只有 python —— 探测后回退
+const PYTHON = spawnSync('python3', ['--version']).status === 0 ? 'python3' : 'python';
 
 const SRC = process.argv[2];
 if (!SRC) {
@@ -38,7 +41,7 @@ for (const [i, stem] of TILE_STEMS.entries()) {
   }
   if (stem === 'water_still') {
     // 动画条带（32x1024）只取首帧正方形；完整条带另存为 water_still.png 供水面动画用
-    execFileSync('python', [
+    execFileSync(PYTHON, [
       '-c',
       'import sys; from PIL import Image; im = Image.open(sys.argv[1]); im.crop((0, 0, im.width, im.width)).save(sys.argv[2]); im.save(sys.argv[3])',
       src,
@@ -57,7 +60,7 @@ if (missing.length > 0) {
 }
 
 // 合成单文件 atlas（8 列网格，运行时一次请求替代逐 tile 请求）
-execFileSync('python', [
+execFileSync(PYTHON, [
   '-c',
   `import sys
 from PIL import Image
