@@ -121,6 +121,8 @@ export function createTerrain(seed: string): Terrain {
   const nRidge = createNoise2D(mulberry32(sh ^ 0x8f1b3d));
   const nMesa = createNoise2D(mulberry32(sh ^ 0x5e7a9c));
   const nMush = createNoise2D(mulberry32(sh ^ 0x3d6e8f));
+  // 山地簇场（更低频）：让山地聚集成连绵山脉而非满地孤立陡丘（孤立陡丘两两夹出深峡谷）
+  const nClump = createNoise2D(mulberry32(sh ^ 0x77aa11));
   // 洞穴群系场（滴水石/繁茂洞穴分区）
   const nCaveBio = createNoise2D(mulberry32(sh ^ 0x6a1c4e));
   // 含水层场（地下水位分区）
@@ -137,9 +139,14 @@ export function createTerrain(seed: string): Terrain {
   const humidity = (x: number, z: number) => nHumid(x * 0.0009, z * 0.0009);
   const weirdField = (x: number, z: number) => nWeird(x * 0.0018, z * 0.0018);
 
-  /** 山地遮罩 0..1（奇异度高且为陆地；MC 1.18 的 peaks 简化） */
+  /** 山地遮罩 0..1（奇异度高且为陆地、且落在山地簇内；MC 1.18 的 peaks 简化）。
+   *  阈值/渐带拉宽 + 低频簇门控：山脉更大更连绵、山脚过渡更长，减少「孤立陡丘夹深谷」 */
   function mountainMask(x: number, z: number): number {
-    return smoothstep(0.22, 0.55, weirdField(x, z)) * smoothstep(-0.02, 0.3, contField(x, z));
+    return (
+      smoothstep(0.3, 0.72, weirdField(x, z)) *
+      smoothstep(-0.02, 0.3, contField(x, z)) *
+      smoothstep(-0.08, 0.5, nClump(x * 0.0006, z * 0.0006))
+    );
   }
 
   /** 恶地台地遮罩 0..1（独立噪声场，避免与温度绑死出现频率过高） */
@@ -167,11 +174,12 @@ export function createTerrain(seed: string): Terrain {
     }
     const m = mountainMask(x, z);
     const mesa = mesaMask(x, z);
-    // 山地：山脊噪声（1-|n| 出尖峰）+ 细节脊（幅度压低，坡面更连续），抬升到 y≈75–115
+    // 山地：山脊噪声（1-|n| 出峰）+ 细节脊。谷地抬高（基底 15、主幅 26）避免脊间深窄峡谷；
+    // 峰顶用 ridge² 追加（只在 ridge→1 时显著）保留 y≈105+ 的高峰戏剧性，而不加深谷地
     if (m > 0 && mush < 0.3) {
       const ridge = 1 - Math.abs(nRidge(x * 0.008, z * 0.008));
       const ridge2 = 1 - Math.abs(nRidge(x * 0.021 + 300, z * 0.021 + 300));
-      h += m * (ridge * 36 + ridge2 * 6 + 16);
+      h += m * (ridge * 26 + ridge * ridge * 14 + ridge2 * 5 + 15);
     }
     // 恶地：抬升为 3 格阶梯的台地（mesa 层次感）
     if (mesa > 0 && mush < 0.3) {
