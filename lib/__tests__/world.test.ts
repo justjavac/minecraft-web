@@ -75,6 +75,31 @@ describe('World 方块读写', () => {
     expect(w.updateAround(0, 0, 2, 10_000)).toBe(0);
     expect(w.chunks.size).toBe(25);
   });
+
+  it('updateAround 记忆化：同位置同视距早退不重扫，跨边界/失效后重扫', () => {
+    const w = voidWorld();
+    expect(w.updateAround(0, 0, 2, 10_000)).toBe(0); // 铺满，缓存生效
+    // 同位置重复调用：早退返回 0，不重扫——半径外的游离 chunk 不会被卸载（卸载只随重扫做）
+    w.getChunk(10, 0); // 半径+2 之外的游离 chunk
+    expect(w.updateAround(0, 0, 2, 10_000)).toBe(0);
+    expect(w.chunks.has('10,0')).toBe(true);
+    // invalidateAround 强制重扫：游离 chunk 被卸载
+    w.invalidateAround();
+    expect(w.updateAround(0, 0, 2, 10_000)).toBe(0);
+    expect(w.chunks.has('10,0')).toBe(false);
+    // 跨 chunk 边界（坐标变化）自动触发重扫，无需 invalidate
+    w.getChunk(10, 0);
+    expect(w.updateAround(16, 0, 2, 10_000)).toBe(0);
+    expect(w.chunks.has('10,0')).toBe(false);
+    // 视距变化同样触发重扫
+    w.getChunk(10, 0);
+    expect(w.updateAround(16, 0, 3, 10_000)).toBe(0);
+    expect(w.chunks.has('10,0')).toBe(false);
+    // 加载期（未铺满）不缓存：预算耗尽的帧之后同位置调用仍继续推进生成
+    const w2 = voidWorld();
+    expect(w2.updateAround(0, 0, 2, 0)).toBe(24);
+    expect(w2.updateAround(0, 0, 2, 0)).toBe(23); // 同位置但仍在生成，未被早退吞掉
+  });
 });
 
 describe('地形生成', () => {

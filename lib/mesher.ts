@@ -6,7 +6,7 @@ import { BIOME_LIST, biomeIndex, type Terrain } from './noise';
 // 常量取叶子模块 grid（保持 worker 包最小）。
 // 注意：不要从 './world' 引入任何东西——即便是 type-only 引用，某些打包器/版本也不会擦除模块边，
 // 会把 world 的依赖链（react/store/idb）拖进 mesher worker 包致其初始化挂死。改用下面的结构化类型
-import { CHUNK_SIZE, WORLD_HEIGHT } from './grid';
+import { CHUNK_SIZE, CHUNK_VOLUME, WORLD_HEIGHT } from './grid';
 
 /** buildChunkGeometry/chunkBiomes 需要的世界结构（与 lib/world.ts 的 World 结构化兼容，无模块边） */
 export interface MesherWorld {
@@ -489,6 +489,162 @@ export function buildFromGrid(cx: number, cz: number, datas: (Uint16Array | null
     }
   }
   return { solid: solid.build(), water: water.build() };
+}
+
+// ——— 邻居边界切片快照（worker 请求的瘦身传输格式）———
+// buildFromGrid 对邻居 chunk 的访问严格不越界 ±1 格：面剔除看 x±dir，AO 探测的 side1/side2
+// 分别只作用于两条切轴（各 ±1，法线轴上为 0），panel/fence/slab/stairs 的 cull 与 lightFor 也均为 ±1。
+// 因此跨线程快照只需传中心整块 + 每个边邻居邻中心的 1 格厚切片 + 每个角邻居的 1×1 角柱，
+// worker 端用 expandBorders 重组成零填充整块后走原 buildFromGrid（未读区域本就恒为 0，与 null 一致）。
+
+/** 边邻居槽位（顺序 -x,+x,-z,+z，即 datas 索引 3/5/1/7）：取该邻居靠中心侧的 1 格厚切片 */
+export const EDGE_SLOTS = [
+  { k: 3, axis: 'x', at: CHUNK_SIZE - 1 },
+  { k: 5, axis: 'x', at: 0 },
+  { k: 1, axis: 'z', at: CHUNK_SIZE - 1 },
+  { k: 7, axis: 'z', at: 0 },
+] as const;
+
+/** 角邻居槽位（顺序 (-x,-z),(+x,-z),(-x,+z),(+x,+z)，即 datas 索引 0/2/6/8）：取靠中心的 1×1 角柱 */
+export const CORNER_SLOTS = [
+  { k: 0, x: CHUNK_SIZE - 1, z: CHUNK_SIZE - 1 },
+  { k: 2, x: 0, z: CHUNK_SIZE - 1 },
+  { k: 6, x: CHUNK_SIZE - 1, z: 0 },
+  { k: 8, x: 0, z: 0 },
+] as const;
+
+/** 中心整块 + 邻居边界切片的紧凑快照（MeshRequest 的数据部分；切片布局见下） */
+export interface BorderSnapshot {
+  /** 中心 chunk 完整方块数据 */
+  data: Uint16Array | null;
+  light: Uint8Array | null;
+  sky: Uint8Array | null;
+  /** 边邻居 1 格厚切片（顺序同 EDGE_SLOTS），布局 [y*CHUNK_SIZE + i]（i 为沿边坐标），null=邻居缺失 */
+  edgeDatas: (Uint16Array | null)[];
+  edgeLights: (Uint8Array | null)[];
+  edgeSkys: (Uint8Array | null)[];
+  /** 角邻居 1×1 角柱（顺序同 CORNER_SLOTS），布局 [y]，null=邻居缺失 */
+  cornerDatas: (Uint16Array | null)[];
+  cornerLights: (Uint8Array | null)[];
+  cornerSkys: (Uint8Array | null)[];
+}
+
+type AnyArr = Uint16Array | Uint8Array;
+
+/** 抽取边邻居靠中心侧的 1 格厚切片（新数组即快照拷贝） */
+function sliceEdge<T extends AnyArr>(src: T, axis: 'x' | 'z', at: number): T {
+  const out = new (src.constructor as new (n: number) => T)(CHUNK_SIZE * WORLD_HEIGHT);
+  for (let y = 0; y < WORLD_HEIGHT; y++) {
+    for (let i = 0; i < CHUNK_SIZE; i++) {
+      out[y * CHUNK_SIZE + i] = src[(y * CHUNK_SIZE + (axis === 'z' ? at : i)) * CHUNK_SIZE + (axis === 'x' ? at : i)];
+    }
+  }
+  return out;
+}
+
+/** 抽取角邻居靠中心的 1×1 角柱 */
+function sliceCorner<T extends AnyArr>(src: T, x: number, z: number): T {
+  const out = new (src.constructor as new (n: number) => T)(WORLD_HEIGHT);
+  for (let y = 0; y < WORLD_HEIGHT; y++) out[y] = src[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x];
+  return out;
+}
+
+/** 把边切片写回整块（workers 端重组用；dst 必须零填充，未写区域恒 0 与 null 邻居语义一致） */
+function pasteEdge(dst: AnyArr, slice: AnyArr, axis: 'x' | 'z', at: number): void {
+  for (let y = 0; y < WORLD_HEIGHT; y++) {
+    for (let i = 0; i < CHUNK_SIZE; i++) {
+      dst[(y * CHUNK_SIZE + (axis === 'z' ? at : i)) * CHUNK_SIZE + (axis === 'x' ? at : i)] = slice[y * CHUNK_SIZE + i];
+    }
+  }
+}
+
+/** 把角柱写回整块 */
+function pasteCorner(dst: AnyArr, slice: AnyArr, x: number, z: number): void {
+  for (let y = 0; y < WORLD_HEIGHT; y++) dst[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] = slice[y];
+}
+
+/** 3×3 整块 → 紧凑边界快照（主线程组 worker 请求用；所有输出数组均为新拷贝，可作 transferable） */
+export function sliceBorders(datas: (Uint16Array | null)[], lights: (Uint8Array | null)[], skys: (Uint8Array | null)[]): BorderSnapshot {
+  return {
+    data: datas[4] ? new Uint16Array(datas[4]) : null,
+    light: lights[4] ? new Uint8Array(lights[4]) : null,
+    sky: skys[4] ? new Uint8Array(skys[4]) : null,
+    edgeDatas: EDGE_SLOTS.map(({ k, axis, at }) => {
+      const a = datas[k];
+      return a ? sliceEdge(a, axis, at) : null;
+    }),
+    edgeLights: EDGE_SLOTS.map(({ k, axis, at }) => {
+      const a = lights[k];
+      return a ? sliceEdge(a, axis, at) : null;
+    }),
+    edgeSkys: EDGE_SLOTS.map(({ k, axis, at }) => {
+      const a = skys[k];
+      return a ? sliceEdge(a, axis, at) : null;
+    }),
+    cornerDatas: CORNER_SLOTS.map(({ k, x, z }) => {
+      const a = datas[k];
+      return a ? sliceCorner(a, x, z) : null;
+    }),
+    cornerLights: CORNER_SLOTS.map(({ k, x, z }) => {
+      const a = lights[k];
+      return a ? sliceCorner(a, x, z) : null;
+    }),
+    cornerSkys: CORNER_SLOTS.map(({ k, x, z }) => {
+      const a = skys[k];
+      return a ? sliceCorner(a, x, z) : null;
+    }),
+  };
+}
+
+/** 紧凑快照 → buildFromGrid 期望的 3×3 整块布局（worker 端重组；邻居为切片区域外恒 0 的整块） */
+export function expandBorders(snap: BorderSnapshot): { datas: (Uint16Array | null)[]; lights: (Uint8Array | null)[]; skys: (Uint8Array | null)[] } {
+  const datas: (Uint16Array | null)[] = new Array<Uint16Array | null>(9).fill(null);
+  const lights: (Uint8Array | null)[] = new Array<Uint8Array | null>(9).fill(null);
+  const skys: (Uint8Array | null)[] = new Array<Uint8Array | null>(9).fill(null);
+  datas[4] = snap.data;
+  lights[4] = snap.light;
+  skys[4] = snap.sky;
+  EDGE_SLOTS.forEach(({ k, axis, at }, e) => {
+    const d = snap.edgeDatas[e];
+    if (d) {
+      const full = new Uint16Array(CHUNK_VOLUME);
+      pasteEdge(full, d, axis, at);
+      datas[k] = full;
+    }
+    const l = snap.edgeLights[e];
+    if (l) {
+      const full = new Uint8Array(CHUNK_VOLUME);
+      pasteEdge(full, l, axis, at);
+      lights[k] = full;
+    }
+    const s = snap.edgeSkys[e];
+    if (s) {
+      const full = new Uint8Array(CHUNK_VOLUME);
+      pasteEdge(full, s, axis, at);
+      skys[k] = full;
+    }
+  });
+  CORNER_SLOTS.forEach(({ k, x, z }, c) => {
+    const d = snap.cornerDatas[c];
+    if (d) {
+      const full = new Uint16Array(CHUNK_VOLUME);
+      pasteCorner(full, d, x, z);
+      datas[k] = full;
+    }
+    const l = snap.cornerLights[c];
+    if (l) {
+      const full = new Uint8Array(CHUNK_VOLUME);
+      pasteCorner(full, l, x, z);
+      lights[k] = full;
+    }
+    const s = snap.cornerSkys[c];
+    if (s) {
+      const full = new Uint8Array(CHUNK_VOLUME);
+      pasteCorner(full, s, x, z);
+      skys[k] = full;
+    }
+  });
+  return { datas, lights, skys };
 }
 
 export function buildChunkGeometry(world: MesherWorld, chunk: MesherChunk): { solid: GeometryData; water: GeometryData } {

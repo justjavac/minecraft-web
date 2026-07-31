@@ -1,7 +1,7 @@
 // 网格化 Worker 池：chunk mesh 在后台线程构建，流式加载期间主线程保持流畅
 // 同 key 重复请求只保留最新（排队中的旧版本直接丢弃）
 
-import type { GeometryData } from './mesher';
+import { sliceBorders, type GeometryData } from './mesher';
 import type { MeshRequest, MeshResponse } from './mesher.worker';
 
 const POOL_SIZE = Math.max(2, Math.min(4, (typeof navigator !== 'undefined' ? navigator.hardwareConcurrency ?? 4 : 4) - 1));
@@ -16,8 +16,20 @@ interface Pending {
   watchdogBusy?: boolean;
 }
 
+/** 排队中的原始输入（3×3 整块引用；发给 worker 时才切片快照） */
+interface BuildInput {
+  key: string;
+  version: number;
+  cx: number;
+  cz: number;
+  datas: (Uint16Array | null)[];
+  lights: (Uint8Array | null)[];
+  skys: (Uint8Array | null)[];
+  biomes?: Uint8Array | null;
+}
+
 interface Queued {
-  req: MeshRequest;
+  req: BuildInput;
   pending: Pending;
 }
 
@@ -113,27 +125,22 @@ class MesherPool {
         }
         this.pump();
       }, WATCHDOG_MS);
-      // 请求体含 3×3 邻居的方块/光照/天空光数组（约 1.9MB）：复制为一次性快照后以 transferable 转交，
-      // 省掉 structured-clone 的对象图序列化。原数组是主线程在用的 chunk 数据，不能直接转交（转交即失效），
-      // 这里的拷贝同时就是 worker 所需的快照（建网期间主线程可能继续 setBlock）；biomes 是请求方新建的小数组，直接转交
+      // 请求体只含中心整块 + 邻居 1 格边界切片（mesher 对邻居的访问不越界 ±1 格，见 mesher.ts 切片段注释）：
+      // 快照拷贝量从 3×3 整块的 ~1.15MB 降到 ~160KB。sliceBorders 输出的全是新建数组（原数组是主线程
+      // 在用的 chunk 数据，不能直接转交），以 transferable 转交即快照（建网期间主线程可能继续 setBlock）；
+      // biomes 是请求方新建的小数组，直接转交
+      const snap = sliceBorders(req.datas, req.lights, req.skys);
       const transfer: Transferable[] = [];
-      const snap16 = (a: Uint16Array | null): Uint16Array | null => {
-        if (!a) return null;
-        const c = new Uint16Array(a);
-        transfer.push(c.buffer);
-        return c;
-      };
-      const snap8 = (a: Uint8Array | null): Uint8Array | null => {
-        if (!a) return null;
-        const c = new Uint8Array(a);
-        transfer.push(c.buffer);
-        return c;
-      };
+      for (const a of [
+        snap.data, snap.light, snap.sky,
+        ...snap.edgeDatas, ...snap.edgeLights, ...snap.edgeSkys,
+        ...snap.cornerDatas, ...snap.cornerLights, ...snap.cornerSkys,
+      ]) {
+        if (a) transfer.push(a.buffer);
+      }
       if (req.biomes) transfer.push(req.biomes.buffer);
-      w.postMessage(
-        { ...req, datas: req.datas.map(snap16), lights: req.lights.map(snap8), skys: req.skys.map(snap8) },
-        transfer,
-      );
+      const msg: MeshRequest = { key: req.key, version: req.version, cx: req.cx, cz: req.cz, ...snap, biomes: req.biomes };
+      w.postMessage(msg, transfer);
     }
   }
 
@@ -168,7 +175,12 @@ let poolFailed = false;
 export function getMesherPool(): MesherPool | null {
   if (typeof Worker === 'undefined' || poolFailed) return null;
   // 调试逃生口：localStorage.mc-no-worker=1 时强制主线程建网（排查 worker 问题用）
-  if (typeof localStorage !== 'undefined' && localStorage.getItem('mc-no-worker')) return null;
+  // 隐私模式下 localStorage 访问可抛 SecurityError：按未设置处理
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('mc-no-worker')) return null;
+  } catch {
+    // 忽略，按未设置处理
+  }
   if (!pool) {
     try {
       pool = new MesherPool();

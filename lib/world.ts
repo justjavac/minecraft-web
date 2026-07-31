@@ -500,6 +500,24 @@ export class World {
   private lastChunkCx = 0;
   private lastChunkCz = 0;
 
+  /**
+   * updateAround 记忆化：上次「全量重扫且周围已铺满」时的玩家 chunk 坐标与视距。
+   * null = 缓存无效（尚未铺满 / invalidateAround 失效），下次调用必须重扫。
+   * 判定键 = 世界实例（本字段随实例）+ 玩家 chunk 坐标 + 视距；玩家跨 chunk 边界、传送、
+   * 视距调整都会使坐标/视距变化从而自动触发重扫。
+   */
+  private aroundCache: { pcx: number; pcz: number; radius: number } | null = null;
+
+  /**
+   * 强制下次 updateAround 全量重扫（在坐标/视距不变但世界内容可能突变时使用，
+   * 如世界实例复用下的跨维度切换且玩家恰好在同一 chunk 坐标）。
+   * World.tsx 每帧调用点无需改动：常规移动/传送靠坐标变化自动失效；
+   * 若以后 World.tsx 增加跨维度重置逻辑，可在那里挂一次本调用。
+   */
+  invalidateAround(): void {
+    this.aroundCache = null;
+  }
+
   getBlock(x: number, y: number, z: number): number {
     if (y < 0 || y >= WORLD_HEIGHT) return AIR;
     const cx = x >> 4;
@@ -594,8 +612,13 @@ export class World {
    * 返回本轮后仍缺失的 chunk 数（0 = 周围已铺满，调用方据此判定初始加载完成）
    */
   updateAround(x: number, z: number, radius: number, budgetMs = 6): number {
-    const pcx = Math.floor(x / CHUNK_SIZE);
-    const pcz = Math.floor(z / CHUNK_SIZE);
+    const pcx = x >> 4;
+    const pcz = z >> 4;
+    // 记忆化早退：上次重扫已铺满，且玩家未跨 chunk 边界、视距未变 → 缺失列表必为空，
+    // 跳过 (2r+1)² 次 chunkKey 字符串分配 + sort + 全 Map 卸载扫描（卸载判定只随重扫做）。
+    // 注意：只有缺失全部生成完（返回 0）才写缓存，加载期每帧仍重扫以持续推进时间片生成。
+    const cache = this.aroundCache;
+    if (cache && cache.pcx === pcx && cache.pcz === pcz && cache.radius === radius) return 0;
     // 收集缺失的 chunk，按距离由近及远分批生成，避免单帧卡顿
     const missing: [number, number, number][] = [];
     for (let dx = -radius; dx <= radius; dx++) {
@@ -635,6 +658,9 @@ export class World {
       if (c && this.lastChunk === c) this.lastChunk = null;
       this.generation++;
     }
+    // 本轮缺失已全部生成（含本就无缺失）：记录坐标/视距，之后同位置同视距的调用直接早退；
+    // 仍有剩余（预算耗尽）则不缓存，下帧重扫继续生成
+    if (done === missing.length) this.aroundCache = { pcx, pcz, radius };
     return missing.length - done;
   }
 }

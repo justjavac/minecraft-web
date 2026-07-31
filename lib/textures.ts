@@ -2,7 +2,9 @@
 // 默认贴图为内置的 public/textures/pack/（Faithful 32x，许可见 pack/LICENSE.txt）；
 // 设置里导入的自定义包（lib/texturepack.ts，localStorage）可整格覆盖对应 tile，分辨率随包
 
-import * as THREE from 'three';
+// three 仅作类型静态引入：主菜单（MainMenu→getAtlasMaterials 预热 atlas）也会加载本模块，
+// 运行时 three 改在 build() 内动态 import，避免 three 全家进入主菜单首屏 chunk（见 page.tsx 代码分割）
+import type * as THREE from 'three';
 import {
   ATLAS_COLS,
   ATLAS_PAD_RATIO,
@@ -274,7 +276,9 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
   },
 };
 
-/** atlas 画布的 dataURL（HUD 图标裁剪用），build 完成后可用 */
+/** atlas 画布的 dataURL（HUD 图标裁剪用），build 完成后可用。
+ * 图标渲染经 CSS 变量 `--mc-atlas` 共享这一份字符串（见 build 末尾），避免每个 TileIcon 的
+ * inline style 各存一份超长 base64（BlockPicker 一次渲染 ~291 个图标，DOM 内存放大数百倍） */
 export let atlasDataUrl = '';
 
 /** 渲染器类型（由 renderer-kind.tsx 的 Context 下发） */
@@ -355,6 +359,8 @@ export function getAtlasMaterials(kind: RendererKind = 'webgl'): Promise<AtlasMa
 }
 
 async function build(kind: RendererKind): Promise<AtlasMaterials> {
+  // 运行时 three 动态加载（模块顶部仅类型引入）：首次构建 atlas 时才下载/解析 three
+  const THREE = await import('three');
   const pack = loadCustomPack();
   // 先定分辨率（自定义包 > 默认 32），再建画布（格距含挤出）
   const custom: Partial<Record<string, HTMLImageElement>> = {};
@@ -483,6 +489,9 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   texture.anisotropy = 16; // 高各向异性：斜视地表不糊（配合格间挤出，杜绝跨格混色条纹）
   texture.colorSpace = THREE.SRGBColorSpace;
   atlasDataUrl = canvas.toDataURL();
+  // 全量 dataURL 只挂一份到 :root 的 CSS 变量，TileIcon 用 background-image: var(--mc-atlas) 共享；
+  // 贴图包重建（getAtlasMaterials 重新 build）走到这里时变量随之更新
+  document.documentElement.style.setProperty('--mc-atlas', `url("${atlasDataUrl}")`);
 
   // 水面动画条带：帧倒序重排（帧 0 在底部，对应 mesher 写出的 v∈[0,1/32]）
   const stripImg = await loadImage('/textures/water_still.png');

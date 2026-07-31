@@ -17,6 +17,7 @@ import { noteBlock } from './sound';
 import { igniteTnt } from './tnt';
 import { type World } from './world';
 import { CHUNK_SIZE, CHUNK_VOLUME, chunkKey } from './grid';
+import { registerWorldScope } from './worldScope';
 
 const key = (x: number, y: number, z: number): string => `${x},${y},${z}`;
 
@@ -42,8 +43,7 @@ const TARGET = () => BLOCK_BY_KEY.target.id;
 
 const blockKeyOf = (id: BlockId): string => BLOCKS[id]?.key ?? '';
 
-/** 按钮（未按/按下两款）；按下态是电源，脉冲到期回弹 */
-export const isButtonId = (id: BlockId): boolean => /^(oak|stone)_button(_on)?$/.test(blockKeyOf(id));
+/** 按钮按下态是电源，脉冲到期回弹 */
 const isButtonOnId = (id: BlockId): boolean => /^(oak|stone)_button_on$/.test(blockKeyOf(id));
 /** 压力板（玩家/生物踩中由 tick 登记为电源，离开撤销） */
 export const isPressurePlateId = (id: BlockId): boolean => /^(oak|stone)_pressure_plate$/.test(blockKeyOf(id));
@@ -569,9 +569,15 @@ const pendingPulses: Pulse[] = [];
 /** 踩中的压力板位置（作为临时电源登记在 sources） */
 const activePlates = new Set<string>();
 
+/** tickPlates 帧内复用的「本帧踩中」集合（每 tick clear，避免每帧 new Set） */
+const stoodScratch = new Set<string>();
+/** tickPlates 帧内复用的待撤销键列表（遍历时不改 activePlates，语义与原 [...activePlates] 快照等价） */
+const plateReleaseScratch: string[] = [];
+
 /** 每 tick：比对玩家/生物脚下格与压力板，踩中登记供电、离开撤销 */
 function tickPlates(world: World): void {
-  const stood = new Set<string>();
+  const stood = stoodScratch;
+  stood.clear();
   const check = (ex: number, ey: number, ez: number): void => {
     const bx = Math.floor(ex);
     const by = Math.floor(ey);
@@ -587,8 +593,11 @@ function tickPlates(world: World): void {
     const [x, y, z] = k.split(',').map(Number);
     recompute(world, x, y, z);
   }
-  for (const k of [...activePlates]) {
-    if (stood.has(k)) continue;
+  plateReleaseScratch.length = 0;
+  for (const k of activePlates) {
+    if (!stood.has(k)) plateReleaseScratch.push(k);
+  }
+  for (const k of plateReleaseScratch) {
     activePlates.delete(k);
     const [x, y, z] = k.split(',').map(Number);
     removeSource(x, y, z, k);
@@ -604,20 +613,24 @@ const observers = new Map<string, BlockId>();
 /** 朝向取反（n↔s e↔w u↔d）：侦测器输出在检测面的背面 */
 const OPPOSITE_FACING = [2, 3, 0, 1, 5, 4] as const;
 
+/** tickObservers 帧内复用的待删键列表（遍历时只收集、遍历后删除，语义与原 [...observers] 快照等价） */
+const observerRemoveScratch: string[] = [];
+
 /** 每 tick：比对各侦测器面朝格方块 id，变化则从背面发 0.1s 定向脉冲 */
 function tickObservers(world: World): void {
-  for (const [k, prev] of [...observers]) {
+  observerRemoveScratch.length = 0;
+  for (const [k, prev] of observers) {
     const [x, y, z] = k.split(',').map(Number);
     const id = world.getBlock(x, y, z);
     if (!isObserverId(id)) {
-      observers.delete(k); // 兜底：被挖/推走（正常由 notifyRedstone 清理）
+      observerRemoveScratch.push(k); // 兜底：被挖/推走（正常由 notifyRedstone 清理）
       continue;
     }
     const f = BLOCKS[id].facing ?? 0;
     const [dx, dy, dz] = FACING_VEC[f];
     const cur = world.getBlock(x + dx, y + dy, z + dz);
     if (cur === prev) continue;
-    observers.set(k, cur);
+    observers.set(k, cur); // 更新已遍历到的既有键：安全，不会触发重复访问
     sources.add(k);
     dirSources.set(k, OPPOSITE_FACING[f] ?? 2);
     const existing = pendingPulses.find((p) => p.key === k && p.kind === 'observer');
@@ -625,6 +638,7 @@ function tickObservers(world: World): void {
     else pendingPulses.push({ key: k, at: simTime + 0.1, kind: 'observer' });
     recompute(world, x, y, z);
   }
+  for (const k of observerRemoveScratch) observers.delete(k);
 }
 
 /** 音符盒：各位置的调音（半音 0-23）与充能态（上升沿发声） */
@@ -677,3 +691,6 @@ export function tickRedstone(world: World, dt: number): void {
     world.setBlock(x, y, z, BLOCK_BY_KEY[`repeater_${inputOn ? 'on_' : ''}${suf}`].id);
   }
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：红石功率图/电源登记随世界清理
+registerWorldScope({ name: 'redstone', clear: clearRedstone });
