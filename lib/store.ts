@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { armorDef, armorDefOf, armorPoints, emptyArmorSlots } from './armor';
-import { armorRepairMaterial, mergeEnchants, toolRepairMaterial } from './anvil';
+import { armorRepairMaterial, enchLevelSum, mergeEnchants, priorWorkPenalty, toolRepairMaterial } from './anvil';
 import { BLOCKS, HOTBAR_BLOCKS, type BlockId } from './blocks';
 import { getBrew, putIntoBrewing, takePotion } from './brewing';
 import { MATERIAL_INFO } from './materials';
@@ -398,25 +398,39 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (bIdx >= 0) {
       const b = all[bIdx]!;
       if ((b.kind !== 'tool' && b.kind !== 'armor') || !b.ench) return { ok: false, notice: '合并失败' }; // 谓词已保证，仅为类型窄化
+      const maxDura = held.kind === 'tool' ? TOOLS[held.tool].durability : armorDefOf(held).durability;
+      const mergedEnch = mergeEnchants(held.ench, b.ench);
+      // MC 铁砧经验费：合并附魔等级总和 + 累计使用惩罚（2^works-1）；>30 级「过于昂贵」拒绝；创造模式免费
+      const works = held.works ?? 0;
+      const cost = enchLevelSum(mergedEnch) + priorWorkPenalty(works);
+      const free = s.worldMode === 'creative';
+      if (!free && cost > 30) return { ok: false, notice: '过于昂贵！' };
+      if (!free && levelFromXp(s.xpTotal).level < cost) return { ok: false, notice: `经验不足（需要 ${cost} 级）` };
       const hotbarSlots = [...s.hotbarSlots];
       const mainSlots = [...s.mainSlots];
-      const maxDura = held.kind === 'tool' ? TOOLS[held.tool].durability : armorDefOf(held).durability;
       const merged = {
         ...held,
-        ench: mergeEnchants(held.ench, b.ench),
+        ench: mergedEnch,
         durability: Math.min(maxDura, held.durability + Math.ceil(maxDura * 0.12)), // MC 合并 +12% 耐久
+        works: works + 1,
       };
       hotbarSlots[s.selectedSlot] = merged as typeof held;
       if (bIdx < hotbarSlots.length) hotbarSlots[bIdx] = null;
       else mainSlots[bIdx - hotbarSlots.length] = null;
-      set({ hotbarSlots, mainSlots });
-      return { ok: true, notice: '附魔已合并（同级 +1，取高级）' };
+      set({ hotbarSlots, mainSlots, ...(free ? {} : { xpTotal: subtractLevels(s.xpTotal, cost) }) });
+      return { ok: true, notice: `附魔已合并（同级 +1，取高级）${free ? '' : `，消耗 ${cost} 级`}` };
     }
     // —— 修复：耐久未满 + 物品栏有对应材料 1 个 → 补 25%（MC 材料修复） ——
     const maxDura = held.kind === 'tool' ? TOOLS[held.tool].durability : armorDefOf(held).durability;
     if (held.durability >= maxDura) return { ok: false, notice: '耐久已满，无需修复' };
     const key = held.kind === 'tool' ? toolRepairMaterial(held.tool) : armorRepairMaterial(held.material);
     if (!key) return { ok: false, notice: '该物品无法修复' };
+    // MC 铁砧修复经验费：2 级 + 累计使用惩罚；>30 级「过于昂贵」拒绝；创造免费
+    const works = held.works ?? 0;
+    const cost = 2 + priorWorkPenalty(works);
+    const free = s.worldMode === 'creative';
+    if (!free && cost > 30) return { ok: false, notice: '过于昂贵！' };
+    if (!free && levelFromXp(s.xpTotal).level < cost) return { ok: false, notice: `经验不足（需要 ${cost} 级）` };
     // 通用扣料（block:<id> 或 material:<name>，热键栏 + 背包）
     const hotbarSlots = [...s.hotbarSlots];
     const mainSlots = [...s.mainSlots];
@@ -435,9 +449,9 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       const matName = key.startsWith('block:') ? BLOCKS[Number(key.slice(6))]?.name : (MATERIAL_INFO[key.slice(9)]?.name ?? key.slice(9));
       return { ok: false, notice: `修复需要 1 个${matName}` };
     }
-    hotbarSlots[s.selectedSlot] = { ...held, durability: Math.min(maxDura, held.durability + Math.ceil(maxDura * 0.25)) };
-    set({ hotbarSlots, mainSlots });
-    return { ok: true, notice: '已修复（+25% 耐久）' };
+    hotbarSlots[s.selectedSlot] = { ...held, durability: Math.min(maxDura, held.durability + Math.ceil(maxDura * 0.25)), works: works + 1 };
+    set({ hotbarSlots, mainSlots, ...(free ? {} : { xpTotal: subtractLevels(s.xpTotal, cost) }) });
+    return { ok: true, notice: `已修复（+25% 耐久）${free ? '' : `，消耗 ${cost} 级`}` };
   },
   consumeSelectedBlock: () => {
     let id: BlockId | null = null;

@@ -16,6 +16,7 @@ beforeEach(() => {
     mainSlots: Array.from({ length: 27 }, () => null) as Slot[],
     selectedSlot: 0,
     notice: null,
+    xpTotal: 10000, // 铁砧操作默认经验充足（需单独测经验费/不足的场景自行覆盖）
   });
 });
 
@@ -43,10 +44,12 @@ describe('修复材料映射（MC）', () => {
 });
 
 describe('附魔合并（MC 铁砧规则）', () => {
-  it('取更高级；同级 +1（上限 5）；A 无附魔直接继承', () => {
+  it('取更高级；同级 +1（按各附魔 maxLvl 封顶——保护最高 IV，不会出 MC 不存在的保护 V）；A 无附魔直接继承', () => {
     expect(mergeEnchants({ sharpness: 2 }, { sharpness: 4 })).toEqual({ sharpness: 4 });
     expect(mergeEnchants({ sharpness: 3 }, { sharpness: 3 })).toEqual({ sharpness: 4 });
-    expect(mergeEnchants({ sharpness: 5 }, { sharpness: 5 })).toEqual({ sharpness: 5 }); // 上限
+    expect(mergeEnchants({ sharpness: 5 }, { sharpness: 5 })).toEqual({ sharpness: 5 }); // 锋利上限 V
+    expect(mergeEnchants({ protection: 4 }, { protection: 4 })).toEqual({ protection: 4 }); // 保护上限 IV（曾为统一封顶 5 的 bug）
+    expect(mergeEnchants({ silk_touch: 1 }, { silk_touch: 1 })).toEqual({ silk_touch: 1 }); // 上限 I
     expect(mergeEnchants(undefined, { efficiency: 2 })).toEqual({ efficiency: 2 });
     expect(mergeEnchants({ sharpness: 2 }, { efficiency: 3 })).toEqual({ sharpness: 2, efficiency: 3 }); // 不同条并存
   });
@@ -61,7 +64,7 @@ describe('铁砧使用', () => {
     const r = useGameStore.getState().anvilUse();
     expect(r.ok).toBe(true);
     const st = useGameStore.getState();
-    expect(st.hotbarSlots[0]).toEqual({ kind: 'tool', tool: 'diamond_sword', durability: 100 + Math.ceil(1561 * 0.25) });
+    expect(st.hotbarSlots[0]).toEqual({ kind: 'tool', tool: 'diamond_sword', durability: 100 + Math.ceil(1561 * 0.25), works: 1 });
     expect(st.hotbarSlots[3]).toEqual({ kind: 'material', material: 'diamond', count: 1 });
   });
 
@@ -73,7 +76,7 @@ describe('铁砧使用', () => {
     const r = useGameStore.getState().anvilUse();
     expect(r.ok).toBe(true);
     const st = useGameStore.getState();
-    expect(st.hotbarSlots[0]).toEqual({ kind: 'tool', tool: 'wooden_pickaxe', durability: 10 + Math.ceil(59 * 0.25) });
+    expect(st.hotbarSlots[0]).toEqual({ kind: 'tool', tool: 'wooden_pickaxe', durability: 10 + Math.ceil(59 * 0.25), works: 1 });
     expect(st.hotbarSlots[1]).toEqual({ kind: 'block', id: K('planks'), count: 2 });
   });
 
@@ -103,8 +106,37 @@ describe('铁砧使用', () => {
       tool: 'diamond_sword',
       durability: 500 + Math.ceil(1561 * 0.12),
       ench: { sharpness: 3, looting: 1 },
+      works: 1,
     });
     expect(st.hotbarSlots[5]).toBeNull();
+  });
+
+  it('经验费：修复耗 2 级经验；经验不足拒绝；累计使用惩罚递增（MC prior work penalty）', () => {
+    const slots = emptySlots();
+    slots[0] = { kind: 'tool', tool: 'diamond_sword', durability: 100, works: 1 }; // 已修过一次：费 2 + (2^1-1) = 3 级
+    slots[3] = { kind: 'material', material: 'diamond', count: 2 };
+    const xp0 = 10000;
+    useGameStore.setState({ hotbarSlots: slots, selectedSlot: 0, xpTotal: xp0 });
+    const r = useGameStore.getState().anvilUse();
+    expect(r.ok).toBe(true);
+    const st = useGameStore.getState();
+    expect(st.xpTotal).toBeLessThan(xp0); // 扣了经验
+    expect(st.hotbarSlots[0]).toMatchObject({ works: 2 });
+    // 经验不足：同一件再修（费 2 + (2^2-1) = 5 级，xp 0 拒绝）
+    useGameStore.setState({ xpTotal: 0 });
+    const r2 = useGameStore.getState().anvilUse();
+    expect(r2.ok).toBe(false);
+    expect(r2.notice).toContain('经验不足');
+  });
+
+  it('过于昂贵：works 高到费用 >30 级直接拒绝（MC 铁砧上限）', () => {
+    const slots = emptySlots();
+    slots[0] = { kind: 'tool', tool: 'diamond_sword', durability: 100, works: 5 }; // 费 2 + 31 = 33 > 30
+    slots[3] = { kind: 'material', material: 'diamond', count: 2 };
+    useGameStore.setState({ hotbarSlots: slots, selectedSlot: 0 });
+    const r = useGameStore.getState().anvilUse();
+    expect(r.ok).toBe(false);
+    expect(r.notice).toBe('过于昂贵！');
   });
 
   it('铁砧方块与配方：3 铁块 + 4 铁锭（MC），高硬度', () => {

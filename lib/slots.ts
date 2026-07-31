@@ -9,8 +9,8 @@ import type { EnchMap } from './xp';
 export type Slot =
   | { kind: 'block'; id: BlockId; count: number }
   | { kind: 'material'; material: string; count: number }
-  | { kind: 'tool'; tool: ToolType; durability: number; ench?: EnchMap }
-  | { kind: 'armor'; piece: ArmorPiece; material?: ArmorMaterial; durability: number; ench?: EnchMap }
+  | { kind: 'tool'; tool: ToolType; durability: number; ench?: EnchMap; /** 铁砧累计使用次数（MC prior work penalty：费用 +2^n-1 级） */ works?: number }
+  | { kind: 'armor'; piece: ArmorPiece; material?: ArmorMaterial; durability: number; ench?: EnchMap; works?: number }
   | null;
 
 /** 可堆叠的槽位（方块/材料） */

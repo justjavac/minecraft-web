@@ -3,7 +3,7 @@
 import type { ArmorMaterial } from './armor';
 import { BLOCK_BY_KEY } from './blocks';
 import { TOOLS, type ToolType } from './tools';
-import type { EnchMap } from './xp';
+import { ENCHANTS, type EnchMap } from './xp';
 
 /** 物品键形式：'block:<id>' 或 'material:<name>'（与配方/扣料管线一致） */
 
@@ -47,13 +47,24 @@ export function armorRepairMaterial(material: ArmorMaterial | undefined): string
   }
 }
 
-/** 附魔合并（MC 铁砧）：B 的每条附魔并入 A——取更高级；同级则 +1（上限 5）。返回新附魔表 */
+/** 附魔合并（MC 铁砧）：B 的每条附魔并入 A——取更高级；同级则 +1（按各附魔 maxLvl 封顶，不会出现 MC 不存在的保护 V）。返回新附魔表 */
 export function mergeEnchants(a: EnchMap | undefined, b: EnchMap | undefined): EnchMap | undefined {
   if (!b) return a;
   const out: EnchMap = { ...a };
   for (const [k, lvl] of Object.entries(b) as [keyof EnchMap, number][]) {
+    const max = ENCHANTS[k].maxLvl;
     const cur = out[k] ?? 0;
-    out[k] = lvl > cur ? lvl : lvl === cur ? Math.min(5, cur + 1) : cur;
+    out[k] = Math.min(max, lvl > cur ? lvl : lvl === cur ? cur + 1 : cur);
   }
   return out;
+}
+
+/** 附魔表等级总和（铁砧合并费用基准，MC 简化） */
+export function enchLevelSum(ench: EnchMap | undefined): number {
+  return Object.values(ench ?? {}).reduce((n, v) => n + (v ?? 0), 0);
+}
+
+/** 铁砧累计使用惩罚（MC prior work penalty：2^works - 1 级） */
+export function priorWorkPenalty(works: number): number {
+  return works <= 0 ? 0 : 2 ** works - 1;
 }
