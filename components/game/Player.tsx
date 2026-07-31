@@ -2,13 +2,12 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { PointerLockControls } from '@react-three/drei';
 import { Euler, PerspectiveCamera, Vector3 } from 'three';
 import { AIR, BLOCK_BY_KEY, BLOCKS, isLavaId, isWaterId } from '@/lib/blocks';
 import { breakBlock, tryPlace } from '@/lib/actions';
 import { isFarmlandId, isWheatCropId } from '@/lib/crops';
 import { effectiveDigTime } from '@/lib/dig';
-import { cameraRef, debugInfo, digState, getActiveWorld, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput, worldClock } from '@/lib/game';
+import { attackState, cameraRef, debugInfo, digState, getActiveWorld, hurtState, panelUnlock, pearlTeleport, playerPosition, survivalStats, targetBlock, teleportState, touchInput, worldClock } from '@/lib/game';
 import { itemDrops } from '@/lib/items';
 import { otherDimension } from '@/lib/dimension';
 import { END_SPAWN } from '@/lib/end';
@@ -21,17 +20,16 @@ import { arrows, checkEndermanStare, damageMob, mobInReach, mobs, spawnMobAt, ty
 import { crystalInReach, hitCrystal, tickCrystals } from '@/lib/endfight';
 import { tickFishing } from '@/lib/fishing';
 import { SEA_LEVEL, type Biome } from '@/lib/noise';
-import { aabbFree, collideAxis, type Aabb } from '@/lib/physics';
+import { aabbFree, collideAxis, PLAYER_HALF_W, PLAYER_HEIGHT, type Aabb } from '@/lib/physics';
 import { playSound } from '@/lib/sound';
 import { useGameStore } from '@/lib/store';
+import { anyPanelOpen } from '@/lib/store-types';
 import { resetSurvivalMem, tickSurvival, type SurvivalMem } from '@/lib/survival';
 import { effects, effectLvls, tickEffects } from '@/lib/effects';
 import { beaconTiers, tickBeacons } from '@/lib/beacon';
-import { TOOLS } from '@/lib/tools';
+import { attackCooldownScale, TOOLS } from '@/lib/tools';
 import { WORLD_HEIGHT, type World } from '@/lib/world';
 
-const HALF_W = 0.3; // 玩家半宽
-const HEIGHT = 1.8; // 玩家高度
 const EYE = 1.62; // 视点高度
 const WALK_SPEED = 4.3;
 const FLY_SPEED = 11;
@@ -110,6 +108,8 @@ export function Player() {
   const touchMode = useGameStore((s) => s.touchMode);
   const fov = useGameStore((s) => s.settings.fov);
   const sensitivity = useGameStore((s) => s.settings.sensitivity);
+  const touchSensitivity = useGameStore((s) => s.settings.touchSensitivity);
+  const invertY = useGameStore((s) => s.settings.invertY);
   const autoJump = useGameStore((s) => s.settings.autoJump);
   const pos = useRef<Aabb | null>(null);
   const velY = useRef(0);
@@ -121,7 +121,7 @@ export function Player() {
   const euler = useMemo(() => new Euler(0, 0, 0, 'YXZ'), []);
   /** 相机水平朝向（单位向量），垂直看时沿用上一帧 */
   const forward = useRef({ x: 0, z: -1 });
-  /** 触屏模式的相机角度（桌面由 PointerLockControls 维护） */
+  /** 触屏模式的相机角度（桌面由下方 mousemove 监听维护） */
   const yawPitch = useRef({ yaw: 0, pitch: 0 });
   /** 脚步声：累计水平位移，每 2.2 格一步 */
   const stepAcc = useRef(0);
@@ -139,10 +139,16 @@ export function Player() {
   const fireAcc = useRef(0);
   const fireDmgAcc = useRef(0);
   const attackCd = useRef(0);
+  /** 当前武器的攻击总冷却 T（= 1/攻速），冷却进度条与伤害缩放用 */
+  const attackCdTotal = useRef(0.25);
+  /** 上一帧挖掘键按住状态（点按边沿检测：冷却未满时点击仍可出手，MC 1.9） */
+  const digWasHeld = useRef(false);
+  /** 冲刺击退后的冲刺中断剩余秒数（MC：冲刺命中后中断冲刺；限时恢复，触屏冲刺开关不被卡死） */
+  const sprintBreak = useRef(0);
   /** 创造模式即时破坏的上次时间戳（200ms 冷却，防止按住左键每帧破一块） */
   const lastCreativeBreak = useRef(0);
   const wasDead = useRef(false);
-  /** 下界传送门：门内停留计时（3 秒触发传送，MC 一致） */
+  /** 下界传送门：门内停留计时（生存 4 秒 = MC 80 tick 触发传送；创造进立传） */
   const portalAcc = useRef(0);
   /** 末影人对视检查计时 */
   const stareAcc = useRef(0);
@@ -244,6 +250,46 @@ export function Player() {
     return () => document.removeEventListener('pointerlockchange', onLockChange);
   }, [gl, touchMode]);
 
+  // 桌面鼠标视角：指针锁内 mousemove → 相机欧拉角（YXZ，俯仰限 ±90°，同 three PointerLockControls，
+  // 但支持反转 Y——drei/three 的 PointerLockControls 无此选项，故自实现）。触屏走 useFrame 里的拖动逻辑
+  useEffect(() => {
+    if (touchMode) return;
+    const lookEuler = new Euler(0, 0, 0, 'YXZ');
+    const onMove = (e: MouseEvent) => {
+      if (document.pointerLockElement !== gl.domElement) return;
+      lookEuler.setFromQuaternion(camera.quaternion);
+      lookEuler.y -= e.movementX * 0.002 * sensitivity;
+      lookEuler.x -= e.movementY * 0.002 * sensitivity * (invertY ? -1 : 1);
+      lookEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, lookEuler.x));
+      camera.quaternion.setFromEuler(lookEuler);
+    };
+    document.addEventListener('mousemove', onMove);
+    return () => document.removeEventListener('mousemove', onMove);
+  }, [camera, gl, sensitivity, invertY, touchMode]);
+
+  // 面板全关后自动回指针锁（MC：关背包直接回游戏，无需再点「继续游戏」）。
+  // 仅当退锁原因是「打开面板」（panelUnlock.pending）时回锁；用户主动 Esc 暂停无此标记，仍出暂停遮罩
+  const panelOpen = useGameStore(anyPanelOpen);
+  useEffect(() => {
+    if (touchMode || panelOpen || !panelUnlock.pending) return;
+    panelUnlock.pending = false;
+    const gs = useGameStore.getState();
+    // 死亡/已回菜单/已有锁的场景不回锁（死亡与暂停界面需要光标）
+    if (gs.dead || gs.screen !== 'playing' || document.pointerLockElement) return;
+    const canvas = gl.domElement;
+    const request = () => canvas.requestPointerLock() as unknown as Promise<void> | undefined;
+    // Chrome 在退锁后 ~1.25s 内会拒绝再次锁定（同 Hud PauseOverlay 的冷却处理）：被拒则冷却结束后再试一次
+    request()?.catch(() => {
+      setTimeout(() => {
+        const s = useGameStore.getState();
+        if (document.pointerLockElement || anyPanelOpen(s) || s.dead || s.screen !== 'playing') return;
+        request()?.catch(() => {
+          // 仍被拒：保持暂停遮罩，玩家可手动点「继续游戏」
+        });
+      }, 1300);
+    });
+  }, [panelOpen, gl, touchMode]);
+
   // 鼠标：左键按住挖掘，右键放置（触屏走 TouchControls）
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
@@ -310,7 +356,7 @@ export function Player() {
     // FOV：设置基准值 + 冲刺时 +10%（MC 冲刺视角），平滑过渡
     {
       const cam = state.camera as PerspectiveCamera;
-      const sprintKey = keys.current['ControlLeft'] || keys.current['ControlRight'];
+      const sprintKey = keys.current['ControlLeft'] || keys.current['ControlRight'] || touchInput.sprint;
       const targetFov = fov * (sprintKey ? 1.1 : 1);
       if (Math.abs(cam.fov - targetFov) > 0.05) {
         cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 10);
@@ -319,12 +365,12 @@ export function Player() {
       appliedFov.current = cam.fov;
     }
 
-    // 触屏：用拖动增量驱动相机偏航/俯仰
+    // 触屏：用拖动增量驱动相机偏航/俯仰（独立灵敏度 touchSensitivity；反转 Y 与鼠标共用 invertY 设置，同 MC PE）
     if (touchMode) {
       const yp = yawPitch.current;
-      yp.yaw -= touchInput.lookDX * LOOK_SENSITIVITY * sensitivity;
+      yp.yaw -= touchInput.lookDX * LOOK_SENSITIVITY * touchSensitivity;
       yp.pitch = Math.min(
-        Math.max(yp.pitch - touchInput.lookDY * LOOK_SENSITIVITY * sensitivity, -Math.PI / 2 + 0.01),
+        Math.max(yp.pitch - touchInput.lookDY * LOOK_SENSITIVITY * touchSensitivity * (invertY ? -1 : 1), -Math.PI / 2 + 0.01),
         Math.PI / 2 - 0.01,
       );
       touchInput.lookDX = 0;
@@ -395,9 +441,13 @@ export function Player() {
     const shift = keys.current['ShiftLeft'] || keys.current['ShiftRight'] || touchInput.down;
     const f = (keys.current['KeyW'] ? 1 : 0) - (keys.current['KeyS'] ? 1 : 0) + touchInput.moveY;
     const r = (keys.current['KeyD'] ? 1 : 0) - (keys.current['KeyA'] ? 1 : 0) + touchInput.moveX;
-    // MC 潜行：地面按 Shift（水中/飞行时是下降键）；冲刺：Ctrl（MC Java 同款）
-    const sneaking = shift && !flying && !inFluid;
-    const sprinting = (keys.current['ControlLeft'] || keys.current['ControlRight']) && !sneaking && !flying;
+    // MC 潜行：地面按 Shift（水中/飞行时是下降键）；冲刺：Ctrl（MC Java 同款）。触屏对应 touchInput.sneak/sprint 切换开关
+    const sneaking = (shift || touchInput.sneak) && !flying && !inFluid;
+    // 冲刺：Ctrl（MC Java 同款）。饥饿 ≤6（3 格）禁止冲刺（MC 门禁）；冲刺命中后的中断期内也不冲刺
+    const sprinting =
+      (keys.current['ControlLeft'] || keys.current['ControlRight'] || touchInput.sprint) &&
+      !sneaking && !flying && sprintBreak.current <= 0 &&
+      (gs.worldMode !== 'survival' || gs.hunger > 6);
     // 前进 = (fx, fz)，右 = 前进 × up = (-fz, fx)
     let mx = fx * f - fz * r;
     let mz = fz * f + fx * r;
@@ -433,13 +483,13 @@ export function Player() {
       const floorY = Math.floor(p.y) - 1;
       const hasFloor = (ex: number, ez: number): boolean =>
         BLOCKS[world.getBlock(Math.floor(ex), floorY, Math.floor(ez))]?.solid === true;
-      if (mx !== 0 && !hasFloor(wantX + Math.sign(mx) * (HALF_W + 0.05), p.z)) wantX = p.x;
-      if (mz !== 0 && !hasFloor(wantX, wantZ + Math.sign(mz) * (HALF_W + 0.05))) wantZ = p.z;
+      if (mx !== 0 && !hasFloor(wantX + Math.sign(mx) * (PLAYER_HALF_W + 0.05), p.z)) wantX = p.x;
+      if (mz !== 0 && !hasFloor(wantX, wantZ + Math.sign(mz) * (PLAYER_HALF_W + 0.05))) wantZ = p.z;
     }
     p.x = wantX;
-    const hitX = collideAxis(world, p, 0, mx * dt, HALF_W, HEIGHT);
+    const hitX = collideAxis(world, p, 0, mx * dt, PLAYER_HALF_W, PLAYER_HEIGHT);
     p.z = wantZ;
-    const hitZ = collideAxis(world, p, 2, mz * dt, HALF_W, HEIGHT);
+    const hitZ = collideAxis(world, p, 2, mz * dt, PLAYER_HALF_W, PLAYER_HEIGHT);
 
     // 台阶辅助（设置「自动跳跃」，MC 辅助功能）：着地行走被 1 格高障碍挡住时启动 150ms 上台动画
     //（平滑升起 + 前冲，观感是快速小跳——不是瞬移闪现，也不会像起跳那样弹回）
@@ -451,7 +501,7 @@ export function Player() {
         const groundLevel = Math.floor(p.y + 1) - 1; // 台阶顶面所在方块层
         if (!BLOCKS[world.getBlock(bx, groundLevel, bz)]?.solid) return false;
         // 台阶顶上方需容得下玩家（天花板下不触发）
-        if (!aabbFree(world, p.x + ax * 0.4, p.y + 1, p.z + az * 0.4, HALF_W, HEIGHT)) return false;
+        if (!aabbFree(world, p.x + ax * 0.4, p.y + 1, p.z + az * 0.4, PLAYER_HALF_W, PLAYER_HEIGHT)) return false;
         stepAnim.current = { from: p.y, to: p.y + 1, t: 0 };
         onGround.current = false;
         return true;
@@ -504,13 +554,13 @@ export function Player() {
         if (space && onGround.current) {
           velY.current = JUMP_VEL * (effects.jumpBoost > 0 ? 1 + 0.2 * (beaconTiers.get('jumpBoost') ?? 1) : 1); // 跳跃提升（信标）：I 级约 1.8 格（MC 跳跃 I），II 级更高
           onGround.current = false;
-          if (gs.worldMode === 'survival') survivalStats.exhaustion += 0.05; // MC：跳跃消耗
+          if (gs.worldMode === 'survival') survivalStats.exhaustion += sprinting ? 0.2 : 0.05; // MC：冲刺跳 0.2/次，普通跳跃 0.05
         }
       }
     }
     const dy = velY.current * dt;
     p.y += dy;
-    const hitY = collideAxis(world, p, 1, dy, HALF_W, HEIGHT);
+    const hitY = collideAxis(world, p, 1, dy, PLAYER_HALF_W, PLAYER_HEIGHT);
     if (hitY) {
       if (dy < 0) {
         onGround.current = true;
@@ -574,12 +624,26 @@ export function Player() {
         if (fd > 0 && gs.damagePlayer(fd)) fireDmgAcc.current -= fd;
       }
     }
-    // 虚空伤害：掉出世界底部持续掉血（MC y<-64；本世界 y<-16，2 点/秒——末地掉岛即此结局；MC 虚空伤害不吃护甲，创造同样致死）
-    if (p.y < -16 && !gs.dead) {
-      voidAcc.current += dt * 2;
+    // 虚空伤害（y < -20）：MC Java 每次受击 4 点、约 0.5s 一击（damagePlayer 的 HURT_COOLDOWN 无敌帧自然节流，等效 ~8/s），
+    // bypassArmor 不吃护甲。死亡走正常死亡流程（掉落 + 死亡界面），不再传送回重生点
+    if (p.y < -20 && !gs.dead) {
+      voidAcc.current += dt * 8;
       const vd = Math.floor(voidAcc.current);
-      if (vd > 0 && gs.damagePlayer(vd, { bypassArmor: true })) {
-        voidAcc.current -= vd;
+      if (vd > 0) {
+        if (gs.worldMode === 'creative') {
+          // MC Java：虚空伤害创造模式同样致死——damagePlayer 对创造直接豁免（return false），虚空路径在此绕过该门禁（Java 语义），
+          // 借 hurtState 同款 500ms 无敌帧节流；创造死亡不掉落（MC：创造无背包惩罚），只进死亡界面
+          const now = performance.now();
+          if (now - hurtState.lastAt >= 500) {
+            hurtState.lastAt = now;
+            voidAcc.current -= vd;
+            const health = Math.max(0, gs.health - vd);
+            gs.setHealth(health);
+            if (health <= 0) gs.setDead(true);
+          }
+        } else if (gs.damagePlayer(vd, { bypassArmor: true })) {
+          voidAcc.current -= vd;
+        }
       }
     } else {
       voidAcc.current = 0;
@@ -619,9 +683,9 @@ export function Player() {
     // 脚步声：着地行走时按实际位移触发（顶墙走不响）
     const hDist = Math.hypot(p.x - prevStep.current.x, p.z - prevStep.current.z);
     prevStep.current = { x: p.x, z: p.z };
-    // MC 消耗度：步行 0.01/格，冲刺 0.1/格（MC 冲刺消耗），游泳 0.015/格
+    // MC 消耗度：步行不消耗（MC Java），冲刺 0.1/格，游泳 0.01/格
     if (gs.worldMode === 'survival') {
-      survivalStats.exhaustion += hDist * (inFluid ? 0.015 : sprinting ? 0.1 : 0.01);
+      survivalStats.exhaustion += hDist * (inFluid ? 0.01 : sprinting ? 0.1 : 0);
     }
     if (!flying && !inFluid && onGround.current && hDist > 0.001) {
       stepAcc.current += hDist;
@@ -635,20 +699,9 @@ export function Player() {
       stepAcc.current = 0;
     }
 
-    // 掉出世界 → 回床设的重生点（未睡过床回世界出生点）
-    if (p.y < -20) {
-      const sp = useGameStore.getState().respawnPoint;
-      const fb = findSpawn(world);
-      p.x = sp?.x ?? fb.x;
-      p.z = sp?.z ?? fb.z;
-      p.y = sp?.y ?? fb.y;
-      velY.current = 0;
-      survivalMem.current.fallDist = 0; // 重置坠落累计，避免传送后按累计落差结算摔伤
-      survivalMem.current.air = 15;
-      prevStep.current = { x: p.x, z: p.z }; // 重置脚步位移，避免传送后误响
-    }
+    // 掉出世界底部不再传送回重生点：由上方虚空伤害致死（MC Java），死亡走正常死亡流程
 
-    // 下界传送门：站在门内 3 秒触发跨维度传送（MC 一致；创造/生存均生效）
+    // 下界传送门：MC Java 生存站门内 4 秒（80 tick）触发跨维度传送，创造模式进立传（无读秒）
     {
       const feet = world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
       const eye = world.getBlock(Math.floor(p.x), Math.floor(p.y) + 1, Math.floor(p.z));
@@ -681,7 +734,7 @@ export function Player() {
       }
       if (isPortalId(feet) || isPortalId(eye)) {
         portalAcc.current += dt;
-        if (portalAcc.current >= 3) {
+        if (gs.worldMode === 'creative' || portalAcc.current >= 4) { // MC：生存读秒 4s（80 tick），创造秒传
           portalAcc.current = 0;
           teleportState.pending = { x: p.x, y: p.y, z: p.z };
           gs.setDimension(otherDimension(gs.dimension));
@@ -713,12 +766,19 @@ export function Player() {
       REACH,
     );
 
-    // 长按：生存模式优先攻击准星附近的僵尸（有冷却），否则挖掘方块
+    // 长按/点按：优先攻击准星附近的生物（MC 1.9 攻击冷却），否则挖掘方块
     attackCd.current = Math.max(0, attackCd.current - dt);
-    if (digHeld.current || touchInput.dig) {
+    sprintBreak.current = Math.max(0, sprintBreak.current - dt);
+    // 蓄力进度 → Hud 准星下方蓄力条（1 = 冷却走满，满时隐藏）
+    attackState.progress = attackCd.current <= 0 ? 1 : Math.min(1, 1 - attackCd.current / attackCdTotal.current);
+    const digNow = digHeld.current || touchInput.dig;
+    // MC 1.9：冷却走满（含按住连发）满额出手；冷却未满时点按仍可出手，但伤害按冷却进度缩放
+    const clickEdge = digNow && !digWasHeld.current;
+    digWasHeld.current = digNow;
+    if (digNow) {
       let attacked = false;
       // 近战攻击：创造模式也可（MC 创造左键可杀怪；伤害按手持，创造徒手 1 点，不耗耐久——damageHeldTool 创造已豁免）
-      if (attackCd.current <= 0) {
+      if (attackCd.current <= 0 || clickEdge) {
         // 恶魂爆裂球：挥击打回（MC 标志玩法）——沿视线掉头反飞，命中恶魂即秒杀（结算见下方每帧检查）
         const fb = fireballInReach(
           camera.position.x, camera.position.y, camera.position.z,
@@ -727,6 +787,7 @@ export function Player() {
         );
         if (fb) {
           attackCd.current = 0.25;
+          attackCdTotal.current = 0.25;
           const sp = Math.hypot(fb.vx, fb.vy, fb.vz); // 保持原速，掉头飞向视线方向（MC 反射球）
           fb.vx = rayDir.x * sp;
           fb.vy = rayDir.y * sp;
@@ -746,10 +807,23 @@ export function Player() {
         if (mob) {
           const held = gs.hotbarSlots[gs.selectedSlot];
           const tool = held?.kind === 'tool' ? TOOLS[held.tool] : null;
-          attackCd.current = tool?.attackCd ?? 0.25; // MC 拳头 4 攻速，剑 1.6
+          const T = tool?.attackCd ?? 0.25; // 总冷却 = 1/攻速（MC 拳头 4，剑 1.6，斧 0.8-1.0）
+          // MC 1.9 冷却伤害缩放：0.2 + ((t+0.5)/T)²×0.8（t=冷却已走过时间；走满=1 满额）
+          const cdScale = attackCd.current <= 0 ? 1 : attackCooldownScale(T - attackCd.current, T);
+          attackCd.current = T;
+          attackCdTotal.current = T;
+          // MC 暴击：下落中（velY<0、不着地、非水中/飞行/滑翔）命中伤害 ×1.5
+          const crit = velY.current < 0 && !onGround.current && !inFluid && !flying && !gliding;
           // 击退：MC 近战命中本就有基础击退（怪会后退），击退附魔在此之上增强；原仅附魔才击退导致普通攻击打不动怪
           const kbEnch = held?.kind === 'tool' ? (held.ench?.knockback ?? 0) : 0;
-          damageMob(mob, (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? ((held.ench?.sharpness ?? 0) * 0.5 + ((held.ench?.sharpness ?? 0) > 0 ? 0.5 : 0)) : 0) + (effects.strength > 0 ? 3 * Math.max(effectLvls.strength, beaconTiers.get('strength') ?? 1) : 0), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0, world, kbEnch > 0 ? kbEnch : 0.3); // 拳头 1 点（半心），锋利 +0.5×级+0.5（MC Java），力量药水 +3/级（MC），抢夺加掉落，击退附魔击退目标
+          // MC 冲刺击退：冲刺中命中击退加成（约 3 格量级，≈ MC 击退 I），命中后中断冲刺
+          let kb = kbEnch > 0 ? kbEnch : 0.3;
+          if (sprinting) {
+            kb += 0.5;
+            sprintBreak.current = 0.3;
+          }
+          const baseDmg = (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? ((held.ench?.sharpness ?? 0) * 0.5 + ((held.ench?.sharpness ?? 0) > 0 ? 0.5 : 0)) : 0) + (effects.strength > 0 ? 3 * Math.max(effectLvls.strength, beaconTiers.get('strength') ?? 1) : 0); // 拳头 1 点（半心），锋利 +0.5×级+0.5（MC Java），力量药水 +3/级（MC）
+          damageMob(mob, baseDmg * cdScale * (crit ? 1.5 : 1), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0, world, kb); // 抢夺加掉落
           if (tool) gs.damageHeldTool(tool.kind === 'sword' ? 1 : 2); // MC：剑耗 1，工具作武器耗 2
           playSound('dig_choppy', 0.8);
           survivalStats.exhaustion += 0.1; // MC：攻击消耗
@@ -759,6 +833,7 @@ export function Player() {
           const c = crystalInReach(camera.position, rayDir, REACH);
           if (c) {
             attackCd.current = 0.25;
+            attackCdTotal.current = 0.25;
             hitCrystal(c, world, playerPosition, (d) => {
               if (!gs.dead) gs.damagePlayer(d);
             });
@@ -794,9 +869,10 @@ export function Player() {
             digState.target = null;
             digState.progress = 0;
           } else {
-            // MC 挖掘时间：工具类型匹配时切硬度×1.5 基值（需镐方块 = digTime×0.3）再除工具倍率；效率附魔仅匹配生效（lib/dig.ts）
+            // MC 挖掘时间：工具匹配且采掘层级达标时切硬度×1.5 基值（需镐方块 = digTime×0.3）再除工具速度；
+            // 效率附魔仅匹配生效，水中/悬空（onGround=false）各 ×5 慢（lib/dig.ts）
             const held = gs.hotbarSlots[gs.selectedSlot];
-            digState.progress += dt / effectiveDigTime(blockId, held, effects.haste > 0 ? (beaconTiers.get('haste') ?? 1) : 0, headInWater);
+            digState.progress += dt / effectiveDigTime(blockId, held, effects.haste > 0 ? (beaconTiers.get('haste') ?? 1) : 0, headInWater, onGround.current);
             if (digState.progress >= 1) {
               breakBlock(world, bx, by, bz);
               if (gs.worldMode === 'survival') {
@@ -825,6 +901,6 @@ export function Player() {
     debugInfo.yaw = ((Math.atan2(-fx, -fz) * 180) / Math.PI + 360) % 360;
   });
 
-  // 触屏模式不启用指针锁，相机由上面的拖动逻辑维护
-  return touchMode ? null : <PointerLockControls makeDefault pointerSpeed={sensitivity} />;
+  // 触屏模式不启用指针锁；桌面鼠标视角由上面的 mousemove 监听维护（组件本身只挂 effect，无渲染输出）
+  return null;
 }

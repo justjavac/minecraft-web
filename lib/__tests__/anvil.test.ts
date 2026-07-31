@@ -93,7 +93,7 @@ describe('铁砧使用', () => {
     expect(r.notice).toContain('铁锭');
   });
 
-  it('附魔合并：手持钻剑 A + 物品栏同型带附魔 B → A 吸收附魔（同级 +1）+ B 消失 + 耐久 +12%', () => {
+  it('附魔合并：手持钻剑 A + 物品栏同型带附魔 B → A 吸收附魔（同级 +1）+ B 消失 + 耐久 = A 剩余 + B 剩余 + 12% 最大耐久（Java）', () => {
     const slots = emptySlots();
     slots[0] = { kind: 'tool', tool: 'diamond_sword', durability: 500, ench: { sharpness: 2 } };
     slots[5] = { kind: 'tool', tool: 'diamond_sword', durability: 300, ench: { sharpness: 2, looting: 1 } };
@@ -104,11 +104,21 @@ describe('铁砧使用', () => {
     expect(st.hotbarSlots[0]).toEqual({
       kind: 'tool',
       tool: 'diamond_sword',
-      durability: 500 + Math.ceil(1561 * 0.12),
+      durability: 500 + 300 + Math.ceil(1561 * 0.12),
       ench: { sharpness: 3, looting: 1 },
       works: 1,
     });
     expect(st.hotbarSlots[5]).toBeNull();
+  });
+
+  it('合并耐久封顶最大耐久（Java：A + B + 12% 超出部分截断）', () => {
+    const slots = emptySlots();
+    slots[0] = { kind: 'tool', tool: 'diamond_sword', durability: 1500, ench: { sharpness: 1 } };
+    slots[5] = { kind: 'tool', tool: 'diamond_sword', durability: 500, ench: { sharpness: 1 } };
+    useGameStore.setState({ hotbarSlots: slots, selectedSlot: 0 });
+    const r = useGameStore.getState().anvilUse();
+    expect(r.ok).toBe(true);
+    expect(useGameStore.getState().hotbarSlots[0]).toMatchObject({ durability: 1561 });
   });
 
   it('经验费：修复耗 2 级经验；经验不足拒绝；累计使用惩罚递增（MC prior work penalty）', () => {
@@ -129,14 +139,34 @@ describe('铁砧使用', () => {
     expect(r2.notice).toContain('经验不足');
   });
 
-  it('过于昂贵：works 高到费用 >30 级直接拒绝（MC 铁砧上限）', () => {
+  it('过于昂贵：费用 ≥40 级直接拒绝（Java 生存上限），39 级仍可用', () => {
     const slots = emptySlots();
-    slots[0] = { kind: 'tool', tool: 'diamond_sword', durability: 100, works: 5 }; // 费 2 + 31 = 33 > 30
+    // works 5：费 2 + (2^5-1) = 33 级 < 40 → 允许（旧规则 >30 即拒是偏差）
+    slots[0] = { kind: 'tool', tool: 'diamond_sword', durability: 100, works: 5 };
     slots[3] = { kind: 'material', material: 'diamond', count: 2 };
+    useGameStore.setState({ hotbarSlots: slots, selectedSlot: 0 });
+    const ok = useGameStore.getState().anvilUse();
+    expect(ok.ok).toBe(true);
+    expect(ok.notice).toContain('消耗 33 级');
+    // works 6：费 2 + (2^6-1) = 65 级 ≥ 40 → 「过于昂贵」拒绝
+    const slots2 = emptySlots();
+    slots2[0] = { kind: 'tool', tool: 'diamond_sword', durability: 100, works: 6 };
+    slots2[3] = { kind: 'material', material: 'diamond', count: 2 };
+    useGameStore.setState({ hotbarSlots: slots2, selectedSlot: 0 });
+    const r = useGameStore.getState().anvilUse();
+    expect(r.ok).toBe(false);
+    expect(r.notice).toBe('过于昂贵！');
+  });
+
+  it('过于昂贵（附魔合并路径）：works 6 时累计惩罚使费用 ≥40 同样拒绝', () => {
+    const slots = emptySlots();
+    slots[0] = { kind: 'tool', tool: 'diamond_sword', durability: 500, ench: { sharpness: 2 }, works: 6 }; // 费 3 + 63 = 66 ≥ 40
+    slots[5] = { kind: 'tool', tool: 'diamond_sword', durability: 300, ench: { sharpness: 3 } };
     useGameStore.setState({ hotbarSlots: slots, selectedSlot: 0 });
     const r = useGameStore.getState().anvilUse();
     expect(r.ok).toBe(false);
     expect(r.notice).toBe('过于昂贵！');
+    expect(useGameStore.getState().hotbarSlots[5]).not.toBeNull(); // B 未被消耗
   });
 
   it('铁砧方块与配方：3 铁块 + 4 铁锭（MC），高硬度', () => {

@@ -53,17 +53,30 @@ export function precipAt(terrain: Pick<Terrain, 'biomeAt' | 'snowlineAt'>, kind:
   return precipForBiome(terrain.biomeAt(x, z), y, terrain.snowlineAt(x, z));
 }
 
-/** 各状态持续时长（秒）：晴长、雨中、雷暴短 */
+/** 各状态持续时长（秒，对齐 MC Java）：晴 10-150min、雨 10-20min（12000-24000 tick）、雷暴 3-13min（3600-15600 tick） */
 const DURATIONS: Record<WeatherKind, [number, number]> = {
-  clear: [300, 600],
-  rain: [120, 240],
-  thunder: [50, 90],
+  clear: [600, 9000],
+  rain: [600, 1200],
+  thunder: [180, 780],
 };
 
 function nextKind(kind: WeatherKind, rand: () => number): WeatherKind {
   if (kind === 'clear') return rand() < 0.3 ? 'thunder' : 'rain';
   if (kind === 'rain') return rand() < 0.15 ? 'thunder' : 'clear';
   return rand() < 0.5 ? 'rain' : 'clear';
+}
+
+/** 当前是否雷暴（跨模块契约：刷怪/闪电等系统据此判定） */
+export function isThundering(): boolean {
+  return weather.kind === 'thunder';
+}
+
+/** 立即转晴并重置天气计时（MC：睡醒放晴） */
+export function clearWeather(): void {
+  weather.kind = 'clear';
+  const [min, max] = DURATIONS.clear;
+  weather.timer = min + Math.random() * (max - min);
+  weather.flash = 0;
 }
 
 /** 每帧推进（暂停时不调用）；rand 可注入以便测试 */

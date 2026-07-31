@@ -23,9 +23,9 @@ export interface ToolDef {
   speed: number;
   /** MC 耐久：木 59 石 131 铁 250 钻 1561 金 32 */
   durability: number;
-  /** 近战伤害（剑 MC：木 4 石 5 铁 6 钻 7；其他工具作武器伤害较低） */
+  /** 近战伤害（MC Java：剑 木4/石5/铁6/钻7/合金8，斧 木金7/石铁钻9/合金10，其他工具作武器伤害较低） */
   attackDamage: number;
-  /** 攻击冷却秒（剑 MC 攻速 1.6；工具/拳头按 4 攻速） */
+  /** 攻击冷却秒 = 1/攻速（MC Java：剑 1.6，斧 木石金 0.8/铁 0.9/钻合金 1.0，镐/锹/锄/徒手 4） */
   attackCd: number;
   /** 图标 tile（MC 原版工具贴图，经 tileIcon 注册进 atlas） */
   iconTile: number;
@@ -41,12 +41,13 @@ export const TOOLS: Record<ToolType, ToolDef> = {
   netherite_pickaxe: { type: 'netherite_pickaxe', kind: 'pickaxe', tier: 'netherite', name: '下界合金镐', speed: 9, durability: 2031, attackDamage: 6, attackCd: 0.25, iconTile: tileIcon('item/netherite_pickaxe') },
   // 金制（MC：速度 12 全游戏最快、耐久仅 32、攻击同木；采掘层级等同木——tier 字段即采掘层级，故取 'wood'）
   golden_pickaxe: { type: 'golden_pickaxe', kind: 'pickaxe', tier: 'wood', name: '金镐', speed: 12, durability: 32, attackDamage: 2, attackCd: 0.25, iconTile: tileIcon('item/golden_pickaxe') },
-  wooden_axe: { type: 'wooden_axe', kind: 'axe', tier: 'wood', name: '木斧', speed: 2, durability: 59, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/wooden_pickaxe') },
-  stone_axe: { type: 'stone_axe', kind: 'axe', tier: 'stone', name: '石斧', speed: 4, durability: 131, attackDamage: 4, attackCd: 0.25, iconTile: tileIcon('item/stone_pickaxe') },
-  iron_axe: { type: 'iron_axe', kind: 'axe', tier: 'iron', name: '铁斧', speed: 6, durability: 250, attackDamage: 5, attackCd: 0.25, iconTile: tileIcon('item/iron_pickaxe') },
-  diamond_axe: { type: 'diamond_axe', kind: 'axe', tier: 'diamond', name: '钻石斧', speed: 8, durability: 1561, attackDamage: 6, attackCd: 0.25, iconTile: tileIcon('item/diamond_pickaxe') },
-  netherite_axe: { type: 'netherite_axe', kind: 'axe', tier: 'netherite', name: '下界合金斧', speed: 9, durability: 2031, attackDamage: 7, attackCd: 0.25, iconTile: tileIcon('item/netherite_axe') },
-  golden_axe: { type: 'golden_axe', kind: 'axe', tier: 'wood', name: '金斧', speed: 12, durability: 32, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/golden_pickaxe') },
+  // 斧（MC Java 1.9 战斗数值：伤害 木/金 7、石/铁/钻 9、合金 10；攻速 木/石/金 0.8、铁 0.9、钻/合金 1.0 → 冷却 1.25/1.11/1.0s）
+  wooden_axe: { type: 'wooden_axe', kind: 'axe', tier: 'wood', name: '木斧', speed: 2, durability: 59, attackDamage: 7, attackCd: 1.25, iconTile: tileIcon('item/wooden_pickaxe') },
+  stone_axe: { type: 'stone_axe', kind: 'axe', tier: 'stone', name: '石斧', speed: 4, durability: 131, attackDamage: 9, attackCd: 1.25, iconTile: tileIcon('item/stone_pickaxe') },
+  iron_axe: { type: 'iron_axe', kind: 'axe', tier: 'iron', name: '铁斧', speed: 6, durability: 250, attackDamage: 9, attackCd: 1 / 0.9, iconTile: tileIcon('item/iron_pickaxe') },
+  diamond_axe: { type: 'diamond_axe', kind: 'axe', tier: 'diamond', name: '钻石斧', speed: 8, durability: 1561, attackDamage: 9, attackCd: 1, iconTile: tileIcon('item/diamond_pickaxe') },
+  netherite_axe: { type: 'netherite_axe', kind: 'axe', tier: 'netherite', name: '下界合金斧', speed: 9, durability: 2031, attackDamage: 10, attackCd: 1, iconTile: tileIcon('item/netherite_axe') },
+  golden_axe: { type: 'golden_axe', kind: 'axe', tier: 'wood', name: '金斧', speed: 12, durability: 32, attackDamage: 7, attackCd: 1.25, iconTile: tileIcon('item/golden_pickaxe') },
   wooden_shovel: { type: 'wooden_shovel', kind: 'shovel', tier: 'wood', name: '木锹', speed: 2, durability: 59, attackDamage: 2, attackCd: 0.25, iconTile: tileIcon('item/wooden_pickaxe') },
   stone_shovel: { type: 'stone_shovel', kind: 'shovel', tier: 'stone', name: '石锹', speed: 4, durability: 131, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/stone_pickaxe') },
   iron_shovel: { type: 'iron_shovel', kind: 'shovel', tier: 'iron', name: '铁锹', speed: 6, durability: 250, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/iron_pickaxe') },
@@ -72,3 +73,13 @@ export const TOOLS: Record<ToolType, ToolDef> = {
   // 钓竿：钓鱼工具（MC 耐久 64，3 木棍 + 2 线合成）
   fishing_rod: { type: 'fishing_rod', kind: 'fishing', tier: 'wood', name: '钓竿', speed: 1, durability: 64, attackDamage: 1, attackCd: 0.25, iconTile: tileIcon('item/fishing_rod') },
 };
+
+/**
+ * MC Java 1.9 攻击冷却伤害缩放：0.2 + ((t+0.5)/T)² × 0.8（封顶 1）。
+ * t = 冷却已走过秒数，T = 总冷却（= 1/攻速）；冷却未满出手伤害大减，冷却走满回到满额。
+ */
+export function attackCooldownScale(elapsed: number, total: number): number {
+  if (total <= 0) return 1;
+  const t = Math.max(0, Math.min(elapsed, total));
+  return Math.min(1, 0.2 + ((t + 0.5) / total) ** 2 * 0.8);
+}

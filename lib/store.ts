@@ -1,7 +1,7 @@
 // zustand 全局状态：界面、种子、热键栏、飞行/暂停、生存数值、槽位背包、装备
 
 import { create } from 'zustand';
-import { armorDef, armorDefOf, armorPoints, emptyArmorSlots } from './armor';
+import { armorDef, armorDefOf, armorPoints, damageAfterArmor, emptyArmorSlots } from './armor';
 import { armorRepairMaterial, enchLevelSum, mergeEnchants, priorWorkPenalty, toolRepairMaterial } from './anvil';
 import { BLOCKS, HOTBAR_BLOCKS, type BlockId } from './blocks';
 import { getBrew, putIntoBrewing, takePotion } from './brewing';
@@ -13,7 +13,9 @@ import { beaconTiers } from './beacon';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
 import { applyCraft, canCraft, hasSpaceFor } from './recipes';
 import { netheriteUpgradeOf } from './smithing';
+import { setPersistenceNoticeHandler } from './persistence';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
+import { eatSound, hurtSound, levelupSound } from './sound';
 import { getStorage, putIntoStorage, takeFromStorage } from './storage';
 import { TOOLS } from './tools';
 import { executeTrade, MAX_TRADE_USES, professionOf, TRADES, tradeDay, tradeStockLeft, deductTradeStock } from './trading';
@@ -56,6 +58,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   saturation: MAX_SATURATION,
   xpTotal: 0,
   dead: false,
+  deathPos: null,
   lastDamageAt: 0,
   hotbarSlots: emptySlots(),
   mainSlots: emptyBackpack(),
@@ -73,13 +76,14 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION, xpTotal: 0,
       dimension: 'overworld',
       dead: false,
+      deathPos: null,
       // 创造模式热键栏给默认方块面板（hotbarSlots 与生存共用一套——创造可持工具/材料，MC 模型）；生存为空
       hotbarSlots: worldMode === 'creative' ? HOTBAR_BLOCKS.map((id) => ({ kind: 'block' as const, id, count: 1 })) : emptySlots(),
       mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, respawnPoint: null, dead: false, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, respawnPoint: null, dead: false, deathPos: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null }),
   backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, respawnPoint: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
@@ -133,7 +137,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setRespawnPoint: (respawnPoint) => set({ respawnPoint }),
   setWorldMode: (worldMode) => set({ worldMode }),
   setDimension: (dimension) => set({ dimension }),
-  addXp: (amount) => set((s) => ({ xpTotal: s.xpTotal + Math.max(0, Math.floor(amount)) })),
+  addXp: (amount) => {
+    // 跨级检测：升级瞬间播放上行琶音（mobs 掉落经验球、烧炼、交易的经验都汇到这里）
+    const before = levelFromXp(get().xpTotal).level;
+    set((s) => ({ xpTotal: s.xpTotal + Math.max(0, Math.floor(amount)) }));
+    if (levelFromXp(get().xpTotal).level > before) levelupSound();
+  },
   enchantApply: (slotIndex, offer) => {
     const s = get();
     const slot = s.hotbarSlots[slotIndex];
@@ -160,7 +169,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setHealth: (health) => set({ health }),
   setHunger: (hunger) => set({ hunger }),
   setSaturation: (saturation) => set({ saturation }),
-  setDead: (dead) => set({ dead }),
+  setDead: (dead) => set({ dead, ...(dead ? {} : { deathPos: null }) }),
   damagePlayer: (amount, opts) => {
     // MC：创造模式玩家无敌，不受任何伤害（虚空 /kill 由各自路径单独处理，不经此函数）
     if (get().worldMode === 'creative') return false;
@@ -169,13 +178,13 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     hurtState.lastAt = now;
     survivalStats.exhaustion += 0.1; // MC：受击也消耗能量
     set((s) => {
-      // 皮甲减伤（每护甲点 4%，与 MC 一致）+ 保护附魔减伤（每级 4%，上限 80%，MC）并扣每件装备 1 点耐久；抗性效果（信标）再减 20%/级（4 层金字塔 II 级 40%）
+      // 护甲减伤走 Java 两段式（armor.ts damageAfterArmor：护甲/盔甲韧性递减 + 保护附魔 EPF 第二段，无 1 点伤害地板）；
+      // 抗性效果（信标）在护甲之后再减 20%/级（4 层金字塔 II 级 40%，MC）；穿甲伤害不减免也不耗装备耐久
       // MC：摔落/溺水/虚空/凋零等伤害不被护甲/保护减免，也不耗装备耐久（bypassArmor）
       const bypass = opts?.bypassArmor === true;
       const points = bypass ? 0 : armorPoints(s.armorSlots);
-      const protLvl = bypass ? 0 : Object.values(s.armorSlots).reduce((n, p) => n + (p?.ench?.protection ?? 0), 0);
-      const reduction = points * 0.04 + Math.min(0.8 - points * 0.04, protLvl * 0.04) + (effects.resistance > 0 ? 0.2 * (beaconTiers.get('resistance') ?? 1) : 0);
-      const finalAmount = reduction > 0 ? Math.max(1, Math.ceil(amount * (1 - Math.min(0.8, reduction)))) : amount;
+      let finalAmount = bypass ? amount : damageAfterArmor(amount, s.armorSlots);
+      if (!bypass && effects.resistance > 0) finalAmount *= 1 - 0.2 * (beaconTiers.get('resistance') ?? 1);
       let armorSlots = s.armorSlots;
       if (points > 0) {
         armorSlots = { ...s.armorSlots };
@@ -216,6 +225,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         health,
         dead: health <= 0 || s.dead,
         lastDamageAt: now,
+        // 记录死亡地点供死亡界面显示坐标（重生时由 setDead(false) 清空）
+        ...(died ? { deathPos: { x: Math.floor(playerPosition.x), y: Math.floor(playerPosition.y), z: Math.floor(playerPosition.z) } } : {}),
         hotbarSlots,
         mainSlots,
         armorSlots,
@@ -224,6 +235,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         ...(died ? ALL_PANELS_CLOSED : {}),
       };
     });
+    hurtSound(); // 实际扣血才播（创造/无敌帧上面已 return false）
     return true;
   },
   loadSurvival: ({ health, hunger, saturation, slots, backpack, armor, xp }) =>
@@ -236,6 +248,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       armorSlots: armor ?? emptyArmorSlots(),
       xpTotal: xp ?? 0,
       dead: false,
+      deathPos: null,
     }),
   executeMobTrade: (i) => {
     const s = get();
@@ -286,13 +299,17 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (!slot || slot.kind !== 'material') return false;
     const food = FOODS[slot.material];
     if (!food) return false;
-    if (s.hunger >= MAX_HUNGER) return false; // MC：满饥饿不能进食
+    if (s.hunger >= MAX_HUNGER) {
+      s.setNotice('还不饿'); // MC：满饥饿不能进食；拒绝要给反馈，不静默吞掉操作
+      return false;
+    }
     const hunger = Math.min(MAX_HUNGER, s.hunger + food.hunger);
     // MC：饱和度不超过饥饿值（本游戏饥饿 20 / 饱和 5）
     const saturation = Math.min(MAX_SATURATION, s.saturation + food.saturation, hunger / 4);
     const slots = [...s.hotbarSlots];
     slots[s.selectedSlot] = slot.count > 1 ? { ...slot, count: slot.count - 1 } : null;
     set({ hunger, saturation, hotbarSlots: slots });
+    eatSound();
     return true;
   },
   furnacePut: (slotIndex, force) => {
@@ -307,9 +324,15 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     const f = getFurnace(s.furnaceOpen);
     const before = f.output?.count ?? 0;
     set({ hotbarSlots: takeOutput(s.hotbarSlots, f) });
-    // 烧炼产出经验：按实际取出件数 +1 XP/件（热键栏满取不出则不给，MC 烧炼经验简化）
+    // 烧炼经验：炉内按配方表累积小数 xp，取出成品时结算整数部分、余数留炉（MC；热键栏满取不出则不给）
     const taken = before - (f.output?.count ?? 0);
-    if (taken > 0) s.addXp(taken);
+    if (taken > 0) {
+      const award = Math.floor(f.xp ?? 0);
+      if (award > 0) {
+        f.xp = (f.xp ?? 0) - award;
+        s.addXp(award);
+      }
+    }
   },
   brewingPut: (slotIndex) => {
     const s = get();
@@ -403,18 +426,18 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       if ((b.kind !== 'tool' && b.kind !== 'armor') || !b.ench) return { ok: false, notice: '合并失败' }; // 谓词已保证，仅为类型窄化
       const maxDura = held.kind === 'tool' ? TOOLS[held.tool].durability : armorDefOf(held).durability;
       const mergedEnch = mergeEnchants(held.ench, b.ench);
-      // MC 铁砧经验费：合并附魔等级总和 + 累计使用惩罚（2^works-1）；>30 级「过于昂贵」拒绝；创造模式免费
+      // MC 铁砧经验费：合并附魔等级总和 + 累计使用惩罚（2^works-1）；Java 生存 ≥40 级「过于昂贵」拒绝（39 可用）；创造模式免费
       const works = held.works ?? 0;
       const cost = enchLevelSum(mergedEnch) + priorWorkPenalty(works);
       const free = s.worldMode === 'creative';
-      if (!free && cost > 30) return { ok: false, notice: '过于昂贵！' };
+      if (!free && cost >= 40) return { ok: false, notice: '过于昂贵！' };
       if (!free && levelFromXp(s.xpTotal).level < cost) return { ok: false, notice: `经验不足（需要 ${cost} 级）` };
       const hotbarSlots = [...s.hotbarSlots];
       const mainSlots = [...s.mainSlots];
       const merged = {
         ...held,
         ench: mergedEnch,
-        durability: Math.min(maxDura, held.durability + Math.ceil(maxDura * 0.12)), // MC 合并 +12% 耐久
+        durability: Math.min(maxDura, held.durability + b.durability + Math.ceil(maxDura * 0.12)), // Java 合并：A 剩余 + B 剩余 + 12% 最大耐久（封顶）
         works: works + 1,
       };
       hotbarSlots[s.selectedSlot] = merged as typeof held;
@@ -428,11 +451,11 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (held.durability >= maxDura) return { ok: false, notice: '耐久已满，无需修复' };
     const key = held.kind === 'tool' ? toolRepairMaterial(held.tool) : armorRepairMaterial(held.material);
     if (!key) return { ok: false, notice: '该物品无法修复' };
-    // MC 铁砧修复经验费：2 级 + 累计使用惩罚；>30 级「过于昂贵」拒绝；创造免费
+    // MC 铁砧修复经验费：2 级 + 累计使用惩罚；Java 生存 ≥40 级「过于昂贵」拒绝（39 可用）；创造免费
     const works = held.works ?? 0;
     const cost = 2 + priorWorkPenalty(works);
     const free = s.worldMode === 'creative';
-    if (!free && cost > 30) return { ok: false, notice: '过于昂贵！' };
+    if (!free && cost >= 40) return { ok: false, notice: '过于昂贵！' };
     if (!free && levelFromXp(s.xpTotal).level < cost) return { ok: false, notice: `经验不足（需要 ${cost} 级）` };
     // 通用扣料（block:<id> 或 material:<name>，热键栏 + 背包）
     const hotbarSlots = [...s.hotbarSlots];
@@ -598,3 +621,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
 export function randomSeed(): string {
   return Math.random().toString(36).slice(2, 8);
 }
+
+// persistence 的用户可见提示（存档损坏/版本不兼容/写入失败）注入到 Hud 的 Notice 条——
+// persistence 不反向 import store，故由这里经回调注入（模块加载即注册，菜单/游戏内都生效）
+setPersistenceNoticeHandler((message) => useGameStore.getState().setNotice(message));

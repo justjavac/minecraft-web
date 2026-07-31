@@ -170,6 +170,9 @@ const LEAVES_SND = { digSound: 'dig_leaves', placeSound: 'place', stepSound: 'st
 
 type Tex = string | { top?: string; side?: string; bottom?: string };
 
+// ⚠️ 存档兼容性：方块 id 会作为原始数值写入存档的 chunk 数据（Uint16Array），读取时按 id 直接索引本注册表。
+// 因此新方块只允许追加在注册表末尾；禁止在中间插入新方块或重排已有注册项——
+// 否则旧存档里的 id 会静默映射到别的方块，世界内容错位且无任何报错。
 /** 注册方块（id 按注册顺序自增，接续 0-13 的传统 id） */
 const defs: BlockDef[] = [];
 function add(key: string, name: string, tex: Tex, o: Partial<BlockDef> & { cat: BlockCat }): BlockDef {
@@ -809,6 +812,17 @@ add('stone_pressure_plate', '石头压力板', 'stone', {
 const observerN = add('observer_n', '侦测器', { side: 'piston_side', top: 'target_top', bottom: 'piston_bottom' }, { cat: 'utility', facing: 0, tool: 'pickaxe', needsPick: true, digTime: 15 });
 for (const [suf, f] of [['e', 1], ['s', 2], ['w', 3], ['u', 4], ['d', 5]] as const) {
   add(`observer_${suf}`, '侦测器', { side: 'piston_side', top: 'target_top', bottom: 'piston_bottom' }, { cat: 'utility', facing: f, tool: 'pickaxe', needsPick: true, digTime: 15, dropBlock: observerN.id });
+}
+
+// ——— 流动岩浆 1-7 级（追加在注册表末尾以保持存档兼容；源为 LAVA，流动规则见 lib/fluids.ts）———
+// 贴图复用 lava_still（不新增 atlas 格）；lava: true 使伤害/着火/防爆等按岩浆判定（isLavaId）
+export const LAVA_FLOW_1 = defs.length;
+for (let lv = 1; lv <= 7; lv++) {
+  defs.push({
+    id: defs.length, key: `lava_flow_${lv}`, name: '流动岩浆',
+    top: tileOf('lava_still'), bottom: tileOf('lava_still'), side: tileOf('lava_still'),
+    opaque: false, solid: false, digSound: null, placeSound: 'place', stepSound: null, digTime: 0, cat: 'ocean', lava: true, light: 15,
+  });
 }
 
 /** 以方块 id 为下标 */

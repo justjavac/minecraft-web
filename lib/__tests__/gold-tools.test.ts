@@ -27,7 +27,7 @@ describe('金工具数值（MC）', () => {
     }
   });
 
-  it('攻击与木同级（剑 4、斧 3、镐/锹 2）', () => {
+  it('攻击与木同级（剑 4、斧 7、镐/锹 2）', () => {
     expect(TOOLS.golden_sword.attackDamage).toBe(TOOLS.wooden_sword.attackDamage);
     expect(TOOLS.golden_axe.attackDamage).toBe(TOOLS.wooden_axe.attackDamage);
     expect(TOOLS.golden_pickaxe.attackDamage).toBe(TOOLS.wooden_pickaxe.attackDamage);

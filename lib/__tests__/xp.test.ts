@@ -151,7 +151,8 @@ describe('附魔应用与效果', () => {
     useGameStore.getState().damagePlayer(10);
     const hp = useGameStore.getState().health;
     expect(hp).toBeGreaterThan(20 - 10); // 有减伤（无保护则整 10 点）
-    expect(20 - hp).toBeLessThanOrEqual(8); // 皮甲 4% + 保护 IV 16% = 减 20%
+    // Java 两段式：皮头 1 点 → max(0.2, 1-5)/25 = 0.8% → 9.92；保护 IV（EPF 4）再 ×0.84 → ≈8.33
+    expect(20 - hp).toBeCloseTo(9.92 * 0.84, 3);
   });
 
   it('抢夺附魔：杀牛加掉（掉落计数上有加成的分布）', () => {

@@ -3,6 +3,7 @@
 import { BLOCK_BY_KEY, COBBLE, GLASS, LOG, PLANKS, SAND, STONE } from './blocks';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { addStackToSlots, type Slot } from './slots';
+import { registerWorldScope } from './worldScope';
 
 // ——— 食物（MC 回复量，饱和度按本游戏 /5 缩放） ———
 export interface FoodDef {
@@ -33,32 +34,37 @@ export const FOODS: Record<string, FoodDef> = {
 export interface SmeltDef {
   out: string; // 'block:<id>' | 'material:<name>'
   name: string;
+  /** 每件产出的烧炼经验（MC 配方表；缺省 0.1） */
+  xp?: number;
 }
+
+/** 未列出配方的默认烧炼经验（MC：石头/玻璃等 0.1） */
+export const DEFAULT_SMELT_XP = 0.1;
 
 const K = (key: string) => `block:${BLOCK_BY_KEY[key].id}`;
 
-/** 输入 item → 输出（每件 10 秒，与 MC 一致） */
+/** 输入 item → 输出（每件 10 秒，与 MC 一致）；xp 为每件烧炼经验（MC 配方表，缺省 0.1） */
 export const SMELTING: Record<string, SmeltDef> = {
   [`block:${COBBLE}`]: { out: `block:${STONE}`, name: '石头' },
   [`block:${SAND}`]: { out: `block:${GLASS}`, name: '玻璃' },
   [K('red_sand')]: { out: `block:${GLASS}`, name: '玻璃' },
-  [`block:${LOG}`]: { out: 'material:charcoal', name: '木炭' },
+  [`block:${LOG}`]: { out: 'material:charcoal', name: '木炭', xp: 0.15 },
   // 其他木材原木也可烧木炭（MC 一致）
   ...Object.fromEntries(
     (['spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry'] as const).map((w) => [
       K(`${w}_log`),
-      { out: 'material:charcoal', name: '木炭' } satisfies SmeltDef,
+      { out: 'material:charcoal', name: '木炭', xp: 0.15 } satisfies SmeltDef,
     ]),
   ),
-  'material:raw_pork': { out: 'material:cooked_pork', name: '熟猪排' },
-  'material:raw_beef': { out: 'material:cooked_beef', name: '熟牛排' },
-  'material:raw_chicken': { out: 'material:cooked_chicken', name: '熟鸡肉' },
-  'material:raw_cod': { out: 'material:cooked_cod', name: '熟鳕鱼' },
-  'material:raw_salmon': { out: 'material:cooked_salmon', name: '熟鲑鱼' },
-  // 粗矿烧炼成锭（MC 一致）
-  'material:raw_iron': { out: 'material:iron_ingot', name: '铁锭' },
-  'material:raw_gold': { out: 'material:gold_ingot', name: '金锭' },
-  'material:raw_copper': { out: 'material:copper_ingot', name: '铜锭' },
+  'material:raw_pork': { out: 'material:cooked_pork', name: '熟猪排', xp: 0.35 },
+  'material:raw_beef': { out: 'material:cooked_beef', name: '熟牛排', xp: 0.35 },
+  'material:raw_chicken': { out: 'material:cooked_chicken', name: '熟鸡肉', xp: 0.35 },
+  'material:raw_cod': { out: 'material:cooked_cod', name: '熟鳕鱼', xp: 0.35 },
+  'material:raw_salmon': { out: 'material:cooked_salmon', name: '熟鲑鱼', xp: 0.35 },
+  // 粗矿烧炼成锭（MC 一致：铁/铜 0.7，金 1.0）
+  'material:raw_iron': { out: 'material:iron_ingot', name: '铁锭', xp: 0.7 },
+  'material:raw_gold': { out: 'material:gold_ingot', name: '金锭', xp: 1.0 },
+  'material:raw_copper': { out: 'material:copper_ingot', name: '铜锭', xp: 0.7 },
   // 石头系烧炼（MC：石头→平滑石头，石砖→裂纹石砖…）
   [K('stone')]: { out: K('smooth_stone'), name: '平滑石头' },
   [K('stone_bricks')]: { out: K('cracked_stone_bricks'), name: '裂纹石砖' },
@@ -68,8 +74,8 @@ export const SMELTING: Record<string, SmeltDef> = {
   [K('deepslate_bricks')]: { out: K('cracked_deepslate_bricks'), name: '裂纹深板岩砖' },
   [K('deepslate_tiles')]: { out: K('cracked_deepslate_tiles'), name: '裂纹深板岩瓦' },
   [K('clay')]: { out: K('terracotta'), name: '陶瓦' },
-  // 远古残骸 → 下界合金碎片（MC；经验丰厚）
-  [K('ancient_debris')]: { out: 'material:netherite_scrap', name: '下界合金碎片' },
+  // 远古残骸 → 下界合金碎片（MC；经验丰厚 2.0/件）
+  [K('ancient_debris')]: { out: 'material:netherite_scrap', name: '下界合金碎片', xp: 2.0 },
 };
 
 /** 燃料燃烧秒数（MC：木板/原木 15s，木棍 5s，木炭/煤 80s，烈焰棒 120s，干海带块 200s，煤块 800s） */
@@ -108,6 +114,8 @@ export interface FurnaceState {
   burnLeft: number;
   /** 当前烧炼进度（秒） */
   progress: number;
+  /** 已累积的烧炼经验（小数，MC 炉内暂存；取出成品时结算整数部分，余数保留。可选字段，旧档缺省 0） */
+  xp?: number;
 }
 
 /** 世界内所有熔炉，key = "x,y,z" */
@@ -196,15 +204,17 @@ export function tickFurnaces(dt: number): void {
       continue;
     }
     const smelt = SMELTING[f.input.item];
-    if (outputBlocked(f, smelt.out)) continue;
-    // 点燃新燃料
-    if (f.burnLeft <= 0) {
+    const blocked = outputBlocked(f, smelt.out);
+    // 点燃新燃料（输出堵住时不点火，MC：无可烧产物不点火）
+    if (!blocked && f.burnLeft <= 0) {
       if (!f.fuel || FUELS[f.fuel.item] === undefined) continue;
       f.burnLeft = FUELS[f.fuel.item];
       f.fuel.count -= 1;
       if (f.fuel.count <= 0) f.fuel = null;
     }
-    f.burnLeft = Math.max(0, f.burnLeft - dt);
+    // 已点燃的燃料照常燃烧：输出槽堵住只冻结烧炼进度，不冻结燃料消耗（MC）
+    if (f.burnLeft > 0) f.burnLeft = Math.max(0, f.burnLeft - dt);
+    if (blocked) continue;
     f.progress += dt;
     if (f.progress >= SMELT_TIME) {
       f.progress = 0;
@@ -212,6 +222,8 @@ export function tickFurnaces(dt: number): void {
       if (f.input.count <= 0) f.input = null;
       if (f.output) f.output = { item: smelt.out, count: f.output.count + 1 };
       else f.output = { item: smelt.out, count: 1 };
+      // 烧炼经验按配方表累积在炉内（小数），取出成品时结算（MC）
+      f.xp = (f.xp ?? 0) + (smelt.xp ?? DEFAULT_SMELT_XP);
     }
   }
 }
@@ -228,3 +240,14 @@ export function dropFurnaceContents(key: string, x: number, y: number, z: number
   }
   furnaces.delete(key);
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：熔炉状态可快照/恢复（跨维度暂存 + 存档 dims 持久化）
+registerWorldScope<[string, FurnaceState][]>({
+  name: 'furnace',
+  clear: clearFurnaces,
+  snapshot: () => [...furnaces],
+  restore: (entries) => {
+    furnaces.clear();
+    for (const [k, v] of entries) furnaces.set(k, v);
+  },
+});

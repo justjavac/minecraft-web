@@ -6,7 +6,7 @@ import { dropFurnaceContents, FOODS } from './furnace';
 import { dropBrewingContents, POTIONS } from './brewing';
 import { effects, effectLvls } from './effects';
 import { isFarmlandId, isWheatCropId } from './crops';
-import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, pearlTeleport, playerPosition, worldClock } from './game';
+import { cameraRef, breakParticles, dayFactorAt, getActiveWorld, pearlTeleport, playerPosition, touchInput, worldClock } from './game';
 import { setGrowthDropHandler } from './growth';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
 import { setSaplingDropHandler, isLeavesId, LEAF_TO_SAPLING } from './saplings';
@@ -23,11 +23,13 @@ import { BREED_FOOD, barterWith, feedMob, fireEnderPearl, fireEyeOfEnder, firePl
 import { fillPortalFrame, nearestStronghold } from './stronghold';
 import { bobber, castBobber, reelIn } from './fishing';
 import { MATERIAL_INFO, materialTile } from './materials';
+import { blockIntersectsPlayer } from './physics';
 import { playSound } from './sound';
 import { dropStorageContents } from './storage';
 import { useGameStore, MAX_HEALTH } from './store';
 import { igniteTnt } from './tnt';
 import { TOOLS } from './tools';
+import { clearWeather, isThundering } from './weather';
 import { type World } from './world';
 import { WORLD_HEIGHT } from './grid';
 
@@ -38,23 +40,27 @@ setGrowthDropHandler((id, x, y, z) => spawnBlockDrop(id, x, y, z));
 
 const REACH = 6; // 挖掘/放置距离
 const PLACE_COOLDOWN = 150; // ms
-const HALF_W = 0.3; // 玩家半宽
-const HEIGHT = 1.8; // 玩家高度
 
 let lastPlace = 0;
 const dir = new Vector3();
 
-/** 待放置方块是否与玩家 AABB 重叠 */
-function intersectsPlayer(bx: number, by: number, bz: number): boolean {
-  const p = playerPosition;
-  return (
-    bx + 1 > p.x - HALF_W &&
-    bx < p.x + HALF_W &&
-    bz + 1 > p.z - HALF_W &&
-    bz < p.z + HALF_W &&
-    by + 1 > p.y &&
-    by < p.y + HEIGHT
-  );
+/** 桌面 Shift 按住状态：Player.tsx 的键盘表是其内部 ref 未导出，这里独立监听 window（blur 复位防卡键） */
+let shiftHeld = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') shiftHeld = true;
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') shiftHeld = false;
+  });
+  window.addEventListener('blur', () => {
+    shiftHeld = false;
+  });
+}
+
+/** 潜行判定：桌面 Shift 或触屏潜行开关（与 Player.tsx 移动逻辑的合并方式一致） */
+export function isSneaking(): boolean {
+  return shiftHeld || touchInput.sneak;
 }
 
 /** 破坏指定方块并播放音效、生成碎块粒子；生存模式按 MC 规则掉落（石头系需镐），创造模式无掉落 */
@@ -468,6 +474,9 @@ export function tryPlace(): boolean {
   const hitId = world.getBlock(bx, by, bz);
   // 生存模式手持物的整地/播种（拿的是工具/材料而非方块，先于常规放置判定）
   const heldSlot = s.worldMode === 'survival' ? s.hotbarSlots[s.selectedSlot] : null;
+  // 潜行右键可交互方块 = 放置手持方块、不开界面（Java）；潜行但手空/手持不可放置物（工具/材料）时保持开界面
+  const heldNow = s.hotbarSlots[s.selectedSlot];
+  const sneakPlace = isSneaking() && heldNow?.kind === 'block' && heldNow.count > 0;
   // 锄头整地：右键草方块/泥土 → 耕地
   if (heldSlot?.kind === 'tool' && TOOLS[heldSlot.tool].kind === 'hoe' && (hitId === GRASS || hitId === DIRT)) {
     world.setBlock(bx, by, bz, BLOCK_BY_KEY.farmland.id);
@@ -489,10 +498,10 @@ export function tryPlace(): boolean {
     lastPlace = now;
     return true;
   }
-  // 骨粉：催熟小麦（+1~2 阶段）；点草方块催出花草（湿润耕地也可播种）
+  // 骨粉：催熟小麦（+2~5 阶段，Java）；点草方块催出花草（湿润耕地也可播种）
   if (heldSlot?.kind === 'material' && heldSlot.material === 'bonemeal') {
     if (isWheatCropId(hitId) && hitId < WHEAT_CROP_0 + 7) {
-      world.setBlock(bx, by, bz, Math.min(hitId + 1 + Math.floor(Math.random() * 2), WHEAT_CROP_0 + 7));
+      world.setBlock(bx, by, bz, Math.min(hitId + 2 + Math.floor(Math.random() * 4), WHEAT_CROP_0 + 7));
       s.consumeMaterial('bonemeal', 1);
       breakParticles.push({ x: bx, y: by, z: bz, tile: BLOCKS[hitId].side });
       playSound('place');
@@ -518,155 +527,178 @@ export function tryPlace(): boolean {
       }
     }
   }
-  if (hitId === CRAFTING_TABLE) {
-    s.setCraftingOpen(true, true);
-    return false;
-  }
-  if (hitId === FURNACE) {
-    s.setFurnaceOpen(`${bx},${by},${bz}`);
-    return false;
-  }
-  // 酿造台：右键打开酿造界面
-  if (hitId === BLOCK_BY_KEY.brewing_stand.id) {
-    s.setBrewingOpen(`${bx},${by},${bz}`);
-    return false;
-  }
-  // 附魔台：右键打开附魔界面
-  if (hitId === BLOCK_BY_KEY.enchanting_table.id) {
-    s.setEnchantOpen(`${bx},${by},${bz}`);
-    return false;
-  }
-  // 信标：矿物块金字塔 + 手持矿物锭（铁/金/钻石/绿宝石）激活；已激活则右击循环切换效果
-  if (hitId === BLOCK_BY_KEY.beacon.id) {
-    const heldM = s.hotbarSlots[s.selectedSlot];
-    // 创造模式免支付（MC 创造直接激活）
-    const mat = s.worldMode === 'survival' ? (heldM?.kind === 'material' ? heldM.material : null) : 'iron_ingot';
-    const res = interactBeacon(world, bx, by, bz, mat);
-    if (res.consume && s.worldMode === 'survival') s.consumeMaterial(res.consume, 1);
-    if (res.ok) playSound('place');
-    s.setNotice(res.notice);
-    lastPlace = now;
-    return false;
-  }
-  // 锻造台：手持下界合金锭右击 → 物品栏首个钻石工具升级为下界合金（保留附魔/耐久，MC）
-  if (hitId === BLOCK_BY_KEY.smithing_table.id) {
-    if (s.smithingUpgrade()) {
-      s.setNotice('已升级为下界合金（附魔与耐久保留）');
-      playSound('place');
-    } else {
-      s.setNotice('手持下界合金锭，且物品栏有钻石工具/装备');
+  if (!sneakPlace) {
+    if (hitId === CRAFTING_TABLE) {
+      s.setCraftingOpen(true, true);
+      return false;
     }
-    lastPlace = now;
-    return false;
-  }
-  // 铁砧：手持工具/装备右击——修复（耗材料 +25%）或附魔合并（MC）
-  if (hitId === BLOCK_BY_KEY.anvil.id) {
-    const r = s.anvilUse();
-    if (r.ok) playSound('place');
-    s.setNotice(r.notice);
-    lastPlace = now;
-    return false;
-  }
-  // 末地门框架：手持末影之眼右击嵌入；12 框全嵌眼则激活末地传送门（MC）
-  if (hitId === BLOCK_BY_KEY.end_portal_frame.id) {
-    const heldEye = s.hotbarSlots[s.selectedSlot];
-    if (heldEye?.kind === 'material' && heldEye.material === 'eye_of_ender') {
-      const r = fillPortalFrame(world, bx, by, bz);
-      if (r !== 'invalid') {
-        if (s.worldMode === 'survival') s.consumeMaterial('eye_of_ender', 1);
-        s.setNotice(r === 'activated' ? '末地传送门激活！' : '末影之眼已嵌入框架');
+    if (hitId === FURNACE) {
+      s.setFurnaceOpen(`${bx},${by},${bz}`);
+      return false;
+    }
+    // 酿造台：右键打开酿造界面
+    if (hitId === BLOCK_BY_KEY.brewing_stand.id) {
+      s.setBrewingOpen(`${bx},${by},${bz}`);
+      return false;
+    }
+    // 附魔台：右键打开附魔界面
+    if (hitId === BLOCK_BY_KEY.enchanting_table.id) {
+      s.setEnchantOpen(`${bx},${by},${bz}`);
+      return false;
+    }
+    // 信标：矿物块金字塔 + 手持矿物锭（铁/金/钻石/绿宝石）激活；已激活则右击循环切换效果
+    if (hitId === BLOCK_BY_KEY.beacon.id) {
+      const heldM = s.hotbarSlots[s.selectedSlot];
+      // 创造模式免支付（MC 创造直接激活）
+      const mat = s.worldMode === 'survival' ? (heldM?.kind === 'material' ? heldM.material : null) : 'iron_ingot';
+      const res = interactBeacon(world, bx, by, bz, mat);
+      if (res.consume && s.worldMode === 'survival') s.consumeMaterial(res.consume, 1);
+      if (res.ok) playSound('place');
+      s.setNotice(res.notice);
+      lastPlace = now;
+      return false;
+    }
+    // 锻造台：手持下界合金锭右击 → 物品栏首个钻石工具升级为下界合金（保留附魔/耐久，MC）
+    if (hitId === BLOCK_BY_KEY.smithing_table.id) {
+      if (s.smithingUpgrade()) {
+        s.setNotice('已升级为下界合金（附魔与耐久保留）');
         playSound('place');
-        lastPlace = now;
+      } else {
+        s.setNotice('手持下界合金锭，且物品栏有钻石工具/装备');
       }
+      lastPlace = now;
+      return false;
     }
-    return false;
-  }
-  // 箱子/木桶：右键打开容器界面
-  if (hitId === BLOCK_BY_KEY.chest.id || hitId === BLOCK_BY_KEY.barrel.id) {
-    s.setStorageOpen(`${bx},${by},${bz}`);
-    return false;
-  }
-  // 床：下界/末地右击即爆炸（MC 经典维度规则，威力大于 TNT）；主世界夜晚右键睡觉——跳到日出并把重生点设到床边；白天拒绝
-  if (hitId === BLOCK_BY_KEY.red_bed.id) {
-    if ((world.terrain.kind ?? 'overworld') !== 'overworld') {
+    // 铁砧：手持工具/装备右击——修复（耗材料 +25%）或附魔合并（MC）
+    if (hitId === BLOCK_BY_KEY.anvil.id) {
+      const r = s.anvilUse();
+      if (r.ok) playSound('place');
+      s.setNotice(r.notice);
+      lastPlace = now;
+      return false;
+    }
+    // 末地门框架：手持末影之眼右击嵌入；12 框全嵌眼则激活末地传送门（MC）
+    if (hitId === BLOCK_BY_KEY.end_portal_frame.id) {
+      const heldEye = s.hotbarSlots[s.selectedSlot];
+      if (heldEye?.kind === 'material' && heldEye.material === 'eye_of_ender') {
+        const r = fillPortalFrame(world, bx, by, bz);
+        if (r !== 'invalid') {
+          if (s.worldMode === 'survival') s.consumeMaterial('eye_of_ender', 1);
+          s.setNotice(r === 'activated' ? '末地传送门激活！' : '末影之眼已嵌入框架');
+          playSound('place');
+          lastPlace = now;
+        }
+      }
+      return false;
+    }
+    // 箱子/木桶：右键打开容器界面
+    if (hitId === BLOCK_BY_KEY.chest.id || hitId === BLOCK_BY_KEY.barrel.id) {
+      s.setStorageOpen(`${bx},${by},${bz}`);
+      return false;
+    }
+    // 床：下界/末地右击即爆炸（MC 经典维度规则，威力大于 TNT）；主世界夜晚（或雷暴白天）睡觉——跳到日出、
+    // 睡醒放晴、重生点设到床边；白天右键只设重生点不睡觉（Java 1.15+）
+    if (hitId === BLOCK_BY_KEY.red_bed.id) {
+      if ((world.terrain.kind ?? 'overworld') !== 'overworld') {
+        world.setBlock(bx, by, bz, AIR);
+        explodeAt(world, bx + 0.5, by + 0.5, bz + 0.5, playerPosition, (dmg) => s.damagePlayer(dmg), {
+          radius: 5, // MC：床爆炸威力 5（TNT 为 4）
+          maxDamage: 43,
+          hurtRadius: 8,
+        });
+        lastPlace = now;
+        return true;
+      }
+      // 夜晚可睡；雷暴时白天也可睡（Java）
+      if (dayFactorAt(worldClock.t) < 0.4 || isThundering()) {
+        // 入睡检查：床水平 8 格、垂直 5 格内有敌对生物则拒绝（Java「附近有怪物在游荡」；驯服的狼不算）
+        const monster = mobs.some(
+          (m) =>
+            MOB_DEFS[m.type].hostile &&
+            !(m.type === 'wolf' && m.tamed) &&
+            Math.abs(m.x - (bx + 0.5)) <= 8 &&
+            Math.abs(m.z - (bz + 0.5)) <= 8 &&
+            Math.abs(m.y - by) <= 5,
+        );
+        if (monster) {
+          s.setNotice('你现在不能休息，附近有怪物在游荡');
+          lastPlace = now;
+          return false;
+        }
+        worldClock.t = 0;
+        onSlept(); // MC 睡过清零失眠（幻翼计数）；同步重置跨日基准，避免回拨误判为自然跨日
+        clearWeather(); // MC：睡醒放晴（正在下雨/雷暴则转晴）
+        s.setRespawnPoint({ x: bx + 0.5, y: by + 1, z: bz + 0.5 }); // MC：床设置重生点（死亡/虚空回这里）
+        s.setNotice('重生点已设置');
+        playSound('place');
+      } else {
+        // Java 1.15+：白天右键床只设置重生点，不睡觉
+        s.setRespawnPoint({ x: bx + 0.5, y: by + 1, z: bz + 0.5 });
+        s.setNotice('重生点已设置');
+        playSound('place');
+      }
+      lastPlace = now;
+      return false;
+    }
+    // TNT：手持打火石右键点燃（MC；红石信号引爆见 redstone.ts），生成引信实体而非放置。创造模式视同有打火机（创造拿不到材料，右击即点燃——打掉 TNT 用左键）
+    if (hitId === BLOCK_BY_KEY.tnt.id && (s.worldMode === 'creative' || (heldSlot?.kind === 'material' && heldSlot.material === 'flint_and_steel'))) {
       world.setBlock(bx, by, bz, AIR);
-      explodeAt(world, bx + 0.5, by + 0.5, bz + 0.5, playerPosition, (dmg) => s.damagePlayer(dmg), {
-        radius: 5, // MC：床爆炸威力 5（TNT 为 4）
-        maxDamage: 43,
-        hurtRadius: 8,
-      });
+      igniteTnt(bx, by, bz);
+      playSound('place');
       lastPlace = now;
       return true;
     }
-    if (dayFactorAt(worldClock.t) < 0.4) {
-      worldClock.t = 0;
-      onSlept(); // MC 睡过清零失眠（幻翼计数）；同步重置跨日基准，避免回拨误判为自然跨日
-      s.setRespawnPoint({ x: bx + 0.5, y: by + 1, z: bz + 0.5 }); // MC：床设置重生点（死亡/虚空回这里）
-      s.setNotice('重生点已设置');
+    // 拉杆：右键切换开/关（供能网络随之重算）
+    if (hitId === BLOCK_BY_KEY.lever.id || hitId === BLOCK_BY_KEY.lever_on.id) {
+      toggleLever(world, bx, by, bz);
       playSound('place');
-    } else {
-      s.setNotice('只能在夜晚睡觉');
+      lastPlace = now;
+      return true;
     }
-    lastPlace = now;
-    return false;
+    // 按钮：右键按下，石 1s / 木 1.5s 供电脉冲（MC）
+    if (pressButton(world, bx, by, bz)) {
+      playSound('place');
+      lastPlace = now;
+      return true;
+    }
+    // 音符盒：右键调音（0-23 半音循环并试听，MC）
+    if (hitId === BLOCK_BY_KEY.note_block.id) {
+      const semitone = tuneNoteBlock(bx, by, bz);
+      s.setNotice(`音符盒：${semitone} 半音`);
+      lastPlace = now;
+      return true;
+    }
+    // 中继器：右键调延迟档（1-4 档 × 0.1s，MC）
+    if (isRepeaterId(hitId)) {
+      const d = cycleRepeaterDelay(bx, by, bz);
+      s.setNotice(`中继器延迟 ${(d * 0.1).toFixed(1)}s`);
+      playSound('place');
+      lastPlace = now;
+      return true;
+    }
+    // 比较器：右键切换模式（比较 ↔ 减法，MC）
+    if (isComparatorId(hitId)) {
+      const sub = toggleComparatorMode(bx, by, bz);
+      s.setNotice(sub ? '比较器：减法模式' : '比较器：比较模式');
+      playSound('place');
+      lastPlace = now;
+      return true;
+    }
+    // 门：右键切换开/关（上下两格同步；注册序每朝向 [bottom, top, open_bottom, open_top]）
+    const doorDef = BLOCKS[hitId];
+    if (doorDef?.shape === 'door') {
+      const f = doorDef.facing!;
+      const bottomY = doorDef.doorHalf === 'top' ? by - 1 : by;
+      const baseId = BLOCK_BY_KEY.oak_door_bottom_n.id + f * 4;
+      const open = !doorDef.doorOpen;
+      world.setBlock(bx, bottomY, bz, baseId + (open ? 2 : 0));
+      world.setBlock(bx, bottomY + 1, bz, baseId + (open ? 3 : 1));
+      playSound('place_hard');
+      lastPlace = now;
+      return false;
+    }
   }
-  // TNT：手持打火石右键点燃（MC；红石信号引爆见 redstone.ts），生成引信实体而非放置。创造模式视同有打火机（创造拿不到材料，右击即点燃——打掉 TNT 用左键）
-  if (hitId === BLOCK_BY_KEY.tnt.id && (s.worldMode === 'creative' || (heldSlot?.kind === 'material' && heldSlot.material === 'flint_and_steel'))) {
-    world.setBlock(bx, by, bz, AIR);
-    igniteTnt(bx, by, bz);
-    playSound('place');
-    lastPlace = now;
-    return true;
-  }
-  // 拉杆：右键切换开/关（供能网络随之重算）
-  if (hitId === BLOCK_BY_KEY.lever.id || hitId === BLOCK_BY_KEY.lever_on.id) {
-    toggleLever(world, bx, by, bz);
-    playSound('place');
-    lastPlace = now;
-    return true;
-  }
-  // 按钮：右键按下，石 1s / 木 1.5s 供电脉冲（MC）
-  if (pressButton(world, bx, by, bz)) {
-    playSound('place');
-    lastPlace = now;
-    return true;
-  }
-  // 音符盒：右键调音（0-23 半音循环并试听，MC）
-  if (hitId === BLOCK_BY_KEY.note_block.id) {
-    const semitone = tuneNoteBlock(bx, by, bz);
-    s.setNotice(`音符盒：${semitone} 半音`);
-    lastPlace = now;
-    return true;
-  }
-  // 中继器：右键调延迟档（1-4 档 × 0.1s，MC）
-  if (isRepeaterId(hitId)) {
-    const d = cycleRepeaterDelay(bx, by, bz);
-    s.setNotice(`中继器延迟 ${(d * 0.1).toFixed(1)}s`);
-    playSound('place');
-    lastPlace = now;
-    return true;
-  }
-  // 比较器：右键切换模式（比较 ↔ 减法，MC）
-  if (isComparatorId(hitId)) {
-    const sub = toggleComparatorMode(bx, by, bz);
-    s.setNotice(sub ? '比较器：减法模式' : '比较器：比较模式');
-    playSound('place');
-    lastPlace = now;
-    return true;
-  }
-  // 门：右键切换开/关（上下两格同步；注册序每朝向 [bottom, top, open_bottom, open_top]）
   const hitDef = BLOCKS[hitId];
-  if (hitDef?.shape === 'door') {
-    const f = hitDef.facing!;
-    const bottomY = hitDef.doorHalf === 'top' ? by - 1 : by;
-    const baseId = BLOCK_BY_KEY.oak_door_bottom_n.id + f * 4;
-    const open = !hitDef.doorOpen;
-    world.setBlock(bx, bottomY, bz, baseId + (open ? 2 : 0));
-    world.setBlock(bx, bottomY + 1, bz, baseId + (open ? 3 : 1));
-    playSound('place_hard');
-    lastPlace = now;
-    return false;
-  }
   const px = bx + fx;
   const py = by + fy;
   const pz = bz + fz;
@@ -679,7 +711,7 @@ export function tryPlace(): boolean {
     }
   }
   if (py < 0 || py >= WORLD_HEIGHT) return false; // 世界高度外不可放置（先检查再扣物品）
-  if (intersectsPlayer(px, py, pz)) return false;
+  if (blockIntersectsPlayer(playerPosition, px, py, pz)) return false;
   let id: BlockId | null;
   if (s.worldMode === 'survival') {
     // 生存模式：先「看」选中方块不扣减，形状/支撑校验全部通过后才真正消耗（否则校验失败吞物品）

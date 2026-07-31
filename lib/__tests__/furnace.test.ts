@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { COBBLE, LOG, PLANKS, STONE } from '../blocks';
+import { BLOCK_BY_KEY, COBBLE, GLASS, LOG, PLANKS, STONE } from '../blocks';
 import {
   clearFurnaces,
   FOODS,
@@ -7,6 +7,7 @@ import {
   getFurnace,
   putIntoFurnace,
   SMELT_TIME,
+  SMELTING,
   takeOutput,
   tickFurnaces,
 } from '../furnace';
@@ -73,29 +74,80 @@ describe('熔炉', () => {
     expect(slots[0]).toEqual({ kind: 'block', id: STONE, count: 3 });
   });
 
-  it('取出经验按实际取出件数结算（取不出不给，MC）', async () => {
+  it('输出槽堵住时已点燃的燃料照常燃烧，只冻结烧炼进度（MC）', () => {
+    const f = getFurnace('4,10,4');
+    f.input = { item: `block:${COBBLE}`, count: 1 };
+    f.fuel = { item: 'material:coal', count: 1 };
+    f.output = { item: `block:${GLASS}`, count: 1 }; // 与产出（石头）不同 → 堵住
+    f.burnLeft = 50; // 视同已在燃烧
+    tickFurnaces(10);
+    expect(f.burnLeft).toBeCloseTo(40, 5); // 燃料照烧
+    expect(f.progress).toBe(0); // 进度冻结
+    expect(f.output).toEqual({ item: `block:${GLASS}`, count: 1 });
+    // 未点燃（burnLeft 0）且输出堵住时不会新点燃料（MC：无可烧产物不点火）
+    const g = getFurnace('4,11,4');
+    g.input = { item: `block:${COBBLE}`, count: 1 };
+    g.fuel = { item: 'material:coal', count: 1 };
+    g.output = { item: `block:${GLASS}`, count: 1 };
+    tickFurnaces(10);
+    expect(g.burnLeft).toBe(0);
+    expect(g.fuel?.count).toBe(1);
+  });
+
+  it('烧炼经验按配方表累积（MC）：铁/铜 0.7、金 1.0、食物 0.35、木炭 0.15、远古残骸 2.0，缺省 0.1', () => {
+    expect(SMELTING['material:raw_iron'].xp).toBe(0.7);
+    expect(SMELTING['material:raw_copper'].xp).toBe(0.7);
+    expect(SMELTING['material:raw_gold'].xp).toBe(1.0);
+    expect(SMELTING['material:raw_pork'].xp).toBe(0.35);
+    expect(SMELTING[`block:${LOG}`].xp).toBe(0.15);
+    expect(SMELTING[`block:${BLOCK_BY_KEY.ancient_debris.id}`].xp).toBe(2.0);
+    // 缺省 0.1：烧 1 个圆石（无 xp 字段）炉内累积 0.1
+    const f = getFurnace('6,10,6');
+    f.input = { item: `block:${COBBLE}`, count: 1 };
+    f.fuel = { item: 'material:coal', count: 1 };
+    tickFurnaces(SMELT_TIME);
+    expect(f.xp).toBeCloseTo(0.1, 5);
+  });
+
+  it('取出经验按炉内累积结算：烧 3 个铁取出 = floor(3×0.7) = 2 XP，余 0.1 留炉（MC）', async () => {
     const { useGameStore } = await import('../store');
     const f = getFurnace('9,9,9');
+    f.input = { item: 'material:raw_iron', count: 3 };
+    f.fuel = { item: 'material:coal', count: 1 };
+    for (let i = 0; i < 3; i++) tickFurnaces(SMELT_TIME); // tick 一次最多烧 1 件
+    expect(f.output).toEqual({ item: 'material:iron_ingot', count: 3 });
+    expect(f.xp).toBeCloseTo(2.1, 5);
     useGameStore.setState({ worldMode: 'survival', furnaceOpen: '9,9,9', hotbarSlots: emptySlots(), xpTotal: 0 });
-    // 全空热键栏：5 件全取出 → 5 XP
-    f.output = { item: `block:${STONE}`, count: 5 };
     useGameStore.getState().furnaceTakeOutput();
-    expect(useGameStore.getState().xpTotal).toBe(5);
+    expect(useGameStore.getState().xpTotal).toBe(2); // floor(2.1)
+    expect(f.xp).toBeCloseTo(0.1, 5); // 余数留炉
     expect(f.output).toBeNull();
-    // 热键栏全满（不可合并）：一件取不出 → 0 XP（修复前按整组给 4 XP，可无限刷）
-    const full = emptySlots().map(() => ({ kind: 'block', id: COBBLE, count: 64 }) as Slot);
+    useGameStore.setState({ furnaceOpen: null });
+  });
+
+  it('取出经验：热键栏满取不出则不给、经验留炉（MC）', async () => {
+    const { useGameStore } = await import('../store');
+    const f = getFurnace('10,10,10');
     f.output = { item: `block:${STONE}`, count: 4 };
-    useGameStore.setState({ hotbarSlots: full, xpTotal: 0 });
+    f.xp = 3.7;
+    const full = emptySlots().map(() => ({ kind: 'block', id: COBBLE, count: 64 }) as Slot);
+    useGameStore.setState({ worldMode: 'survival', furnaceOpen: '10,10,10', hotbarSlots: full, xpTotal: 0 });
     useGameStore.getState().furnaceTakeOutput();
     expect(useGameStore.getState().xpTotal).toBe(0);
+    expect(f.xp).toBeCloseTo(3.7, 5);
     expect(f.output?.count).toBe(4);
-    // 部分可合并（已有 62 石头堆叠）：只取出 2 件 → 2 XP，剩余留炉
-    const partial = emptySlots().map(() => ({ kind: 'block', id: COBBLE, count: 64 }) as Slot);
-    partial[0] = { kind: 'block', id: STONE, count: 62 };
-    useGameStore.setState({ hotbarSlots: partial, xpTotal: 0 });
+    useGameStore.setState({ furnaceOpen: null });
+  });
+
+  it('旧档兼容：无 xp 字段的炉状态取出成品不给经验、不报错', async () => {
+    const { useGameStore } = await import('../store');
+    const f = getFurnace('11,11,11');
+    f.output = { item: `block:${STONE}`, count: 2 }; // 旧档直接有产出，从未累积 xp 字段
+    expect(f.xp).toBeUndefined();
+    useGameStore.setState({ worldMode: 'survival', furnaceOpen: '11,11,11', hotbarSlots: emptySlots(), xpTotal: 0 });
     useGameStore.getState().furnaceTakeOutput();
-    expect(useGameStore.getState().xpTotal).toBe(2);
-    expect(f.output?.count).toBe(2);
+    expect(useGameStore.getState().xpTotal).toBe(0);
+    expect(f.output).toBeNull();
     useGameStore.setState({ furnaceOpen: null });
   });
 });
@@ -119,6 +171,22 @@ describe('进食', () => {
     expect(useGameStore.getState().eatSelectedFood()).toBe(true);
     expect(useGameStore.getState().hotbarSlots[0]).toBeNull();
     expect(useGameStore.getState().eatSelectedFood()).toBe(false); // 空槽不可吃
+  });
+
+  it('满饥饿拒绝进食并提示「还不饿」', async () => {
+    const { useGameStore } = await import('../store');
+    useGameStore.setState({
+      worldMode: 'survival',
+      health: 20,
+      hunger: 20,
+      saturation: 0,
+      notice: null,
+      hotbarSlots: [{ kind: 'material', material: 'cooked_pork', count: 1 }, ...emptySlots().slice(1)],
+      selectedSlot: 0,
+    });
+    expect(useGameStore.getState().eatSelectedFood()).toBe(false);
+    expect(useGameStore.getState().notice).toBe('还不饿');
+    expect(useGameStore.getState().hotbarSlots[0]).toEqual({ kind: 'material', material: 'cooked_pork', count: 1 }); // 不消耗
   });
 
   it('腐肉可食用（MC：饥饿 4、饱和 0.8 ÷4 缩放 0.2）', async () => {
