@@ -91,7 +91,7 @@ export function TradingDialog() {
                 <TradeIcon item={t.get} size={24} />
                 <span className="ml-auto flex flex-col items-end text-[9px] leading-tight">
                   <span className="text-green-800">+{t.xp}xp</span>
-                  <span className="text-amber-800">{left > 0 ? `剩 ${left}` : '明日补货'}</span>
+                  <span className="text-amber-800">{left > 0 ? `剩 ${left}` : '售罄待补货'}</span>
                 </span>
               </button>
             );

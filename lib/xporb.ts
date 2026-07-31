@@ -28,6 +28,36 @@ const PICKUP_RANGE = 1.25;
 const ATTRACT_RANGE = 2.5;
 const ATTRACT_SPEED = 8;
 const MAX_AGE = 300;
+/** 合并距离（MC：相邻约 0.5 格内的经验球合并为大球） */
+const MERGE_RANGE = 0.5;
+
+/** 经验球合并（MC）：邻近球两两合并，value 相加（单球值无上限）；较老那颗存活——年龄/消失计时取老 */
+export function mergeXpOrbs(range = MERGE_RANGE): void {
+  const dead = new Set<number>();
+  for (let i = 0; i < xpOrbs.length; i++) {
+    if (dead.has(i)) continue;
+    for (let j = i + 1; j < xpOrbs.length; j++) {
+      if (dead.has(j)) continue;
+      const a = xpOrbs[i];
+      const b = xpOrbs[j];
+      if (Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) >= range) continue;
+      // 较老者存活并吸收对方（其 age 本就更大，消失计时自然取老）
+      if (a.age >= b.age) {
+        a.value += b.value;
+        dead.add(j);
+      } else {
+        b.value += a.value;
+        dead.add(i);
+        break; // i 已被吸收，换下一个存活球继续
+      }
+    }
+  }
+  if (dead.size > 0) {
+    const kept = xpOrbs.filter((_, i) => !dead.has(i));
+    xpOrbs.length = 0;
+    xpOrbs.push(...kept);
+  }
+}
 
 /** 死亡掉落经验：MC 约 min(等级×7, 100) 点，拆成 3-6 球散落 */
 export function spawnXpOrbs(x: number, y: number, z: number, total: number): void {
@@ -53,7 +83,7 @@ export function spawnXpOrbs(x: number, y: number, z: number, total: number): voi
   }
 }
 
-/** 每帧推进：重力 + 落地停 + 吸附 + 拾取（onPickup 回调加经验）；超龄消失 */
+/** 每帧推进：邻近合并 + 重力 + 落地停 + 吸附 + 拾取（onPickup 回调加经验）；超龄消失 */
 export function tickXpOrbs(
   world: World,
   dt: number,
@@ -61,6 +91,7 @@ export function tickXpOrbs(
   onPickup: (value: number) => void,
   isSolid: (x: number, y: number, z: number) => boolean,
 ): void {
+  mergeXpOrbs();
   for (let i = xpOrbs.length - 1; i >= 0; i--) {
     const o = xpOrbs[i];
     o.age += dt;

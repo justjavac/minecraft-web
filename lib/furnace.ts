@@ -26,7 +26,7 @@ export const FOODS: Record<string, FoodDef> = {
   cooked_cod: { name: '熟鳕鱼', hunger: 5, saturation: 2 },
   cooked_salmon: { name: '熟鲑鱼', hunger: 6, saturation: 3 },
   chorus_fruit: { name: '紫颂果', hunger: 4, saturation: 2 }, // MC：食用后随机传送 ±8 格
-  rotten_flesh: { name: '腐肉', hunger: 4, saturation: 0.2 }, // MC：饥饿 4、饱和 0.8（÷4 缩放 0.2；本游戏无饥饿负面效果机制）
+  rotten_flesh: { name: '腐肉', hunger: 4, saturation: 0.2 }, // MC：饥饿 4、饱和 0.8（÷4 缩放 0.2；80% 概率饥饿效果在 actions.ts 进食完成处 roll）
 };
 
 // ——— 烧炼配方与燃料 ———

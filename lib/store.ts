@@ -30,7 +30,7 @@ import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptyS
 import { eatSound, hurtSound, levelupSound } from './sound';
 import { getStorage, putIntoStorage, storages, takeFromStorage } from './storage';
 import { TOOLS } from './tools';
-import { executeTrade, MAX_TRADE_USES, professionOf, TRADES, tradeDay, tradeStockLeft, deductTradeStock } from './trading';
+import { executeTrade, MAX_TRADE_USES, professionOf, TRADES, tradePeriod, tradeStockLeft, deductTradeStock } from './trading';
 import { levelFromXp, subtractLevels } from './xp';
 import { spawnXpOrbs } from './xporb';
 
@@ -210,7 +210,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     const curSlots = get().hotbarSlots;
     const cur = curSlots[slotIndex];
     if (!cur || (cur.kind !== 'tool' && cur.kind !== 'armor')) return false;
-    const ench = { ...cur.ench, [offer.ench]: Math.max(cur.ench?.[offer.ench] ?? 0, offer.lvl) };
+    const ench = { ...cur.ench };
+    for (const e of offer.enchants) ench[e.ench] = Math.max(ench[e.ench] ?? 0, e.lvl);
     const next = [...curSlots];
     next[slotIndex] = { ...cur, ench };
     set({ hotbarSlots: next, xpTotal: subtractLevels(get().xpTotal, offer.levels) });
@@ -314,22 +315,22 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     if (s.tradeMob === null) return;
     const trade = TRADES[professionOf(s.tradeMob)][i];
     if (!trade) return;
-    // 库存（简化 MC）：每项每天限购，售罄拒绝并提示；成交才扣库存
-    const day = tradeDay(worldClock.t);
-    if (tradeStockLeft(s.tradeMob, i, day) <= 0) {
-      s.setNotice(`该交易今日已达上限（${MAX_TRADE_USES} 次），明天补货`);
+    // 库存（简化 MC）：每项每天限购，每天 2 次补货（午/子夜两个补货期），售罄拒绝并提示；成交才扣库存
+    const period = tradePeriod(worldClock.t);
+    if (tradeStockLeft(s.tradeMob, i, period) <= 0) {
+      s.setNotice(`该交易本期已达上限（${MAX_TRADE_USES} 次），下次补货恢复`);
       return;
     }
     const r = executeTrade(s.hotbarSlots, s.mainSlots, trade, s.worldMode === 'creative');
     if (!r) return;
-    deductTradeStock(s.tradeMob, i, day);
+    deductTradeStock(s.tradeMob, i, period);
     set({ hotbarSlots: r.hotbar, mainSlots: r.backpack });
     s.addXp(r.xp);
   },
   tradeStockLeft: (i) => {
     const s = get();
     if (s.tradeMob === null) return 0;
-    return tradeStockLeft(s.tradeMob, i, tradeDay(worldClock.t));
+    return tradeStockLeft(s.tradeMob, i, tradePeriod(worldClock.t));
   },
   storagePut: (area, slotIndex) => {
     const s = get();
@@ -879,6 +880,13 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     const next = applyCraft(merged, recipe, durability);
     set({ hotbarSlots: next.slice(0, 9), mainSlots: next.slice(9) });
     return true;
+  },
+  craftAll: (recipe) => {
+    // MC Java：shift+点击结果槽连续合成，直到材料耗尽或背包满（craft 内含 canCraft/hasSpaceFor 预检）；
+    // 单次 action 内循环完成，无逐次音效/提示；材料有限必终止（999 仅为保险上限）
+    let n = 0;
+    while (n < 999 && get().craft(recipe)) n++;
+    return n;
   },
   moveSlot: (area, index) =>
     set((s) => {

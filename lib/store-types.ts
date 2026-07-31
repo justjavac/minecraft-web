@@ -182,9 +182,9 @@ export interface GameStore {
   setBrewingOpen: (key: string | null) => void;
   setEnchantOpen: (key: string | null) => void;
   setTradeMob: (id: number | null) => void;
-  /** 执行当前村民的第 i 项交易（扣付出、给获得、加经验；当日库存售罄则拒绝并提示） */
+  /** 执行当前村民的第 i 项交易（扣付出、给获得、加经验；当期库存售罄则拒绝并提示） */
   executeMobTrade: (i: number) => void;
-  /** 当前村民第 i 项交易当日剩余库存（跨天补满；供交易界面显示） */
+  /** 当前村民第 i 项交易当期剩余库存（每天 2 次补货；供交易界面显示） */
   tradeStockLeft: (i: number) => number;
   setStorageOpen: (key: string | null) => void;
   /** 把热键栏/背包某格的整叠物品移入打开的容器 */
@@ -222,6 +222,8 @@ export interface GameStore {
   setNotice: (text: string | null) => void;
   /** 执行一次合成（材料与空间预检），成功返回 true */
   craft: (recipe: Recipe) => boolean;
+  /** shift+点击结果槽：连续合成直到材料耗尽或背包满（MC Java），返回合成次数 */
+  craftAll: (recipe: Recipe) => number;
   /** 物品栏内移动：点击把 hotbar/main 某格整格移到另一区域（可堆叠自动合并）。
    *  保留作程序化 API / shift 快移路由；GUI 点击交互已由光标体系（slotMouseDown 等）取代 */
   moveSlot: (area: 'hotbar' | 'main', index: number) => void;

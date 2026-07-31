@@ -13,6 +13,7 @@ import {
   resetTradeStocks,
   TRADES,
   tradeDay,
+  tradePeriod,
   tradeItemName,
   tradeStockLeft,
   deductTradeStock,
@@ -123,10 +124,10 @@ describe('界面辅助', () => {
   });
 });
 
-describe('交易库存（简化 MC：每项每天限购，跨天补满）', () => {
+describe('交易库存（简化 MC：每项每补货期限购，每天补货 2 次）', () => {
   beforeEach(() => resetTradeStocks());
 
-  it('每项每天限购 12 次，售罄后拒绝；按村民/交易项独立', () => {
+  it('每项每补货期限购 12 次，售罄后拒绝；按村民/交易项独立', () => {
     expect(MAX_TRADE_USES).toBe(12);
     expect(tradeStockLeft(1, 0, 0)).toBe(12);
     for (let k = 0; k < 12; k++) expect(deductTradeStock(1, 0, 0)).toBe(true);
@@ -136,11 +137,27 @@ describe('交易库存（简化 MC：每项每天限购，跨天补满）', () =
     expect(tradeStockLeft(2, 0, 0)).toBe(12); // 其他村民不受影响
   });
 
-  it('跨天自动补满', () => {
-    for (let k = 0; k < 12; k++) deductTradeStock(1, 0, 0);
-    expect(tradeStockLeft(1, 0, 0)).toBe(0);
-    expect(tradeStockLeft(1, 0, 1)).toBe(12); // 新的一天补满
-    expect(deductTradeStock(1, 0, 1)).toBe(true);
+  it('每天 2 次补货：午前售罄 → 午后补满；午后售罄 → 当天不再补，跨天补满', () => {
+    // 午前期（t=0.2）
+    const morning = tradePeriod(0.2);
+    for (let k = 0; k < 12; k++) deductTradeStock(1, 0, morning);
+    expect(tradeStockLeft(1, 0, tradePeriod(0.3))).toBe(0); // 同一补货期不重复补
+    // 午后期（t=0.6）：第一次补货
+    const afternoon = tradePeriod(0.6);
+    expect(afternoon).not.toBe(morning);
+    expect(tradeStockLeft(1, 0, afternoon)).toBe(12);
+    for (let k = 0; k < 12; k++) deductTradeStock(1, 0, afternoon);
+    expect(tradeStockLeft(1, 0, tradePeriod(0.9))).toBe(0); // 当天第二次售罄后不再补
+    // 跨天（时钟回卷过日出）：补满
+    expect(tradeStockLeft(1, 0, tradePeriod(0.1))).toBe(12);
+  });
+
+  it('tradePeriod：一天恰两个补货期（午前/午后），跨天进位', () => {
+    expect(tradePeriod(0.3)).toBe(0);
+    expect(tradePeriod(0.5)).toBe(1); // 午后
+    expect(tradePeriod(0.8)).toBe(1);
+    expect(tradePeriod(0.1)).toBe(2); // 0.8 → 0.1 回卷：新的一天午前期
+    expect(tradePeriod(0.6)).toBe(3);
   });
 
   it('tradeDay：昼夜时钟回卷（过日出）记一天', () => {

@@ -236,3 +236,46 @@ describe('4 层副效果与合金锭支付', () => {
     expect(beaconTiers.get('speed')).toBeUndefined(); // 3 层只有 I 级
   });
 });
+
+describe('4 层生命恢复（MC 副效果：生命恢复 I 级 或 主效果 II 级二选一）', () => {
+  it('4 层循环列表含生命恢复；3 层不含', () => {
+    const w = setup();
+    buildPyramid(w, 0, 60, 0, 4);
+    interactBeacon(w, 0, 60, 0, 'iron_ingot');
+    const seen: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      seen.push(activeBeacons.get('0,60,0')!.effect);
+      interactBeacon(w, 0, 60, 0, null);
+    }
+    expect(seen).toContain('regen'); // 6 个效果循环一圈：速度/急迫/抗性/跳跃/力量/生命恢复
+    expect(seen).toHaveLength(6);
+    expect(activeBeacons.get('0,60,0')!.effect).toBe('speed'); // 一圈后回到速度
+
+    buildPyramid(w, 20, 60, 0, 3);
+    interactBeacon(w, 20, 60, 0, 'iron_ingot');
+    const seen3: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      seen3.push(activeBeacons.get('20,60,0')!.effect);
+      interactBeacon(w, 20, 60, 0, null);
+    }
+    expect(seen3).not.toContain('regen'); // 3 层无生命恢复
+  });
+
+  it('选中生命恢复：范围内施加 regen 且恒 I 级（不进 beaconTiers），提示不带 II', () => {
+    const w = setup();
+    buildPyramid(w, 0, 60, 0, 4);
+    interactBeacon(w, 0, 60, 0, 'iron_ingot');
+    // 切到生命恢复（列表最后一项）
+    let notice = '';
+    for (let i = 0; i < 5; i++) notice = interactBeacon(w, 0, 60, 0, null).notice;
+    expect(activeBeacons.get('0,60,0')!.effect).toBe('regen');
+    expect(notice).toBe('信标：生命恢复'); // 生命恢复恒 I 级，4 层也不带 II
+    tickBeacons(w, 10.5, 61, 0.5);
+    expect(effects.regen).toBeGreaterThan(0);
+    expect(beaconTiers.get('regen')).toBeUndefined(); // 不升 II 级
+    // 范围外不施加
+    clearEffects();
+    tickBeacons(w, 100.5, 61, 0.5);
+    expect(effects.regen).toBe(0);
+  });
+});

@@ -5,11 +5,11 @@ import { breakBlock } from '../actions';
 import { BLOCK_BY_KEY } from '../blocks';
 import { clearDrops, itemDrops } from '../items';
 import { damageMob, mobs, clearMobs } from '../mobs';
-import { VOID_TERRAIN } from '../noise';
+import { VOID_TERRAIN, mulberry32 } from '../noise';
 import { RECIPES } from '../recipes';
 import { useGameStore } from '../store';
 import { emptySlots, type Slot } from '../slots';
-import { levelFromXp, subtractLevels, xpForLevel, XP_MOB, ENCHANTS, enchCost, rollOffers, type EnchOffer } from '../xp';
+import { levelFromXp, subtractLevels, xpForLevel, XP_MOB, ENCHANTS, enchCost, rollOffers, randEnchantLevel, type EnchOffer } from '../xp';
 import { World } from '../world';
 
 const K = (k: string) => BLOCK_BY_KEY[k].id;
@@ -88,7 +88,7 @@ describe('XP 来源', () => {
 });
 
 describe('附魔应用与效果', () => {
-  const offer: EnchOffer = { ench: 'sharpness', lvl: 3, lapis: 3, levels: 3 };
+  const offer: EnchOffer = { enchants: [{ ench: 'sharpness', lvl: 3 }], lapis: 3, levels: 3 };
 
   it('应用附魔：耗青金石与整级，写入槽位；不足则拒', () => {
     const slots = emptySlots();
@@ -225,34 +225,80 @@ describe('精准采集（silk_touch，MC）', () => {
 
   it('rollOffers：精准采集与时运互斥（已有其一则另一个不出现）', () => {
     for (let seed = 0; seed < 40; seed++) {
-      expect(rollOffers(seed, 'dig', 30, { fortune: 3 }).some((o) => o.ench === 'silk_touch')).toBe(false);
-      expect(rollOffers(seed, 'dig', 30, { silk_touch: 1 }).some((o) => o.ench === 'fortune')).toBe(false);
+      expect(rollOffers(seed, 'dig', 30, 15, { fortune: 3 }).some((o) => o.enchants.some((e) => e.ench === 'silk_touch'))).toBe(false);
+      expect(rollOffers(seed, 'dig', 30, 15, { silk_touch: 1 }).some((o) => o.enchants.some((e) => e.ench === 'fortune'))).toBe(false);
     }
   });
 });
 
-describe('附魔台成本（MC 封顶 3）', () => {
-  it('enchCost：1-3 级按档位，4 级以上封顶 3', () => {
-    expect(enchCost(1)).toEqual({ lapis: 1, levels: 1 });
-    expect(enchCost(2)).toEqual({ lapis: 2, levels: 2 });
-    expect(enchCost(3)).toEqual({ lapis: 3, levels: 3 });
-    expect(enchCost(4)).toEqual({ lapis: 3, levels: 3 });
-    expect(enchCost(5)).toEqual({ lapis: 3, levels: 3 });
+describe('附魔台档位消耗（MC：槽位固定 1/2/3，与附魔等级无关）', () => {
+  it('enchCost：三档固定耗 1/2/3 青金石与经验级', () => {
+    expect(enchCost(0)).toEqual({ lapis: 1, levels: 1 });
+    expect(enchCost(1)).toEqual({ lapis: 2, levels: 2 });
+    expect(enchCost(2)).toEqual({ lapis: 3, levels: 3 });
   });
 
-  it('rollOffers：高等级玩家摇出 4-5 级附魔时成本仍为 3', () => {
+  it('rollOffers：成本按槽位固定；高档摇出 4-5 级附魔时成本仍 = 槽位档', () => {
     let sawHigh = false;
     for (let seed = 0; seed < 200; seed++) {
-      for (const o of rollOffers(seed, 'sword', 30)) {
-        expect(o.lapis).toBeLessThanOrEqual(3);
-        expect(o.levels).toBeLessThanOrEqual(3);
-        if (o.lvl > 3) {
-          sawHigh = true;
-          expect(o.lapis).toBe(3);
-          expect(o.levels).toBe(3);
-        }
+      const offers = rollOffers(seed, 'sword', 30, 15);
+      expect(offers).toHaveLength(3);
+      offers.forEach((o, i) => {
+        expect(o.lapis).toBe(i + 1); // 消耗与附魔结果无关，只看槽位
+        expect(o.levels).toBe(i + 1);
+        if (o.enchants.some((e) => e.lvl >= 4)) sawHigh = true;
+      });
+    }
+    expect(sawHigh).toBe(true); // 30 级玩家满书架高档必能摇出 4+ 级
+  });
+});
+
+describe('附魔等级曲线（MC randEnchantLevel）', () => {
+  it('端点：无书架高档 ≤ 8；满 15 书架高档恒 30', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      expect(randEnchantLevel(0, 2, mulberry32(seed))).toBeLessThanOrEqual(8);
+      expect(randEnchantLevel(0, 2, mulberry32(seed))).toBeGreaterThanOrEqual(1);
+      expect(randEnchantLevel(15, 2, mulberry32(seed))).toBe(30);
+    }
+    // 无书架也能摇到 8（rand(1,8) 上端）
+    let saw8 = false;
+    for (let seed = 0; seed < 200 && !saw8; seed++) if (randEnchantLevel(0, 2, mulberry32(seed)) === 8) saw8 = true;
+    expect(saw8).toBe(true);
+  });
+});
+
+describe('高档多条附魔（MC）', () => {
+  it('产出 1-3 条；互斥组合（时运/精准）永不同现；无重复', () => {
+    for (let seed = 0; seed < 400; seed++) {
+      for (const o of rollOffers(seed, 'dig', 30, 15)) {
+        expect(o.enchants.length).toBeGreaterThanOrEqual(1);
+        expect(o.enchants.length).toBeLessThanOrEqual(3);
+        const keys = o.enchants.map((e) => e.ench);
+        expect(new Set(keys).size).toBe(keys.length); // 不重复
+        expect(keys.includes('fortune') && keys.includes('silk_touch')).toBe(false); // 互斥剔除
       }
     }
-    expect(sawHigh).toBe(true); // 30 级玩家必能摇出 4+ 级（cap = ceil(30/5) = 6 → maxLvl 5）
+  });
+
+  it('概率边界：满级高档（追加概率 ≥1）dig 恒 3 条；1 级（概率 1/15）多为 1 条', () => {
+    // 高档（slot 2）满书架恒 30 级：chance = 30/15 = 2 ≥ 1 → 必追加第 2 条；减半后 1 → rand()<1 恒真 → 必追加第 3 条（候选足够）
+    for (let seed = 0; seed < 200; seed++) {
+      expect(rollOffers(seed, 'dig', 30, 15)[2].enchants).toHaveLength(3);
+    }
+    // level 1：chance = 1/15 ≈ 6.7% → 多条应为少数
+    let multi = 0;
+    let total = 0;
+    for (let seed = 0; seed < 400; seed++) {
+      for (const o of rollOffers(seed, 'dig', 1, 0)) {
+        total++;
+        if (o.enchants.length > 1) multi++;
+      }
+    }
+    expect(multi).toBeGreaterThan(0); // 非零概率存在
+    expect(multi / total).toBeLessThan(0.3);
+    // 候选只有 1 条（锄：仅耐久）时恒 1 条
+    for (let seed = 0; seed < 40; seed++) {
+      for (const o of rollOffers(seed, 'hoe', 30, 15)) expect(o.enchants).toHaveLength(1);
+    }
   });
 });

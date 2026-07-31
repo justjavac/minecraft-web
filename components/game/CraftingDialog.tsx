@@ -106,6 +106,7 @@ export function CraftingDialog() {
   const mainSlots = useGameStore((s) => s.mainSlots);
   const armorSlots = useGameStore((s) => s.armorSlots);
   const craft = useGameStore((s) => s.craft);
+  const craftAll = useGameStore((s) => s.craftAll);
   const slotMouseDown = useGameStore((s) => s.slotMouseDown);
   const slotDragEnter = useGameStore((s) => s.slotDragEnter);
   const slotDoubleClick = useGameStore((s) => s.slotDoubleClick);
@@ -181,11 +182,15 @@ export function CraftingDialog() {
                 {item && <TileIcon tile={patternTile(item)} size={28} />}
               </span>
             ))}
-            {/* 成品槽：点击合成 */}
+            {/* 成品槽：点击合成一次；shift+点击连续合成到材料耗尽/背包满（MC Java） */}
             {preview && (
               <button
-                onClick={() => outOk && craft(preview)}
-                title={outName(preview)}
+                onClick={(e) => {
+                  if (!outOk) return;
+                  if (e.shiftKey) craftAll(preview);
+                  else craft(preview);
+                }}
+                title={`${outName(preview)}（Shift+点击连续合成）`}
                 className="absolute flex items-center justify-center"
                 style={
                   withTable

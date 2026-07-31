@@ -21,7 +21,9 @@ function kindOfTool(def: ToolDef): ItemKind {
   return 'dig';
 }
 
-const enchName = (o: { ench: keyof typeof ENCHANTS; lvl: number }): string => `${ENCHANTS[o.ench].name} ${['', 'I', 'II', 'III', 'IV', 'V'][o.lvl]}`;
+const enchName = (e: { ench: keyof typeof ENCHANTS; lvl: number }): string => `${ENCHANTS[e.ench].name} ${['', 'I', 'II', 'III', 'IV', 'V'][e.lvl]}`;
+/** 一档附魔的展示文案：主附魔 + 追加的兼容附魔（MC：高档可产出多条） */
+const offerName = (o: { enchants: { ench: keyof typeof ENCHANTS; lvl: number }[] }): string => o.enchants.map(enchName).join('，');
 
 /** 物品 / 青金石格（enchanting_table.png 内坐标 ×2） */
 const ITEM_SLOT: [number, number] = [30, 94];
@@ -65,10 +67,10 @@ export function EnchantingDialog() {
 
   const selectedSlot = selected !== null ? slots[selected] : null;
   const currentEnch = selectedSlot && (selectedSlot.kind === 'tool' || selectedSlot.kind === 'armor') ? selectedSlot.ench : undefined;
-  // 已有附魔参与摇项（精准采集与时运互斥，见 lib/xp.ts rollOffers）
+  // 已有附魔参与摇项（精准采集与时运互斥，见 lib/xp.ts rollOffers）；书架功率决定档位等级曲线
   const offers = useMemo(
-    () => (kind && selected !== null ? rollOffers((selected + 1) * 0x9e37 ^ rollSeed, kind, Math.max(1, effectiveLevel), currentEnch) : []),
-    [kind, selected, rollSeed, effectiveLevel, currentEnch],
+    () => (kind && selected !== null ? rollOffers((selected + 1) * 0x9e37 ^ rollSeed, kind, Math.max(1, effectiveLevel), power, currentEnch) : []),
+    [kind, selected, rollSeed, effectiveLevel, power, currentEnch],
   );
 
   return (
@@ -89,12 +91,12 @@ export function EnchantingDialog() {
           />
           {/* 青金石格：展示背包内青金石总数（附魔时自动扣除） */}
           <AbsSlot pos={LAPIS_SLOT} stack={lapisCount > 0 ? { item: 'lapis', count: lapisCount } : null} />
-          {/* 三条附魔选项（消耗 = 附魔等级的青金石与经验，封顶 3） */}
+          {/* 三条附魔选项（槽位固定耗 1/2/3 青金石与经验级；高档可产出多条附魔） */}
           {offers.map((o, i) => {
             const afford = level >= o.levels && lapisCount >= o.lapis;
             return (
               <button
-                key={o.ench}
+                key={i}
                 disabled={!afford}
                 onClick={() => {
                   if (selected !== null && enchantApply(selected, o)) setSelected(null);
@@ -102,7 +104,7 @@ export function EnchantingDialog() {
                 className="absolute flex items-center justify-between px-3 text-left text-[13px] text-purple-100 [text-shadow:1px_1px_0_rgba(0,0,0,0.8)] hover:bg-white/15 disabled:opacity-40"
                 style={{ left: OFFER_X, top: offerY(i), width: OFFER_W, height: OFFER_H }}
               >
-                <span>{enchName(o)}</span>
+                <span>{offerName(o)}</span>
                 <span className="flex items-center gap-1 text-[11px]">
                   <TileIcon tile={LAPIS_TILE()} size={14} />×{o.lapis}
                   <span className="text-green-300">{o.levels} 级</span>

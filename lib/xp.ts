@@ -85,25 +85,40 @@ export interface EnchDef {
   maxLvl: number;
   /** 适用：sword 剑 / dig 挖掘工具（镐斧锹）/ armor 装备 / hoe 锄 / bow 弓 */
   applies: ('sword' | 'dig' | 'armor' | 'hoe' | 'bow')[];
+  /** 抽取权重（MC 稀有度：常见 10 / 少见 5 / 稀有 2 / 极稀有 1） */
+  weight: number;
 }
 
 export const ENCHANTS: Record<EnchKey, EnchDef> = {
-  sharpness: { key: 'sharpness', name: '锋利', maxLvl: 5, applies: ['sword'] },
-  efficiency: { key: 'efficiency', name: '效率', maxLvl: 5, applies: ['dig'] },
-  fortune: { key: 'fortune', name: '时运', maxLvl: 3, applies: ['dig'] },
-  silk_touch: { key: 'silk_touch', name: '精准采集', maxLvl: 1, applies: ['dig'] }, // MC：与时运互斥
-  unbreaking: { key: 'unbreaking', name: '耐久', maxLvl: 3, applies: ['sword', 'dig', 'armor', 'hoe', 'bow'] },
-  protection: { key: 'protection', name: '保护', maxLvl: 4, applies: ['armor'] },
-  looting: { key: 'looting', name: '抢夺', maxLvl: 3, applies: ['sword'] },
-  knockback: { key: 'knockback', name: '击退', maxLvl: 2, applies: ['sword'] },
+  sharpness: { key: 'sharpness', name: '锋利', maxLvl: 5, applies: ['sword'], weight: 10 },
+  efficiency: { key: 'efficiency', name: '效率', maxLvl: 5, applies: ['dig'], weight: 10 },
+  fortune: { key: 'fortune', name: '时运', maxLvl: 3, applies: ['dig'], weight: 2 },
+  silk_touch: { key: 'silk_touch', name: '精准采集', maxLvl: 1, applies: ['dig'], weight: 1 }, // MC：与时运互斥
+  unbreaking: { key: 'unbreaking', name: '耐久', maxLvl: 3, applies: ['sword', 'dig', 'armor', 'hoe', 'bow'], weight: 5 },
+  protection: { key: 'protection', name: '保护', maxLvl: 4, applies: ['armor'], weight: 10 },
+  looting: { key: 'looting', name: '抢夺', maxLvl: 3, applies: ['sword'], weight: 2 },
+  knockback: { key: 'knockback', name: '击退', maxLvl: 2, applies: ['sword'], weight: 5 },
 };
 
-export interface EnchOffer {
+/** 附魔互斥表（MC；按本项目现有附魔清单：时运/精准互斥，其余如锋利/亡灵/节肢、无限/经验修补暂未收录） */
+export const ENCH_EXCLUSIVE: [EnchKey, EnchKey][] = [['fortune', 'silk_touch']];
+
+/** 两条附魔是否兼容（可同存于一件物品） */
+export function enchCompatible(a: EnchKey, b: EnchKey): boolean {
+  return a === b || !ENCH_EXCLUSIVE.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+}
+
+export interface EnchEntry {
   ench: EnchKey;
   lvl: number;
-  /** 青金石消耗（= min(附魔等级, 3)，MC 三档封顶） */
+}
+
+export interface EnchOffer {
+  /** 产出附魔列表：主附魔在前，高档可按概率追加兼容附魔，共 1-3 条（MC） */
+  enchants: EnchEntry[];
+  /** 青金石消耗（槽位固定 1/2/3，与附魔等级无关） */
   lapis: number;
-  /** 经验等级消耗（MC 扣整级，封顶 3） */
+  /** 经验等级消耗（槽位固定 1/2/3，扣整级） */
   levels: number;
 }
 
@@ -112,9 +127,9 @@ export function enchantsFor(kind: 'sword' | 'dig' | 'armor' | 'hoe' | 'bow'): En
   return Object.values(ENCHANTS).filter((e) => e.applies.includes(kind));
 }
 
-/** 附魔台消耗：MC 按附魔档位耗 1-3 级经验与等量青金石（封顶 3，不再随附魔等级线性涨） */
-export function enchCost(lvl: number): { lapis: number; levels: number } {
-  const cost = Math.min(Math.max(1, lvl), 3);
+/** 附魔台消耗：MC 三档固定耗 1/2/3 级经验与等量青金石（按槽位，与最终附魔等级无关） */
+export function enchCost(slot: number): { lapis: number; levels: number } {
+  const cost = Math.min(Math.max(1, Math.floor(slot) + 1), 3);
   return { lapis: cost, levels: cost };
 }
 
@@ -137,21 +152,52 @@ export function enchantLevelCap(power: number): number {
   return Math.max(8, Math.min(30, power * 2));
 }
 
-/** 为物品生成 3 个附魔选项（选中即定型，不重摇；MC：精准采集与时运互斥，已有其一则另一个不出现） */
-export function rollOffers(seed: number, kind: 'sword' | 'dig' | 'armor' | 'hoe' | 'bow', playerLevel: number, current?: EnchMap): EnchOffer[] {
+/** MC randEnchantLevel：base = rand(1,8) + floor(power/2) + rand(1,power)，再按档位 1/3、2/3+1、全额加成。
+ *  端点：无书架（power 0）高档 ≤ 8；满 15 书架高档恒 30 */
+export function randEnchantLevel(power: number, slot: 0 | 1 | 2, rand: () => number): number {
+  const base = 1 + Math.floor(rand() * 8) + Math.floor(power / 2) + (power > 0 ? 1 + Math.floor(rand() * power) : 0);
+  const lvl = slot === 0 ? Math.max(Math.floor(base / 3), 1) : slot === 1 ? Math.floor((base * 2) / 3) + 1 : Math.max(base, power * 2);
+  return Math.min(30, lvl);
+}
+
+/** 按权重从候选中抽一条附魔（MC 稀有度加权） */
+function pickEnch(rand: () => number, candidates: EnchDef[]): EnchDef {
+  const total = candidates.reduce((n, e) => n + e.weight, 0);
+  let roll = rand() * total;
+  for (const c of candidates) {
+    roll -= c.weight;
+    if (roll < 0) return c;
+  }
+  return candidates[candidates.length - 1];
+}
+
+/** 摇一档附魔产出：主附魔 + 按概率（约 level/15 起、逐次减半）追加兼容附魔，共 1-3 条；互斥组合剔除（MC） */
+function rollEnchants(rand: () => number, pool: EnchDef[], level: number): EnchEntry[] {
+  const out: EnchEntry[] = [];
+  let candidates = [...pool];
+  let chance = level / 15; // 追加概率（Java modifiedLevel/50 递减的近似）
+  while (candidates.length > 0) {
+    const def = pickEnch(rand, candidates);
+    const cap = Math.min(def.maxLvl, Math.max(1, Math.ceil(level / 5)));
+    out.push({ ench: def.key, lvl: 1 + Math.floor(rand() * cap) });
+    candidates = candidates.filter((e) => e.key !== def.key && enchCompatible(def.key, e.key));
+    if (out.length >= 3 || rand() >= chance) break;
+    chance /= 2;
+  }
+  return out;
+}
+
+/** 为物品生成 3 个附魔选项（选中即定型，不重摇；消耗按槽位固定 1/2/3；MC：精准采集与时运互斥，已有其一则另一个不出现） */
+export function rollOffers(seed: number, kind: 'sword' | 'dig' | 'armor' | 'hoe' | 'bow', playerLevel: number, power: number, current?: EnchMap): EnchOffer[] {
   let pool = enchantsFor(kind);
   if (current?.silk_touch) pool = pool.filter((e) => e.key !== 'fortune');
   if (current?.fortune) pool = pool.filter((e) => e.key !== 'silk_touch');
   const rand = mulberry32(seed);
   const offers: EnchOffer[] = [];
-  for (let n = 0; n < 3 && pool.length > 0; n++) {
-    const idx = Math.floor(rand() * pool.length);
-    const def = pool[idx];
-    pool.splice(idx, 1); // 抽走即从候选移除（原 used+continue 会浪费一次循环，pool 小时附魔选项少于 3 个；MC 附魔台恒 3 项）
-    // 等级随玩家等级上探（MC：等级越高越容易出高等级附魔）
-    const cap = Math.min(def.maxLvl, Math.max(1, Math.ceil(playerLevel / 5)));
-    const lvl = 1 + Math.floor(rand() * cap);
-    offers.push({ ench: def.key, lvl, ...enchCost(lvl) });
+  for (let slot = 0; slot < 3 && pool.length > 0; slot++) {
+    // 档位等级 = 书架曲线 × 玩家等级上探（MC：玩家等级不足时附魔偏弱）
+    const lvl = Math.min(randEnchantLevel(power, slot as 0 | 1 | 2, rand), Math.max(1, playerLevel));
+    offers.push({ enchants: rollEnchants(rand, pool, lvl), ...enchCost(slot) });
   }
   return offers;
 }

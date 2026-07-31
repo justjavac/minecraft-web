@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { levelFromXp, xpForLevel } from '../xp';
-import { clearXpOrbs, spawnXpOrbs, tickXpOrbs, xpOrbs } from '../xporb';
+import { clearXpOrbs, mergeXpOrbs, spawnXpOrbs, tickXpOrbs, xpOrbs } from '../xporb';
 import { VOID_TERRAIN } from '../noise';
 import { World } from '../world';
 
@@ -50,5 +50,44 @@ describe('死亡经验球', () => {
     expect(Math.min(5 * 7, 100)).toBe(35);
     expect(Math.min(20 * 7, 100)).toBe(100); // 上限 100
     expect(xpForLevel(0)).toBeGreaterThan(0);
+  });
+});
+
+describe('经验球合并（MC）', () => {
+  it('邻近球合并：value 相加，消失计时取较老那颗', () => {
+    const w = new World('xporb-merge', undefined, VOID_TERRAIN);
+    xpOrbs.push(
+      { id: 1, x: 4, y: 40, z: 4, velX: 0, velY: 0, velZ: 0, value: 3, age: 5 }, // 较老
+      { id: 2, x: 4.3, y: 40, z: 4, velX: 0, velY: 0, velZ: 0, value: 7, age: 2 },
+    );
+    mergeXpOrbs();
+    expect(xpOrbs).toHaveLength(1);
+    expect(xpOrbs[0].value).toBe(10); // 值相加（单球值无上限）
+    expect(xpOrbs[0].age).toBe(5); // 较老者存活
+    // tick 也会自动合并
+    xpOrbs.push({ id: 3, x: 4.1, y: 40, z: 4, velX: 0, velY: 0, velZ: 0, value: 1, age: 1 });
+    tickXpOrbs(w, 0.05, { x: 100, y: 40, z: 100 }, () => undefined, solid);
+    expect(xpOrbs).toHaveLength(1);
+    expect(xpOrbs[0].value).toBe(11);
+  });
+
+  it('距离外不合并；连锁合并一次到位', () => {
+    xpOrbs.push(
+      { id: 1, x: 4, y: 40, z: 4, velX: 0, velY: 0, velZ: 0, value: 1, age: 1 },
+      { id: 2, x: 6, y: 40, z: 4, velX: 0, velY: 0, velZ: 0, value: 2, age: 2 }, // 距 2 格 > 0.5
+    );
+    mergeXpOrbs();
+    expect(xpOrbs).toHaveLength(2);
+    // 三球链式邻近：全部并成一颗
+    clearXpOrbs();
+    xpOrbs.push(
+      { id: 1, x: 4, y: 40, z: 4, velX: 0, velY: 0, velZ: 0, value: 1, age: 1 },
+      { id: 2, x: 4.4, y: 40, z: 4, velX: 0, velY: 0, velZ: 0, value: 2, age: 2 },
+      { id: 3, x: 4.7, y: 40, z: 4, velX: 0, velY: 0, velZ: 0, value: 4, age: 3 },
+    );
+    mergeXpOrbs();
+    expect(xpOrbs).toHaveLength(1);
+    expect(xpOrbs[0].value).toBe(7);
+    expect(xpOrbs[0].age).toBe(3);
   });
 });
