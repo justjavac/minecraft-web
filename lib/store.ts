@@ -4,19 +4,31 @@ import { create } from 'zustand';
 import { armorDef, armorDefOf, armorPoints, damageAfterArmor, emptyArmorSlots } from './armor';
 import { armorRepairMaterial, enchLevelSum, mergeEnchants, priorWorkPenalty, toolRepairMaterial } from './anvil';
 import { BLOCKS, HOTBAR_BLOCKS, type BlockId } from './blocks';
-import { getBrew, putIntoBrewing, takePotion } from './brewing';
+import { getBrew, INGREDIENTS, POTIONS, shiftIntoBrewing, takePotion } from './brewing';
 import { MATERIAL_INFO } from './materials';
-import { FOODS, getFurnace, putIntoFurnace, takeOutput } from './furnace';
+import { FOODS, getFurnace, shiftIntoFurnace, takeOutput } from './furnace';
 import { hurtState, playerPosition, survivalStats, worldClock } from './game';
 import { effects } from './effects';
 import { beaconTiers } from './beacon';
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
+import {
+  clickItemStack,
+  clickSlot,
+  collectToCursor,
+  dragPlaceOne,
+  dragSplit,
+  isStackable,
+  itemKeyToSlot,
+  rightClickSlot,
+  shiftMove,
+  slotToItemKey,
+} from './inventory';
 import { applyCraft, canCraft, hasSpaceFor } from './recipes';
 import { netheriteUpgradeOf } from './smithing';
 import { setPersistenceNoticeHandler } from './persistence';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
 import { eatSound, hurtSound, levelupSound } from './sound';
-import { getStorage, putIntoStorage, takeFromStorage } from './storage';
+import { getStorage, putIntoStorage, storages, takeFromStorage } from './storage';
 import { TOOLS } from './tools';
 import { executeTrade, MAX_TRADE_USES, professionOf, TRADES, tradeDay, tradeStockLeft, deductTradeStock } from './trading';
 import { levelFromXp, subtractLevels } from './xp';
@@ -25,7 +37,7 @@ import { spawnXpOrbs } from './xporb';
 // 类型与共享常量在 lib/store-types.ts（slice 组合需要）；此处再导出保持既有 import 路径不变
 export type { Screen, GameMode, WorldMode, Settings, GameStore } from './store-types';
 export { ALL_PANELS_CLOSED, anyPanelOpen, DEFAULT_SETTINGS } from './store-types';
-import { ALL_PANELS_CLOSED, type GameStore } from './store-types';
+import { ALL_PANELS_CLOSED, type GameStore, type GuiArea } from './store-types';
 import { createSettingsSlice } from './store-settings';
 import { createPanelsSlice } from './store-panels';
 
@@ -34,6 +46,42 @@ export const MAX_HUNGER = 20;
 /** MC 饱和度上限（隐藏值，先于饥饿消耗） */
 export const MAX_SATURATION = 5;
 const HURT_COOLDOWN = 500; // ms 受击无敌帧
+
+// ——— 光标拖拽（MC Java 语义）：状态在 zustand（cursorSlot），拖动过程为模块级 ephemeral 状态 ———
+
+/** 读取区域槽位数组（'storage' 取当前打开容器；未打开返回空数组，调用方越界即拒绝） */
+function readAreaSlots(s: GameStore, area: GuiArea): Slot[] {
+  if (area === 'hotbar') return s.hotbarSlots;
+  if (area === 'main') return s.mainSlots;
+  return s.storageOpen ? getStorage(s.storageOpen) : [];
+}
+
+/** 写回区域槽位数组，返回可 set 的 patch（'storage' 直接写回容器 map，返回空 patch） */
+function writeAreaSlots(s: GameStore, area: GuiArea, slots: Slot[]): Partial<GameStore> {
+  if (area === 'hotbar') return { hotbarSlots: slots };
+  if (area === 'main') return { mainSlots: slots };
+  if (s.storageOpen) storages.set(s.storageOpen, slots);
+  return {};
+}
+
+function replaceSlot(slots: Slot[], index: number, slot: Slot): Slot[] {
+  const next = [...slots];
+  next[index] = slot;
+  return next;
+}
+
+/** 光标拖动 pending/进行态（不入 zustand：mousedown 记录，进入第二格晋升为真拖动，pointerup 结算） */
+interface GuiDrag {
+  button: 0 | 2;
+  area: GuiArea;
+  index: number;
+  /** 拖动起始光标（左键均分每次从它重算） */
+  initial: NonNullable<Slot>;
+  /** 已拖过格子及其拖动前的值（含起点，晋升时才填） */
+  targets: { area: GuiArea; index: number; before: Slot }[];
+  active: boolean;
+}
+let guiDrag: GuiDrag | null = null;
 
 export const useGameStore = create<GameStore>()((set, get) => ({
   ...createSettingsSlice(set, get, {} as never),
@@ -63,6 +111,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   hotbarSlots: emptySlots(),
   mainSlots: emptyBackpack(),
   armorSlots: emptyArmorSlots(),
+  cursorSlot: null,
+  guiTick: 0,
   notice: null,
   setNotice: (notice) => set({ notice }),
   touchMode:
@@ -79,12 +129,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       deathPos: null,
       // 创造模式热键栏给默认方块面板（hotbarSlots 与生存共用一套——创造可持工具/材料，MC 模型）；生存为空
       hotbarSlots: worldMode === 'creative' ? HOTBAR_BLOCKS.map((id) => ({ kind: 'block' as const, id, count: 1 })) : emptySlots(),
-      mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
+      mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, respawnPoint: null, dead: false, deathPos: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, respawnPoint: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, respawnPoint: null, dead: false, deathPos: null, cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, respawnPoint: null, cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
@@ -217,6 +267,14 @@ export const useGameStore = create<GameStore>()((set, get) => ({
           const cur = armorSlots[piece];
           if (cur) spawnArmorDrop(piece, x, y + 0.5, z, cur.durability, cur.material, cur.ench);
         }
+        // 光标上的物品同样掉落（死亡时光标只可能来自刚关闭的界面，按死亡掉落处理）
+        const held = s.cursorSlot;
+        if (held) {
+          if (held.kind === 'block') spawnBlockDrop(held.id, x, y + 0.5, z, held.count);
+          else if (held.kind === 'material') spawnMaterialDrop(held.material, x, y + 0.5, z, held.count);
+          else if (held.kind === 'tool') spawnToolDrop(held.tool, x, y + 0.5, z, held.durability, held.ench);
+          else spawnArmorDrop(held.piece, x, y + 0.5, z, held.durability, held.material, held.ench);
+        }
         hotbarSlots = emptySlots();
         mainSlots = emptyBackpack();
         armorSlots = emptyArmorSlots();
@@ -232,7 +290,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         armorSlots,
         xpTotal,
         // 死亡时关掉所有打开的界面（仅受伤未死不动）
-        ...(died ? ALL_PANELS_CLOSED : {}),
+        ...(died ? { ...ALL_PANELS_CLOSED, cursorSlot: null } : {}),
       };
     });
     hurtSound(); // 实际扣血才播（创造/无敌帧上面已 return false）
@@ -247,6 +305,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       mainSlots: backpack ?? emptyBackpack(),
       armorSlots: armor ?? emptyArmorSlots(),
       xpTotal: xp ?? 0,
+      cursorSlot: null,
       dead: false,
       deathPos: null,
     }),
@@ -312,12 +371,6 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     eatSound();
     return true;
   },
-  furnacePut: (slotIndex, force) => {
-    const s = get();
-    if (!s.furnaceOpen) return;
-    const { slots, to } = putIntoFurnace(s.hotbarSlots, slotIndex, getFurnace(s.furnaceOpen), force);
-    if (to) set({ hotbarSlots: slots });
-  },
   furnaceTakeOutput: () => {
     const s = get();
     if (!s.furnaceOpen) return;
@@ -334,16 +387,269 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       }
     }
   },
-  brewingPut: (slotIndex) => {
-    const s = get();
-    if (!s.brewingOpen) return;
-    const { slots, to } = putIntoBrewing(s.hotbarSlots, slotIndex, getBrew(s.brewingOpen));
-    if (to) set({ hotbarSlots: slots });
-  },
   brewingTakePotion: (i) => {
     const s = get();
     if (!s.brewingOpen) return;
     set({ hotbarSlots: takePotion(s.hotbarSlots, getBrew(s.brewingOpen), i) });
+  },
+  // ——— 光标拖拽（MC Java 语义；纯规则在 lib/inventory.ts，此处只做状态接线） ———
+  stowCursor: () => {
+    const s = get();
+    const c = s.cursorSlot;
+    if (!c) return;
+    let remaining: Slot = c;
+    if (c.kind === 'block' || c.kind === 'material') {
+      const item = c.kind === 'block' ? { kind: 'block' as const, id: c.id } : { kind: 'material' as const, material: c.material };
+      const hot = addStackToSlots(s.hotbarSlots, item, c.count);
+      if (hot.slots !== s.hotbarSlots) set({ hotbarSlots: hot.slots });
+      let left = hot.leftover;
+      if (left > 0) {
+        const main = addStackToSlots(get().mainSlots, item, left);
+        if (main.slots !== get().mainSlots) set({ mainSlots: main.slots });
+        left = main.leftover;
+      }
+      remaining = left > 0 ? { ...c, count: left } : null;
+    } else {
+      // 工具/装备：热键栏 → 背包找第一个空槽
+      const hi = s.hotbarSlots.indexOf(null);
+      if (hi >= 0) {
+        set({ hotbarSlots: replaceSlot(s.hotbarSlots, hi, c) });
+        remaining = null;
+      } else {
+        const mi = s.mainSlots.indexOf(null);
+        if (mi >= 0) {
+          set({ mainSlots: replaceSlot(s.mainSlots, mi, c) });
+          remaining = null;
+        }
+      }
+    }
+    if (remaining) {
+      // 背包放不下：在玩家脚下生成掉落实体（与死亡掉落同路径）
+      const { x, y, z } = playerPosition;
+      if (remaining.kind === 'block') spawnBlockDrop(remaining.id, x, y + 0.5, z, remaining.count);
+      else if (remaining.kind === 'material') spawnMaterialDrop(remaining.material, x, y + 0.5, z, remaining.count);
+      else if (remaining.kind === 'tool') spawnToolDrop(remaining.tool, x, y + 0.5, z, remaining.durability, remaining.ench);
+      else spawnArmorDrop(remaining.piece, x, y + 0.5, z, remaining.durability, remaining.material, remaining.ench);
+    }
+    set({ cursorSlot: null });
+  },
+  slotMouseDown: (area, index, info) => {
+    const s = get();
+    // shift+左键：快速移动（路由按当前打开的界面）
+    if (info.shift && info.button === 0) {
+      if (area === 'storage') {
+        s.storageTake(index);
+        set({ guiTick: get().guiTick + 1 });
+        return;
+      }
+      if (s.storageOpen) {
+        s.storagePut(area, index);
+        set({ guiTick: get().guiTick + 1 });
+        return;
+      }
+      if (s.furnaceOpen) {
+        const f = getFurnace(s.furnaceOpen);
+        const slots = readAreaSlots(s, area);
+        const next = shiftIntoFurnace(slots[index] ?? null, f);
+        if (next !== slots[index]) set({ ...writeAreaSlots(s, area, replaceSlot(slots, index, next)), guiTick: s.guiTick + 1 });
+        return;
+      }
+      if (s.brewingOpen) {
+        const b = getBrew(s.brewingOpen);
+        const slots = readAreaSlots(s, area);
+        const next = shiftIntoBrewing(slots[index] ?? null, b);
+        if (next !== slots[index]) set({ ...writeAreaSlots(s, area, replaceSlot(slots, index, next)), guiTick: s.guiTick + 1 });
+        return;
+      }
+      // 合成/交易/附魔等：背包 ↔ 热键栏（moveSlot 语义）
+      s.moveSlot(area, index);
+      return;
+    }
+    if (info.button !== 0 && info.button !== 2) return;
+    const button: 0 | 2 = info.button === 2 ? 2 : 0;
+    const slots = readAreaSlots(s, area);
+    if (index < 0 || index >= slots.length) return;
+    if (s.cursorSlot === null) {
+      // 空光标：拿起立即生效
+      const r = button === 0 ? clickSlot(slots, index, null) : rightClickSlot(slots, index, null);
+      if (r.slots === slots && r.cursor === null) return;
+      set({ ...writeAreaSlots(s, area, r.slots), cursorSlot: r.cursor, guiTick: s.guiTick + 1 });
+      return;
+    }
+    // 光标有物：记拖动 pending（MC：按下即进入可拖动状态；pointerup 未拖动按普通点击处理）
+    guiDrag = { button, area, index, initial: s.cursorSlot, targets: [], active: false };
+  },
+  slotDragEnter: (area, index) => {
+    const d = guiDrag;
+    if (!d) return;
+    const s = get();
+    // 右键拖动：给指定格放 1 个（增量，无需重算；每次取最新 state，避免连续放置互相覆盖）
+    const placeOneAt = (t: { area: GuiArea; index: number; before: Slot }): void => {
+      const cur = get();
+      const cursor = cur.cursorSlot;
+      if (!cursor) return;
+      const r = dragPlaceOne(t.before, cursor);
+      if (r.cursor === cursor) return;
+      set({ ...writeAreaSlots(cur, t.area, replaceSlot(readAreaSlots(cur, t.area), t.index, r.slot)), cursorSlot: r.cursor, guiTick: cur.guiTick + 1 });
+    };
+    if (!d.active) {
+      if (area === d.area && index === d.index) return;
+      d.active = true;
+      d.targets.push({ area: d.area, index: d.index, before: readAreaSlots(s, d.area)[d.index] ?? null });
+      // 右键拖动：起点格同样放 1 个（MC：拖动分发从按下格开始）
+      if (d.button === 2) placeOneAt(d.targets[0]);
+    }
+    if (d.targets.some((t) => t.area === area && t.index === index)) return;
+    const slots = readAreaSlots(s, area);
+    if (index < 0 || index >= slots.length) return;
+    d.targets.push({ area, index, before: slots[index] });
+    if (d.button === 2) {
+      placeOneAt(d.targets[d.targets.length - 1]);
+      if (!get().cursorSlot) guiDrag = null; // 光标耗尽：拖动结束
+      return;
+    }
+    // 左键拖动：从起始光标重算均分（floor 均分，余数留光标）
+    const r = dragSplit(d.targets.map((t) => t.before), d.initial);
+    const perArea = new Map<GuiArea, Slot[]>();
+    for (let i = 0; i < d.targets.length; i++) {
+      const t = d.targets[i];
+      const arr = perArea.get(t.area) ?? readAreaSlots(s, t.area);
+      perArea.set(t.area, replaceSlot(arr, t.index, r.slots[i]));
+    }
+    const patch: Partial<GameStore> = { cursorSlot: r.cursor, guiTick: s.guiTick + 1 };
+    for (const [a, arr] of perArea) Object.assign(patch, writeAreaSlots(s, a, arr));
+    set(patch);
+  },
+  dragEnd: () => {
+    const d = guiDrag;
+    guiDrag = null;
+    if (!d || d.active) return; // 真拖动：余数留光标（MC）
+    const s = get();
+    const slots = readAreaSlots(s, d.area);
+    const r = d.button === 0 ? clickSlot(slots, d.index, s.cursorSlot) : rightClickSlot(slots, d.index, s.cursorSlot);
+    if (r.slots === slots && r.cursor === s.cursorSlot) return;
+    set({ ...writeAreaSlots(s, d.area, r.slots), cursorSlot: r.cursor, guiTick: s.guiTick + 1 });
+  },
+  slotDoubleClick: () => { // area/index 仅 UI 语义（双击的格子必含同类物品），收集范围按当前界面定
+    const s = get();
+    const cursor = s.cursorSlot;
+    if (!isStackable(cursor)) return;
+    const areas: GuiArea[] = s.storageOpen ? ['hotbar', 'main', 'storage'] : ['hotbar', 'main'];
+    const r = collectToCursor(areas.map((a) => readAreaSlots(s, a)), cursor);
+    if (r.cursor === cursor) return;
+    const patch: Partial<GameStore> = { cursorSlot: r.cursor, guiTick: s.guiTick + 1 };
+    areas.forEach((a, i) => Object.assign(patch, writeAreaSlots(s, a, r.areas[i])));
+    set(patch);
+  },
+  furnaceSlotMouseDown: (which, info) => {
+    const s = get();
+    if (!s.furnaceOpen) return;
+    const f = getFurnace(s.furnaceOpen);
+    const button = info.button === 2 ? 2 : 0;
+    if (which === 'output') {
+      // 产出槽：只能取不能放；shift 整叠入背包并结算经验（复用 furnaceTakeOutput）
+      if (info.shift && button === 0) {
+        s.furnaceTakeOutput();
+        set({ guiTick: get().guiTick + 1 });
+        return;
+      }
+      if (!f.output) return;
+      const before = f.output.count;
+      const item = f.output.item;
+      const cursor = s.cursorSlot;
+      let take: number;
+      let nextCursor: Slot;
+      if (cursor === null) {
+        take = button === 2 ? 1 : before; // 右键取 1 件
+        nextCursor = itemKeyToSlot(item, take);
+      } else {
+        if (!isStackable(cursor)) return; // 工具/装备不能放也不能并
+        const key = slotToItemKey(cursor);
+        if (key !== item) return; // 异类不能放也不能并
+        const room = 64 - cursor.count;
+        take = Math.min(room, before);
+        if (take <= 0) return;
+        nextCursor = { ...cursor, count: cursor.count + take };
+      }
+      f.output = before > take ? { item, count: before - take } : null;
+      // 烧炼经验：取出成品时结算整数部分、余数留炉（同 furnaceTakeOutput）
+      const award = Math.floor(f.xp ?? 0);
+      if (award > 0) {
+        f.xp = (f.xp ?? 0) - award;
+        s.addXp(award);
+      }
+      set({ cursorSlot: nextCursor, guiTick: s.guiTick + 1 });
+      return;
+    }
+    // 输入/燃料槽
+    const stack = which === 'fuel' ? f.fuel : f.input;
+    if (info.shift && button === 0) {
+      // shift 取出到背包（热键栏优先，溢出到主物品栏）
+      if (!stack) return;
+      const r1 = shiftMove(itemKeyToSlot(stack.item, stack.count), s.hotbarSlots);
+      let left = r1.slot;
+      let mainSlots = s.mainSlots;
+      if (left) {
+        const r2 = shiftMove(left, s.mainSlots);
+        mainSlots = r2.target;
+        left = r2.slot;
+      }
+      const newStack = left ? { item: stack.item, count: (left as { count: number }).count } : null;
+      if (which === 'fuel') f.fuel = newStack;
+      else f.input = newStack;
+      set({ ...(r1.target !== s.hotbarSlots ? { hotbarSlots: r1.target } : {}), ...(mainSlots !== s.mainSlots ? { mainSlots } : {}), guiTick: s.guiTick + 1 });
+      return;
+    }
+    const cursor = s.cursorSlot;
+    if (cursor !== null && slotToItemKey(cursor) === null) return; // 工具/装备进不了熔炉槽
+    const r = clickItemStack(stack, cursor, button);
+    if (r.stack === stack && r.cursor === cursor) return;
+    if (which === 'fuel') f.fuel = r.stack;
+    else f.input = r.stack;
+    set({ cursorSlot: r.cursor, guiTick: s.guiTick + 1 });
+  },
+  brewingSlotMouseDown: (which, index, info) => {
+    const s = get();
+    if (!s.brewingOpen) return;
+    const b = getBrew(s.brewingOpen);
+    const button = info.button === 2 ? 2 : 0;
+    const getStack = (): { item: string; count: number } | null =>
+      which === 'fuel' ? b.fuel : which === 'ingredient' ? b.ingredient : (b.potions[index] ?? null);
+    const setStack = (st: { item: string; count: number } | null): void => {
+      if (which === 'fuel') b.fuel = st;
+      else if (which === 'ingredient') b.ingredient = st;
+      else b.potions[index] = st;
+    };
+    const stack = getStack();
+    if (info.shift && button === 0) {
+      // shift 取出到背包（热键栏优先）
+      if (!stack) return;
+      const r1 = shiftMove(itemKeyToSlot(stack.item, stack.count), s.hotbarSlots);
+      let left = r1.slot;
+      let mainSlots = s.mainSlots;
+      if (left) {
+        const r2 = shiftMove(left, s.mainSlots);
+        mainSlots = r2.target;
+        left = r2.slot;
+      }
+      setStack(left ? { item: stack.item, count: (left as { count: number }).count } : null);
+      set({ ...(r1.target !== s.hotbarSlots ? { hotbarSlots: r1.target } : {}), ...(mainSlots !== s.mainSlots ? { mainSlots } : {}), guiTick: s.guiTick + 1 });
+      return;
+    }
+    const cursor = s.cursorSlot;
+    if (cursor !== null) {
+      // 放置约束（MC）：燃料槽只收烈焰粉、材料槽只收酿造材料、药水槽只收药水；方块/工具/装备进不了酿造台
+      const key = slotToItemKey(cursor);
+      const mat = key !== null && key.startsWith('material:') ? key.slice(9) : null;
+      if (mat === null) return;
+      if (which === 'fuel' && mat !== 'blaze_powder') return;
+      if (which === 'ingredient' && !INGREDIENTS.includes(mat)) return;
+      if (which === 'potion' && POTIONS[mat] === undefined) return;
+    }
+    const r = clickItemStack(stack, cursor, button, which === 'potion' ? 1 : 64, true);
+    setStack(r.stack);
+    if (r.stack === stack && r.cursor === cursor) return;
+    set({ cursorSlot: r.cursor, guiTick: s.guiTick + 1 });
   },
   addStack: (item, count = 1) => {
     // 先填热键栏，放不下的溢出到背包（MC：新物品优先热键栏）

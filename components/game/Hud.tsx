@@ -20,6 +20,7 @@ import { BrewingDialog } from './BrewingDialog';
 import { EnchantingDialog } from './EnchantingDialog';
 import { TradingDialog } from './TradingDialog';
 import { StorageDialog } from './StorageDialog';
+import { CursorItem } from './CursorItem';
 import { TileIcon } from './TileIcon';
 import { BlockPicker } from './BlockPicker';
 
@@ -98,7 +99,7 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
   return (
     <div title={title} role="button" tabIndex={0} aria-label={ariaLabel} onKeyDown={onKeyDown} onClick={onClick} className={cls}>
       {selBox}
-      <TileIcon tile={tile} size={26} />
+      <TileIcon tile={tile} size={26} blockId={slot.kind === 'block' ? slot.id : undefined} />
       <span className="absolute left-0.5 top-0 text-[10px] leading-3 text-white/70">{index + 1}</span>
       {(slot.kind === 'block' || slot.kind === 'material') && slot.count > 1 && (
         <span className="absolute bottom-0 right-0.5 text-[10px] font-bold leading-3 text-white drop-shadow">
@@ -483,6 +484,9 @@ export function Hud() {
 
       {/* 容器界面（箱子/木桶） */}
       <StorageDialog />
+
+      {/* 光标堆叠跟随件（MC Java 光标拖拽；含全局 pointerup 结束拖动） */}
+      <CursorItem />
 
       {/* F3 调试面板 */}
       {debug && <DebugPanel />}

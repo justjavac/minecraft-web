@@ -106,7 +106,9 @@ export function CraftingDialog() {
   const mainSlots = useGameStore((s) => s.mainSlots);
   const armorSlots = useGameStore((s) => s.armorSlots);
   const craft = useGameStore((s) => s.craft);
-  const moveSlot = useGameStore((s) => s.moveSlot);
+  const slotMouseDown = useGameStore((s) => s.slotMouseDown);
+  const slotDragEnter = useGameStore((s) => s.slotDragEnter);
+  const slotDoubleClick = useGameStore((s) => s.slotDoubleClick);
   const unequipArmor = useGameStore((s) => s.unequipArmor);
   const [hover, setHover] = useState<Recipe | null>(null);
   // 关闭时直接不渲染：避免每次背包变化都全量重算配方与 JSX（hooks 已全部调用，顺序稳定）
@@ -202,8 +204,19 @@ export function CraftingDialog() {
               ARMOR_ORDER.map((piece, i) => (
                 <ArmorCell key={piece} pos={ARMOR_POS(i)} piece={piece} slot={armorSlots[piece]} onClick={() => armorSlots[piece] && unequipArmor(piece)} />
               ))}
-            <GuiMainSlots slots={mainSlots} onSlotClick={(i) => moveSlot('main', i)} />
-            <GuiHotbarSlots slots={hotbarSlots} onSlotClick={(i) => moveSlot('hotbar', i)} />
+            {/* 背包/热键栏：MC Java 光标拖拽（左键拿放/合并/交换，右键半取/单放，shift 快移，拖动分发，双击收集） */}
+            <GuiMainSlots
+              slots={mainSlots}
+              onSlotPress={(i, info) => slotMouseDown('main', i, info)}
+              onSlotDragEnter={(i) => slotDragEnter('main', i)}
+              onSlotDoubleClick={(i) => slotDoubleClick('main', i)}
+            />
+            <GuiHotbarSlots
+              slots={hotbarSlots}
+              onSlotPress={(i, info) => slotMouseDown('hotbar', i, info)}
+              onSlotDragEnter={(i) => slotDragEnter('hotbar', i)}
+              onSlotDoubleClick={(i) => slotDoubleClick('hotbar', i)}
+            />
           </McGuiFrame>
         </div>
       </DialogContent>

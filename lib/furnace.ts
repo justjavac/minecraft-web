@@ -191,6 +191,30 @@ export function takeOutput(slots: Slot[], f: FurnaceState): Slot[] {
   return out.slots;
 }
 
+/**
+ * shift 快移整叠进熔炉（MC）：可烧炼物 → 输入槽、燃料 → 燃料槽（双重身份如原木优先进燃料槽，
+ * 与 putIntoFurnace 默认一致）；并堆到 64，放不下的余数留在原格。都不可或工具/装备则原样返回。
+ */
+export function shiftIntoFurnace(slot: Slot, f: FurnaceState): Slot {
+  if (!slot || (slot.kind !== 'block' && slot.kind !== 'material')) return slot;
+  const item = slot.kind === 'block' ? `block:${slot.id}` : `material:${slot.material}`;
+  let count = slot.count;
+  const feed = (which: 'input' | 'fuel'): void => {
+    const cur = which === 'fuel' ? f.fuel : f.input;
+    if (cur && cur.item !== item) return;
+    const add = Math.min(64 - (cur?.count ?? 0), count);
+    if (add <= 0) return;
+    const stack: FurnaceStack = { item, count: (cur?.count ?? 0) + add };
+    if (which === 'fuel') f.fuel = stack;
+    else f.input = stack;
+    count -= add;
+  };
+  if (FUELS[item] !== undefined) feed('fuel');
+  if (count > 0 && SMELTING[item] !== undefined) feed('input');
+  if (count === slot.count) return slot; // 一格没动：原样返回
+  return count > 0 ? { ...slot, count } : null;
+}
+
 function outputBlocked(f: FurnaceState, out: string): boolean {
   return f.output !== null && (f.output.item !== out || f.output.count >= 64);
 }

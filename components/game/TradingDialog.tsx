@@ -48,6 +48,9 @@ export function TradingDialog() {
   const mainSlots = useGameStore((s) => s.mainSlots);
   const executeMobTrade = useGameStore((s) => s.executeMobTrade);
   const tradeStockLeft = useGameStore((s) => s.tradeStockLeft);
+  const slotMouseDown = useGameStore((s) => s.slotMouseDown);
+  const slotDragEnter = useGameStore((s) => s.slotDragEnter);
+  const slotDoubleClick = useGameStore((s) => s.slotDoubleClick);
   const [preview, setPreview] = useState(0);
 
   const prof = tradeMob !== null ? professionOf(tradeMob) : null;
@@ -112,12 +115,26 @@ export function TradingDialog() {
               </span>
             </>
           )}
-          {/* 背包 + 热键栏（villager 面板 x 起点 214，与标准容器不同） */}
+          {/* 背包 + 热键栏（villager 面板 x 起点 214，与标准容器不同）：光标拖拽可整理物品（MC：交易中可操作背包） */}
           {mainSlots.map((s, i) => (
-            <GuiSlot key={`m${i}`} pos={[invX(i), invY(i)]} slot={s} />
+            <GuiSlot
+              key={`m${i}`}
+              pos={[invX(i), invY(i)]}
+              slot={s}
+              onPress={(info) => slotMouseDown('main', i, info)}
+              onDragEnter={() => slotDragEnter('main', i)}
+              onDoubleClick={() => slotDoubleClick('main', i)}
+            />
           ))}
           {hotbarSlots.map((s, i) => (
-            <GuiSlot key={`h${i}`} pos={[hotX(i), HOT_Y]} slot={s} />
+            <GuiSlot
+              key={`h${i}`}
+              pos={[hotX(i), HOT_Y]}
+              slot={s}
+              onPress={(info) => slotMouseDown('hotbar', i, info)}
+              onDragEnter={() => slotDragEnter('hotbar', i)}
+              onDoubleClick={() => slotDoubleClick('hotbar', i)}
+            />
           ))}
         </McGuiFrame>
       </DialogContent>

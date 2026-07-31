@@ -131,6 +131,37 @@ export function takePotion(slots: Slot[], b: BrewState, i: number): Slot[] {
   return out.slots;
 }
 
+/**
+ * shift 快移整叠进酿造台（MC）：烈焰粉 → 燃料槽、酿造材料 → 材料槽（并堆到 64）、
+ * 药水 → 第一个空药水槽（1 个）；放不下的余数留原格。其余物品（方块/工具/装备）原样返回。
+ */
+export function shiftIntoBrewing(slot: Slot, b: BrewState): Slot {
+  if (!slot || slot.kind !== 'material') return slot;
+  const m = slot.material;
+  let count = slot.count;
+  if (m === 'blaze_powder') {
+    const add = Math.min(64 - (b.fuel?.count ?? 0), count);
+    if (add > 0) {
+      b.fuel = { item: 'blaze_powder', count: (b.fuel?.count ?? 0) + add };
+      count -= add;
+    }
+  } else if (INGREDIENTS.includes(m) && (!b.ingredient || b.ingredient.item === m)) {
+    const add = Math.min(64 - (b.ingredient?.count ?? 0), count);
+    if (add > 0) {
+      b.ingredient = { item: m, count: (b.ingredient?.count ?? 0) + add };
+      count -= add;
+    }
+  } else if (POTIONS[m]) {
+    const empty = b.potions.findIndex((p) => p === null);
+    if (empty >= 0) {
+      b.potions[empty] = { item: m, count: 1 };
+      count -= 1;
+    }
+  }
+  if (count === slot.count) return slot; // 一格没动：原样返回
+  return count > 0 ? { ...slot, count } : null;
+}
+
 /** 每帧推进所有酿造台（20 秒一轮，同槽多瓶同步转化——MC 一致） */
 export function tickBrewing(dt: number): void {
   for (const b of brews.values()) {

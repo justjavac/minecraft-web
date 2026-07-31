@@ -1,4 +1,5 @@
 // 面板 slice：7 个界面开关（合成/熔炉/酿造/附魔/交易/容器/选块）+ 互斥 setters（名单见 ALL_PANELS_CLOSED）
+// 任何开关变化前先 stowCursor：光标上的物品退回背包（放不下在脚下掉落），避免界面互斥关闭时吞掉物品
 
 import type { StateCreator } from 'zustand';
 import { panelUnlock } from './game';
@@ -29,7 +30,7 @@ export interface PanelsSlice {
   setStorageOpen: (key: string | null) => void;
 }
 
-export const createPanelsSlice: StateCreator<GameStore, [], [], PanelsSlice> = (set) => ({
+export const createPanelsSlice: StateCreator<GameStore, [], [], PanelsSlice> = (set, get) => ({
   craftingOpen: false,
   craftingTable: false,
   furnaceOpen: null,
@@ -39,11 +40,13 @@ export const createPanelsSlice: StateCreator<GameStore, [], [], PanelsSlice> = (
   storageOpen: null,
   pickerOpen: false,
   setPickerOpen: (pickerOpen) => {
+    get().stowCursor();
     if (pickerOpen) exitLockForPanel();
     // 界面互斥：打开时关掉其余全部面板（关闭时不动其他的）
     set(pickerOpen ? { ...ALL_PANELS_CLOSED, pickerOpen: true } : { pickerOpen });
   },
   setCraftingOpen: (craftingOpen, withTable) => {
+    get().stowCursor();
     if (craftingOpen) exitLockForPanel();
     set((s) => ({
       ...(craftingOpen ? ALL_PANELS_CLOSED : {}),
@@ -52,22 +55,27 @@ export const createPanelsSlice: StateCreator<GameStore, [], [], PanelsSlice> = (
     }));
   },
   setFurnaceOpen: (furnaceOpen) => {
+    get().stowCursor();
     if (furnaceOpen) exitLockForPanel();
     set(furnaceOpen ? { ...ALL_PANELS_CLOSED, furnaceOpen } : { furnaceOpen });
   },
   setBrewingOpen: (brewingOpen) => {
+    get().stowCursor();
     if (brewingOpen) exitLockForPanel();
     set(brewingOpen ? { ...ALL_PANELS_CLOSED, brewingOpen } : { brewingOpen });
   },
   setEnchantOpen: (enchantOpen) => {
+    get().stowCursor();
     if (enchantOpen) exitLockForPanel();
     set(enchantOpen ? { ...ALL_PANELS_CLOSED, enchantOpen } : { enchantOpen });
   },
   setTradeMob: (tradeMob) => {
+    get().stowCursor();
     if (tradeMob !== null) exitLockForPanel();
     set(tradeMob !== null ? { ...ALL_PANELS_CLOSED, tradeMob } : { tradeMob });
   },
   setStorageOpen: (storageOpen) => {
+    get().stowCursor();
     if (storageOpen) exitLockForPanel();
     set(storageOpen ? { ...ALL_PANELS_CLOSED, storageOpen } : { storageOpen });
   },

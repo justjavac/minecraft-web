@@ -11,6 +11,15 @@ export type Screen = 'menu' | 'playing';
 export type GameMode = 'new' | 'continue';
 export type WorldMode = 'creative' | 'survival';
 
+/** 容器界面内的可交互区域（光标拖拽/快移的作用对象；'storage' = 打开的箱子/木桶） */
+export type GuiArea = 'hotbar' | 'main' | 'storage';
+
+/** 槽位按下信息（pointerdown；触屏点按 = button 0 左键语义，无右键/拖动分发） */
+export interface GuiPressInfo {
+  button: number;
+  shift: boolean;
+}
+
 /** 全部面板关闭态（界面互斥共享名单：打开任一界面时关掉其余；死亡时全关。此前 8 份手抄复制已漂移漏清） */
 export const ALL_PANELS_CLOSED = {
   pickerOpen: false,
@@ -184,12 +193,8 @@ export interface GameStore {
   storageTake: (index: number) => void;
   /** 吃选中槽位的食物（MC：回复饥饿与饱和度），非食物返回 false */
   eatSelectedFood: () => boolean;
-  /** 把热键栏 slotIndex 的物品移 1 个进打开的熔炉（force 指定去向） */
-  furnacePut: (slotIndex: number, force?: 'input' | 'fuel') => void;
-  /** 取出打开熔炉的全部产出 */
+  /** 取出打开熔炉的全部产出到热键栏并结算烧炼经验（shift 点击产出槽走这里） */
   furnaceTakeOutput: () => void;
-  /** 把热键栏 slotIndex 的物品移 1 个进打开的酿造台 */
-  brewingPut: (slotIndex: number) => void;
   /** 取出打开酿造台药水槽 i 的药水 */
   brewingTakePotion: (i: number) => void;
   /** 向热键栏添加可堆叠物品，返回放不下的数量 */
@@ -217,8 +222,27 @@ export interface GameStore {
   setNotice: (text: string | null) => void;
   /** 执行一次合成（材料与空间预检），成功返回 true */
   craft: (recipe: Recipe) => boolean;
-  /** 物品栏内移动：点击把 hotbar/main 某格整格移到另一区域（可堆叠自动合并） */
+  /** 物品栏内移动：点击把 hotbar/main 某格整格移到另一区域（可堆叠自动合并）。
+   *  保留作程序化 API / shift 快移路由；GUI 点击交互已由光标体系（slotMouseDown 等）取代 */
   moveSlot: (area: 'hotbar' | 'main', index: number) => void;
   /** 卸下装备槽的一件装备到物品栏（热键栏优先），满则不动 */
   unequipArmor: (piece: ArmorPiece) => void;
+  /** 光标堆叠（MC Java 光标拖拽）：拿起的物品跟随鼠标，null = 空手。仅界面打开期间存在，关闭时 stowCursor 退回背包 */
+  cursorSlot: Slot;
+  /** 容器/槽位操作计数（熔炉/箱子等界面内容不走 zustand 字段，界面据此重渲染） */
+  guiTick: number;
+  /** 槽位按下（左/右键/shift 快移；光标有物时记录拖动 pending，pointerup 未拖动按普通点击处理） */
+  slotMouseDown: (area: GuiArea, index: number, info: GuiPressInfo) => void;
+  /** 拖动中进入格子（左键均分重算 / 右键逐格放一） */
+  slotDragEnter: (area: GuiArea, index: number) => void;
+  /** 全局 pointerup：结束拖动；未形成拖动则对起始格执行普通点击 */
+  dragEnd: () => void;
+  /** 双击（光标有物）：把界面内同类物品收集进光标（到 64） */
+  slotDoubleClick: (area: GuiArea, index: number) => void;
+  /** 关闭界面前调用：光标物品退回背包（热键栏优先），放不下在玩家脚下生成掉落实体 */
+  stowCursor: () => void;
+  /** 熔炉槽点击（输入/燃料可放可取；输出只可取，shift 直接入背包并结算烧炼经验） */
+  furnaceSlotMouseDown: (which: 'input' | 'fuel' | 'output', info: GuiPressInfo) => void;
+  /** 酿造台槽点击（燃料/材料/药水槽；放置有类型约束，shift 取出到背包） */
+  brewingSlotMouseDown: (which: 'fuel' | 'ingredient' | 'potion', index: number, info: GuiPressInfo) => void;
 }
