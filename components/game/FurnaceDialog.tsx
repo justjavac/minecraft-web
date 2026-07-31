@@ -5,6 +5,7 @@ import { BLOCKS } from '@/lib/blocks';
 import { FUELS, getFurnace, SMELTING, SMELT_TIME, type FurnaceStack } from '@/lib/furnace';
 import { materialName, materialTile } from '@/lib/materials';
 import { useGameStore } from '@/lib/store';
+import { withBase } from '@/lib/basepath';
 import {
   Dialog,
   DialogContent,
@@ -115,7 +116,7 @@ export function FurnaceDialog() {
         {f && (
           <div className="relative mx-auto select-none overflow-hidden" style={{ width: 352, height: 332 }}>
             {/* MC 熔炉 GUI：furnace.png 原始 512 尺寸（面板在左上 352x332），容器裁剪不拉伸，格子按 352 坐标对齐 */}
-            <img src="/textures/gui/container/furnace.png" alt="" draggable={false} className="absolute left-0 top-0 max-w-none select-none [image-rendering:pixelated]" style={{ width: 512, height: 512 }} />
+            <img src={withBase('/textures/gui/container/furnace.png')} alt="" draggable={false} className="absolute left-0 top-0 max-w-none select-none [image-rendering:pixelated]" style={{ width: 512, height: 512 }} />
             <AbsSlot pos={SLOT_INPUT} stack={f.input} />
             <AbsSlot pos={SLOT_FUEL} stack={f.fuel} />
             <AbsSlot pos={SLOT_OUTPUT} stack={f.output} onClick={takeOutput} />

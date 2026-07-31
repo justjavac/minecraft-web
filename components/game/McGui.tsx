@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react';
 import { BLOCKS } from '@/lib/blocks';
 import { materialTile } from '@/lib/materials';
+import { withBase } from '@/lib/basepath';
 import type { Slot } from '@/lib/slots';
 import { slotDurabilityPct, slotTile } from './slotDisplay';
 import { TileIcon } from './TileIcon';
@@ -43,7 +44,7 @@ export function McGuiFrame({
   return (
     <div className={`relative select-none overflow-hidden ${centered ? 'mx-auto' : ''}`} style={{ width, height }}>
       <img
-        src={texture}
+        src={withBase(texture)}
         alt=""
         draggable={false}
         className="absolute left-0 top-0 max-w-none select-none [image-rendering:pixelated]"

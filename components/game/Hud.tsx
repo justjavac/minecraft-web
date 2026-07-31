@@ -7,6 +7,7 @@ import { anyPanelOpen, MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } fr
 import { effects, clearEffects } from '@/lib/effects';
 import { levelFromXp } from '@/lib/xp';
 import { loadWorldMeta, type WorldMeta } from '@/lib/persistence';
+import { withBase } from '@/lib/basepath';
 import { armorPoints } from '@/lib/armor';
 import type { Slot } from '@/lib/slots';
 import { slotDurabilityPct, slotName, slotTile } from './slotDisplay';
@@ -68,7 +69,7 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
   const cls = `${CELL_CLASS} border-white/20 ${active ? '-translate-y-0.5 scale-110' : ''}`;
   const selBox = active ? (
     <img
-      src="/textures/gui/hud/hotbar_selection.png"
+      src={withBase('/textures/gui/hud/hotbar_selection.png')}
       alt=""
       draggable={false}
       className="pointer-events-none absolute -inset-1 z-10 h-[calc(100%+8px)] w-[calc(100%+8px)] select-none [image-rendering:pixelated]"
@@ -194,9 +195,9 @@ function SurvivalBars() {
         return (
           <div className="relative h-[10px] w-[182px]">
             {/* MC 经验条：experience_bar 底 + progress 按比例裁剪（Faithful 纹理） */}
-            <img src="/textures/gui/hud/experience_bar_background.png" alt="" draggable={false} className="h-full w-full select-none [image-rendering:pixelated]" />
+            <img src={withBase('/textures/gui/hud/experience_bar_background.png')} alt="" draggable={false} className="h-full w-full select-none [image-rendering:pixelated]" />
             <div className="absolute left-0 top-0 h-full overflow-hidden" style={{ width: `${progress * 100}%` }}>
-              <img src="/textures/gui/hud/experience_bar_progress.png" alt="" draggable={false} className="h-full w-[182px] select-none [image-rendering:pixelated]" />
+              <img src={withBase('/textures/gui/hud/experience_bar_progress.png')} alt="" draggable={false} className="h-full w-[182px] select-none [image-rendering:pixelated]" />
             </div>
             <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-green-400" style={{ textShadow: '1px 1px 0 #000' }}>
               {level}
@@ -419,7 +420,7 @@ export function Hud() {
         </div>
         <div className="relative p-1">
           {/* MC 热键栏：hotbar.png 纹理背景（Faithful），格子图标叠加，选中格 hotbar_selection 框 */}
-          <img src="/textures/gui/hud/hotbar.png" alt="" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none [image-rendering:pixelated]" />
+          <img src={withBase('/textures/gui/hud/hotbar.png')} alt="" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none [image-rendering:pixelated]" />
           <div className="relative flex gap-1">
             {hotbarSlots.map((slot, i) => (
               <SurvivalCell key={i} index={i} slot={slot} active={i === selectedSlot} onClick={() => setSlot(i)} />

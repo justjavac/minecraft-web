@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { GameErrorBoundary } from '@/components/game/GameErrorBoundary';
 import { MainMenu } from '@/components/game/MainMenu';
 import { debugInfo, loadingState } from '@/lib/game';
+import { withBase } from '@/lib/basepath';
 import { useGameStore } from '@/lib/store';
 
 // 游戏本体（three.js 全家）按需加载：主菜单不下载/解析 three（首屏 chunk 从 ~2MB 降到菜单壳体积）
@@ -16,7 +17,7 @@ const Hud = dynamic(() => import('@/components/game/Hud').then((m) => m.Hud), { 
 function useServiceWorker() {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production' || !('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register(withBase('/sw.js')).catch(() => {});
   }, []);
 }
 

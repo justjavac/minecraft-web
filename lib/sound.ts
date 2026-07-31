@@ -2,6 +2,7 @@
 
 import type { SoundGroup } from './blocks';
 import { useGameStore } from './store';
+import { withBase } from './basepath';
 
 const GROUP_FILES: Record<SoundGroup, string[]> = {
   // 挖掘
@@ -43,7 +44,7 @@ function loadBuffer(file: string): Promise<AudioBuffer> {
   if (!p) {
     const ac = audioCtx();
     if (!ac) return Promise.reject(new Error('AudioContext 等待用户手势'));
-    p = fetch(`/sounds/${file}`)
+    p = fetch(withBase(`/sounds/${file}`))
       .then((r) => {
         if (!r.ok) throw new Error(`音效缺失: ${file}`);
         return r.arrayBuffer();

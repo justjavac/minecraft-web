@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const PUBLIC = fileURLToPath(new URL('../public/', import.meta.url));
 
-/** 递归收集 dir 下符合 ext 的文件（返回以 / 开头的 URL 路径） */
+/** 递归收集 dir 下符合 ext 的文件（返回相对 public/ 的 URL 路径，无前导 /，由 SW 相对 scope 解析） */
 function walk(dir, exts) {
   const out = [];
   for (const name of readdirSync(dir)) {
@@ -18,23 +18,23 @@ function walk(dir, exts) {
     if (statSync(p).isDirectory()) {
       out.push(...walk(p, exts));
     } else if (exts.some((e) => name.endsWith(e))) {
-      out.push('/' + relative(PUBLIC, p).split('/').join('/'));
+      out.push(relative(PUBLIC, p).split('/').join('/'));
     }
   }
   return out;
 }
 
 const urls = [
-  '/textures/atlas.png',
-  '/textures/atlas.json',
-  '/textures/water_still.png',
+  'textures/atlas.png',
+  'textures/atlas.json',
+  'textures/water_still.png',
   ...walk(join(PUBLIC, 'textures/gui'), ['.png']),
   ...walk(join(PUBLIC, 'sounds'), ['.ogg']),
   ...walk(join(PUBLIC, 'fonts'), ['.woff2', '.ttf']),
 ].sort();
 
 const body = `// 本文件由 scripts/gen-sw-precache.mjs 自动生成，请勿手改
-// SW install 期 precache 清单（${urls.length} 项）
+// SW install 期 precache 清单（${urls.length} 项；相对路径，由 SW 相对 registration.scope 解析，兼容子路径部署）
 self.__PRECACHE_MANIFEST__ = ${JSON.stringify(urls, null, 1)};
 `;
 

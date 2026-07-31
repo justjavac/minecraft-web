@@ -2,15 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* 像素字体（OFL）：Monocraft 负责拉丁/数字，Fusion Pixel 负责中文 */
+/* 像素字体（OFL）：Monocraft 负责拉丁/数字，Fusion Pixel 负责中文。
+   相对路径引用：构建期由 Next 打包为带 hash 的静态资产并自动套用 basePath/assetPrefix，
+   根绝对路径（/fonts/...）在子路径部署（GitHub Pages 项目页）下会 404 */
 @font-face {
   font-family: "Monocraft";
-  src: url("/fonts/Monocraft.ttf") format("truetype");
+  src: url("../public/fonts/Monocraft.ttf") format("truetype");
   font-display: swap;
 }
 @font-face {
   font-family: "Fusion Pixel";
-  src: url("/fonts/fusion-pixel-zh-hans.woff2") format("woff2");
+  src: url("../public/fonts/fusion-pixel-zh-hans.woff2") format("woff2");
   font-display: swap;
 }
 
@@ -161,7 +163,7 @@
   padding: 0 10px;
   border-style: solid;
   border-width: 8px 22px;
-  border-image: url('/textures/gui/widget/button.png') 8 40 fill stretch;
+  border-image: url('../public/textures/gui/widget/button.png') 8 40 fill stretch;
   image-rendering: pixelated;
   background: none;
   color: #fff;
@@ -172,11 +174,11 @@
   user-select: none;
 }
 .mc-btn:hover:not(:disabled) {
-  border-image-source: url('/textures/gui/widget/button_highlighted.png');
+  border-image-source: url('../public/textures/gui/widget/button_highlighted.png');
   color: #ffffa0;
 }
 .mc-btn:disabled {
-  border-image-source: url('/textures/gui/widget/button_disabled.png');
+  border-image-source: url('../public/textures/gui/widget/button_disabled.png');
   color: #a0a0a0;
   text-shadow: none;
   cursor: default;
@@ -188,6 +190,14 @@
   border-width: 5px 12px;
   font-size: 12px;
   text-shadow: 1px 1px 0 #3f3f3f;
+}
+
+/* 对话框关闭按钮（MC 十字钮）；url 用相对路径由构建期打包（见 @font-face 注释） */
+.mc-dialog-close {
+  background-image: url('../public/textures/gui/widget/cross_button.png');
+}
+.mc-dialog-close:hover {
+  background-image: url('../public/textures/gui/widget/cross_button_highlighted.png');
 }
 
 /* 文本输入框：MC 黑底灰边 */
@@ -208,7 +218,7 @@
 
 /* 泥土背景（主菜单/暂停菜单），32x32 平铺放大 2 倍 */
 .mc-dirt {
-  background-image: url('/textures/gui/menu/menu_background.png');
+  background-image: url('../public/textures/gui/menu/menu_background.png');
   background-size: 64px 64px;
   image-rendering: pixelated;
 }

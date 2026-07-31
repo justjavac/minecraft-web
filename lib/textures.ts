@@ -17,6 +17,7 @@ import {
 } from './blocks';
 import { mulberry32 } from './noise';
 import { loadCustomPack } from './texturepack';
+import { withBase } from './basepath';
 
 /** 当前 atlas 的单格分辨率（默认 32，随导入的自定义贴图包变化） */
 export let tilePx = DEFAULT_TILE_PX;
@@ -377,12 +378,12 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   // 整格覆盖贴图（按 stem 匹配）：设置里导入的包（localStorage）> 内置默认 pack/（Faithful 32x）
 
   // 预载全部贴图：默认从单文件 atlas 裁格（一次请求）；导入包按 stem 整格覆盖
-  const atlas = await loadImage('/textures/atlas.png');
+  const atlas = await loadImage(withBase('/textures/atlas.png'));
   // stem → 文件 atlas 格号（build-pack 构建顺序清单）。运行时注册顺序取决于模块图（armor 先于 materials 等），
   // 与构建顺序可能不同——无清单时按序号对齐会让全部物品图标错位（见 atlas.json 注释）
   let fileStems: string[] = [];
   try {
-    fileStems = (await (await fetch('/textures/atlas.json')).json()) as string[];
+    fileStems = (await (await fetch(withBase('/textures/atlas.json'))).json()) as string[];
   } catch {
     fileStems = [];
   }
@@ -494,7 +495,7 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   document.documentElement.style.setProperty('--mc-atlas', `url("${atlasDataUrl}")`);
 
   // 水面动画条带：帧倒序重排（帧 0 在底部，对应 mesher 写出的 v∈[0,1/32]）
-  const stripImg = await loadImage('/textures/water_still.png');
+  const stripImg = await loadImage(withBase('/textures/water_still.png'));
   const frames = Math.floor(stripImg.height / DEFAULT_TILE_PX);
   const stripCanvas = document.createElement('canvas');
   stripCanvas.width = DEFAULT_TILE_PX;

@@ -34,6 +34,20 @@ pnpm dev         # 打开 http://localhost:3000
 - CI：GitHub Actions（push/PR 跑 lint + test + build）
 - 贴图工具：`scripts/build-pack.ts` 从 Faithful 源包重提取 atlas（需 python+PIL）
 
+## 部署
+
+**GitHub Pages（自动）**：push 到 `main` 即触发 `.github/workflows/deploy.yml`，
+以子路径 `NEXT_PUBLIC_BASE_PATH=/minecraft-web` 构建并部署到 `https://justjavac.github.io/minecraft-web/`。
+仓库需开启 Pages（Settings → Pages → Source 选 GitHub Actions）。
+
+**自托管**：`pnpm build` 的静态产物在 `out/`，默认按根路径部署生成，直接丢到任意静态托管即可。
+若要部署到子路径（如 `https://example.com/games/mc/`），构建时注入 basePath 即可，
+HTML 资源引用、贴图/音效请求、Service Worker 与 PWA manifest 都会自动带上前缀：
+
+```bash
+NEXT_PUBLIC_BASE_PATH=/games/mc pnpm build
+```
+
 ## 资源署名
 
 方块贴图来自 **Faithful 32x**（© Faithful Resource Pack 团队，[Faithful License V3](public/textures/pack/LICENSE.txt)）：

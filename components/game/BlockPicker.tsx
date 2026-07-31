@@ -5,6 +5,7 @@ import { armorDef, type ArmorMaterial, type ArmorPiece } from '@/lib/armor';
 import { BLOCKS, type BlockCat, type BlockId } from '@/lib/blocks';
 import { MATERIAL_INFO } from '@/lib/materials';
 import { useGameStore } from '@/lib/store';
+import { withBase } from '@/lib/basepath';
 import type { Slot } from '@/lib/slots';
 import { TOOLS, type ToolType } from '@/lib/tools';
 import { TileIcon } from './TileIcon';
@@ -162,7 +163,7 @@ export function BlockPicker() {
         {/* 面板：tab_item_search.png（512 原图左上 390x270） */}
         <div className="relative select-none overflow-hidden" style={{ width: PANEL_W, height: PANEL_H }}>
           <img
-            src="/textures/gui/container/creative_inventory/tab_item_search.png"
+            src={withBase('/textures/gui/container/creative_inventory/tab_item_search.png')}
             alt=""
             draggable={false}
             className="absolute left-0 top-0 max-w-none select-none [image-rendering:pixelated]"
