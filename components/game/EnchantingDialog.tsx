@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { materialTile } from '@/lib/materials';
 import { getActiveWorld } from '@/lib/game';
 import { useGameStore } from '@/lib/store';
 import { TOOLS, type ToolDef } from '@/lib/tools';
 import { bookshelfPower, ENCHANTS, enchantLevelCap, levelFromXp, rollOffers } from '@/lib/xp';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { AbsSlot, G, GuiHotbarSlots, GuiSlot, HOT_Y, hotX, McGuiFrame } from './McGui';
+import { G, GuiHotbarSlots, GuiMainSlots, GuiSlot, McGuiFrame } from './McGui';
 import { TileIcon } from './TileIcon';
 
 const LAPIS_TILE = () => materialTile('lapis');
@@ -34,18 +34,28 @@ const OFFER_W = 216;
 const OFFER_H = 36;
 const offerY = (i: number) => 28 + i * 38;
 
-/** 附魔台界面（Faithful enchanting_table.png）：热键栏点工具/装备 → 三选一附魔（耗青金石与整级经验） */
+/**
+ * 附魔台界面（MC Java 槽位模型）：物品槽（仅工具/装备）+ 青金石槽（仅青金石），均接入光标拖拽体系；
+ * 三档选项基于槽内物品 + 书架 power 生成（rollOffers 种子定型：换物品/附魔成功即重摇）；
+ * 点选项消耗槽内青金石（1/2/3）与整级经验，附魔后物品留在槽内由玩家取走（MC Java）。
+ */
 export function EnchantingDialog() {
   const open = useGameStore((s) => s.enchantOpen);
   const setOpen = useGameStore((s) => s.setEnchantOpen);
-  const slots = useGameStore((s) => s.hotbarSlots);
+  const enchantItem = useGameStore((s) => s.enchantItem);
+  const enchantLapis = useGameStore((s) => s.enchantLapis);
+  const hotbarSlots = useGameStore((s) => s.hotbarSlots);
+  const mainSlots = useGameStore((s) => s.mainSlots);
   const xpTotal = useGameStore((s) => s.xpTotal);
   const enchantApply = useGameStore((s) => s.enchantApply);
-  const [selected, setSelected] = useState<number | null>(null);
+  const enchantSlotMouseDown = useGameStore((s) => s.enchantSlotMouseDown);
+  const slotMouseDown = useGameStore((s) => s.slotMouseDown);
+  const slotDragEnter = useGameStore((s) => s.slotDragEnter);
+  const slotDoubleClick = useGameStore((s) => s.slotDoubleClick);
   const [rollSeed, setRollSeed] = useState(0);
 
   const { level } = levelFromXp(xpTotal);
-  const lapisCount = slots.reduce((n, s) => n + (s?.kind === 'material' && s.material === 'lapis' ? s.count : 0), 0);
+  const lapisCount = enchantLapis?.kind === 'material' ? enchantLapis.count : 0;
 
   // MC 书架规则：2 格环内书架数（0-15）决定附魔档位上限——无书架最高 8 级档、满 15 书架 30 级档
   const power = useMemo(() => {
@@ -58,19 +68,27 @@ export function EnchantingDialog() {
   const effectiveLevel = Math.min(level, enchantLevelCap(power));
 
   const kind: ItemKind | null = useMemo(() => {
-    const slot = selected !== null ? slots[selected] : null;
-    if (!slot) return null;
-    if (slot.kind === 'tool') return kindOfTool(TOOLS[slot.tool]);
-    if (slot.kind === 'armor') return 'armor';
+    if (!enchantItem) return null;
+    if (enchantItem.kind === 'tool') return kindOfTool(TOOLS[enchantItem.tool]);
+    if (enchantItem.kind === 'armor') return 'armor';
     return null;
-  }, [selected, slots]);
+  }, [enchantItem]);
 
-  const selectedSlot = selected !== null ? slots[selected] : null;
-  const currentEnch = selectedSlot && (selectedSlot.kind === 'tool' || selectedSlot.kind === 'armor') ? selectedSlot.ench : undefined;
+  // MC：换一件物品（或附魔成功改变物品）即重摇选项——以物品身份键变化触发
+  const itemKey = useMemo(() => (enchantItem ? JSON.stringify(enchantItem) : null), [enchantItem]);
+  const prevKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (itemKey !== prevKey.current) {
+      prevKey.current = itemKey;
+      setRollSeed((n) => n + 1);
+    }
+  }, [itemKey]);
+
+  const currentEnch = enchantItem && (enchantItem.kind === 'tool' || enchantItem.kind === 'armor') ? enchantItem.ench : undefined;
   // 已有附魔参与摇项（精准采集与时运互斥，见 lib/xp.ts rollOffers）；书架功率决定档位等级曲线
   const offers = useMemo(
-    () => (kind && selected !== null ? rollOffers((selected + 1) * 0x9e37 ^ rollSeed, kind, Math.max(1, effectiveLevel), power, currentEnch) : []),
-    [kind, selected, rollSeed, effectiveLevel, power, currentEnch],
+    () => (kind ? rollOffers(0x9e37 ^ rollSeed, kind, Math.max(1, effectiveLevel), power, currentEnch) : []),
+    [kind, rollSeed, effectiveLevel, power, currentEnch],
   );
 
   return (
@@ -82,15 +100,10 @@ export function EnchantingDialog() {
     >
       <DialogContent className="border-0 bg-transparent p-0 shadow-none sm:max-w-none">
         <McGuiFrame texture="/textures/gui/container/enchanting_table.png">
-          {/* 物品格：预览选中物品；点击重摇（MC 里换一件物品即刷新选项） */}
-          <GuiSlot
-            pos={ITEM_SLOT}
-            slot={selectedSlot}
-            onClick={selected !== null ? () => setRollSeed((n) => n + 1) : undefined}
-            title={selected !== null ? '点击重摇附魔项' : undefined}
-          />
-          {/* 青金石格：展示背包内青金石总数（附魔时自动扣除） */}
-          <AbsSlot pos={LAPIS_SLOT} stack={lapisCount > 0 ? { item: 'lapis', count: lapisCount } : null} />
+          {/* 物品槽（Java：仅工具/装备；附魔后留在槽内由玩家取走） */}
+          <GuiSlot pos={ITEM_SLOT} slot={enchantItem} onPress={(info) => enchantSlotMouseDown('item', info)} title="放入要附魔的工具/装备" />
+          {/* 青金石槽（Java：仅青金石；附魔消耗槽内 1/2/3 个） */}
+          <GuiSlot pos={LAPIS_SLOT} slot={enchantLapis} onPress={(info) => enchantSlotMouseDown('lapis', info)} title="青金石槽" />
           {/* 三条附魔选项（槽位固定耗 1/2/3 青金石与经验级；高档可产出多条附魔） */}
           {offers.map((o, i) => {
             const afford = level >= o.levels && lapisCount >= o.lapis;
@@ -98,9 +111,7 @@ export function EnchantingDialog() {
               <button
                 key={i}
                 disabled={!afford}
-                onClick={() => {
-                  if (selected !== null && enchantApply(selected, o)) setSelected(null);
-                }}
+                onClick={() => enchantApply(o)}
                 className="absolute flex items-center justify-between px-3 text-left text-[13px] text-purple-100 [text-shadow:1px_1px_0_rgba(0,0,0,0.8)] hover:bg-white/15 disabled:opacity-40"
                 style={{ left: OFFER_X, top: offerY(i), width: OFFER_W, height: OFFER_H }}
               >
@@ -119,7 +130,15 @@ export function EnchantingDialog() {
           >
             书架 {power}/15{power === 0 ? '（无书架：最高 8 级档）' : power < 15 ? `（最高 ${enchantLevelCap(power)} 级档）` : '（满级 30 级档）'}
           </span>
-          {selected !== null && kind && offers.length === 0 && (
+          {enchantItem === null && (
+            <span
+              className="absolute flex items-center justify-center text-[12px] text-white/60"
+              style={{ left: OFFER_X, top: offerY(0), width: OFFER_W, height: OFFER_H }}
+            >
+              放入可附魔的物品
+            </span>
+          )}
+          {enchantItem !== null && kind && offers.length === 0 && (
             <span
               className="absolute flex items-center justify-center text-[12px] text-white/60"
               style={{ left: OFFER_X, top: offerY(0), width: OFFER_W, height: OFFER_H }}
@@ -127,33 +146,22 @@ export function EnchantingDialog() {
               该物品没有可用附魔
             </span>
           )}
-          {/* 热键栏：点击工具/装备选中附魔对象 */}
-          <GuiHotbarSlots
-            slots={slots}
-            onSlotClick={(i) => {
-              const s = slots[i];
-              if (s && (s.kind === 'tool' || s.kind === 'armor')) setSelected(i);
-            }}
+          {/* 已附魔物品紫色描边 */}
+          {enchantItem && (enchantItem.kind === 'tool' || enchantItem.kind === 'armor') && enchantItem.ench && Object.keys(enchantItem.ench).length > 0 && (
+            <div className="pointer-events-none absolute border border-purple-400/70" style={{ left: ITEM_SLOT[0], top: ITEM_SLOT[1], width: G, height: G }} />
+          )}
+          <GuiMainSlots
+            slots={mainSlots}
+            onSlotPress={(i, info) => slotMouseDown('main', i, info)}
+            onSlotDragEnter={(i) => slotDragEnter('main', i)}
+            onSlotDoubleClick={(i) => slotDoubleClick('main', i)}
           />
-          {/* 已附魔物品紫色描边；选中物品加亮框 */}
-          {slots.map(
-            (s, i) =>
-              s &&
-              (s.kind === 'tool' || s.kind === 'armor') &&
-              s.ench && (
-                <div
-                  key={`e${i}`}
-                  className="pointer-events-none absolute border border-purple-400/70"
-                  style={{ left: hotX(i), top: HOT_Y, width: G, height: G }}
-                />
-              ),
-          )}
-          {selected !== null && (
-            <div
-              className="pointer-events-none absolute border-2 border-purple-300"
-              style={{ left: hotX(selected), top: HOT_Y, width: G, height: G }}
-            />
-          )}
+          <GuiHotbarSlots
+            slots={hotbarSlots}
+            onSlotPress={(i, info) => slotMouseDown('hotbar', i, info)}
+            onSlotDragEnter={(i) => slotDragEnter('hotbar', i)}
+            onSlotDoubleClick={(i) => slotDoubleClick('hotbar', i)}
+          />
         </McGuiFrame>
       </DialogContent>
     </Dialog>

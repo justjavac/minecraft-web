@@ -29,6 +29,7 @@ export const ALL_PANELS_CLOSED = {
   enchantOpen: null,
   tradeMob: null,
   storageOpen: null,
+  grindstoneOpen: null,
 } as const;
 
 /** 是否有任一面板打开（暂停遮罩抑制判断等） */
@@ -40,8 +41,9 @@ export const anyPanelOpen = (s: {
   enchantOpen: string | null;
   tradeMob: number | null;
   storageOpen: string | null;
+  grindstoneOpen: string | null;
 }): boolean =>
-  s.pickerOpen || s.craftingOpen || s.furnaceOpen !== null || s.brewingOpen !== null || s.enchantOpen !== null || s.tradeMob !== null || s.storageOpen !== null;
+  s.pickerOpen || s.craftingOpen || s.furnaceOpen !== null || s.brewingOpen !== null || s.enchantOpen !== null || s.tradeMob !== null || s.storageOpen !== null || s.grindstoneOpen !== null;
 
 export interface Settings {
   /** 主音量 0..1 */
@@ -134,8 +136,16 @@ export interface GameStore {
   furnaceOpen: string | null;
   /** 打开的酿造台位置 key，null 未打开 */
   brewingOpen: string | null;
-  /** 附魔台界面开关（不绑位置，null 未打开） */
+  /** 附魔台界面开关（值为附魔台位置 key "x,y,z"，null 未打开） */
   enchantOpen: string | null;
+  /** 附魔台物品槽（Java 槽位模型：仅可放工具/装备；关界面退回背包，见 stowEnchantSlots） */
+  enchantItem: Slot;
+  /** 附魔台青金石槽（Java 槽位模型：仅青金石，上限 64） */
+  enchantLapis: Slot;
+  /** 打开的砂轮位置 key（"x,y,z"），null 未打开 */
+  grindstoneOpen: string | null;
+  /** 砂轮两个输入槽（仅工具/装备；输出由 lib/grindstone.ts grindResult 派生，取出即生效） */
+  grindSlots: [Slot, Slot];
   /** 正在交易的村民 id（null 未打开交易界面） */
   tradeMob: number | null;
   /** 打开的容器（箱子/木桶）位置 key，null 未打开 */
@@ -167,8 +177,8 @@ export interface GameStore {
   setDimension: (d: import('./dimension').Dimension) => void;
   /** 增加经验（杀怪/挖矿/烧炼/繁殖） */
   addXp: (amount: number) => void;
-  /** 附魔：对热键栏 slotIndex 的工具/装备应用一个附魔项（消耗青金石与整级经验），返回是否成功 */
-  enchantApply: (slotIndex: number, offer: EnchOffer) => boolean;
+  /** 附魔：对附魔台物品槽内的工具/装备应用一个附魔项（消耗槽内青金石与整级经验；附魔后物品留在槽内，MC Java），返回是否成功 */
+  enchantApply: (offer: EnchOffer) => boolean;
   setHealth: (v: number) => void;
   setHunger: (v: number) => void;
   setSaturation: (v: number) => void;
@@ -181,6 +191,17 @@ export interface GameStore {
   setFurnaceOpen: (key: string | null) => void;
   setBrewingOpen: (key: string | null) => void;
   setEnchantOpen: (key: string | null) => void;
+  /** 附魔台槽点击（item 物品槽仅工具/装备；lapis 槽仅青金石。shift 取出到背包） */
+  enchantSlotMouseDown: (which: 'item' | 'lapis', info: GuiPressInfo) => void;
+  /** 关闭附魔界面前调用：物品槽/青金石槽内容退回背包（热键栏优先），放不下在脚下掉落 */
+  stowEnchantSlots: () => void;
+  setGrindstoneOpen: (key: string | null) => void;
+  /** 砂轮输入槽点击（仅工具/装备可放入；shift 取出到背包） */
+  grindSlotMouseDown: (which: 0 | 1, info: GuiPressInfo) => void;
+  /** 取砂轮产出：两件输入消耗、成品入光标（shift 直接入背包）并返还祛魔经验 */
+  grindTakeOutput: (info: GuiPressInfo) => void;
+  /** 关闭砂轮界面前调用：输入槽内容退回背包（热键栏优先），放不下在脚下掉落 */
+  stowGrindSlots: () => void;
   setTradeMob: (id: number | null) => void;
   /** 执行当前村民的第 i 项交易（扣付出、给获得、加经验；当期库存售罄则拒绝并提示） */
   executeMobTrade: (i: number) => void;

@@ -692,6 +692,11 @@ export function tryPlace(): boolean {
       lastPlace = now;
       return false;
     }
+    // 砂轮：右键打开砂轮界面（潜行放方块优先由 sneakPlace 分支保证，与熔炉/附魔台同路径）
+    if (hitId === BLOCK_BY_KEY.grindstone.id) {
+      s.setGrindstoneOpen(`${bx},${by},${bz}`);
+      return false;
+    }
     // 末地门框架：手持末影之眼右击嵌入；12 框全嵌眼则激活末地传送门（MC）
     if (hitId === BLOCK_BY_KEY.end_portal_frame.id) {
       const heldEye = s.hotbarSlots[s.selectedSlot];

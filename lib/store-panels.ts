@@ -20,6 +20,7 @@ export interface PanelsSlice {
   enchantOpen: string | null;
   tradeMob: number | null;
   storageOpen: string | null;
+  grindstoneOpen: string | null;
   pickerOpen: boolean;
   setPickerOpen: (open: boolean) => void;
   setCraftingOpen: (open: boolean, withTable?: boolean) => void;
@@ -28,9 +29,17 @@ export interface PanelsSlice {
   setEnchantOpen: (key: string | null) => void;
   setTradeMob: (id: number | null) => void;
   setStorageOpen: (key: string | null) => void;
+  setGrindstoneOpen: (key: string | null) => void;
 }
 
-export const createPanelsSlice: StateCreator<GameStore, [], [], PanelsSlice> = (set, get) => ({
+export const createPanelsSlice: StateCreator<GameStore, [], [], PanelsSlice> = (set, get) => {
+  /** 任何界面开/关前：光标与各站点的槽内物品退回背包（界面互斥关闭会绕过对方 setter，不能只在各自 close 里退） */
+  const stowAll = (): void => {
+    get().stowCursor();
+    get().stowEnchantSlots();
+    get().stowGrindSlots();
+  };
+  return {
   craftingOpen: false,
   craftingTable: false,
   furnaceOpen: null,
@@ -38,15 +47,16 @@ export const createPanelsSlice: StateCreator<GameStore, [], [], PanelsSlice> = (
   enchantOpen: null,
   tradeMob: null,
   storageOpen: null,
+  grindstoneOpen: null,
   pickerOpen: false,
   setPickerOpen: (pickerOpen) => {
-    get().stowCursor();
+    stowAll();
     if (pickerOpen) exitLockForPanel();
     // 界面互斥：打开时关掉其余全部面板（关闭时不动其他的）
     set(pickerOpen ? { ...ALL_PANELS_CLOSED, pickerOpen: true } : { pickerOpen });
   },
   setCraftingOpen: (craftingOpen, withTable) => {
-    get().stowCursor();
+    stowAll();
     if (craftingOpen) exitLockForPanel();
     set((s) => ({
       ...(craftingOpen ? ALL_PANELS_CLOSED : {}),
@@ -55,28 +65,34 @@ export const createPanelsSlice: StateCreator<GameStore, [], [], PanelsSlice> = (
     }));
   },
   setFurnaceOpen: (furnaceOpen) => {
-    get().stowCursor();
+    stowAll();
     if (furnaceOpen) exitLockForPanel();
     set(furnaceOpen ? { ...ALL_PANELS_CLOSED, furnaceOpen } : { furnaceOpen });
   },
   setBrewingOpen: (brewingOpen) => {
-    get().stowCursor();
+    stowAll();
     if (brewingOpen) exitLockForPanel();
     set(brewingOpen ? { ...ALL_PANELS_CLOSED, brewingOpen } : { brewingOpen });
   },
   setEnchantOpen: (enchantOpen) => {
-    get().stowCursor();
+    stowAll();
     if (enchantOpen) exitLockForPanel();
     set(enchantOpen ? { ...ALL_PANELS_CLOSED, enchantOpen } : { enchantOpen });
   },
+  setGrindstoneOpen: (grindstoneOpen) => {
+    stowAll();
+    if (grindstoneOpen) exitLockForPanel();
+    set(grindstoneOpen ? { ...ALL_PANELS_CLOSED, grindstoneOpen } : { grindstoneOpen });
+  },
   setTradeMob: (tradeMob) => {
-    get().stowCursor();
+    stowAll();
     if (tradeMob !== null) exitLockForPanel();
     set(tradeMob !== null ? { ...ALL_PANELS_CLOSED, tradeMob } : { tradeMob });
   },
   setStorageOpen: (storageOpen) => {
-    get().stowCursor();
+    stowAll();
     if (storageOpen) exitLockForPanel();
     set(storageOpen ? { ...ALL_PANELS_CLOSED, storageOpen } : { storageOpen });
   },
-});
+  };
+};

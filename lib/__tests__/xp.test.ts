@@ -18,7 +18,7 @@ function setup(slots?: Slot[]): void {
   clearDrops();
   clearMobs();
   useGameStore.getState().loadSurvival({ health: 20, hunger: 20, slots: slots ?? emptySlots() });
-  useGameStore.setState({ worldMode: 'survival', xpTotal: 0 });
+  useGameStore.setState({ worldMode: 'survival', xpTotal: 0, cursorSlot: null, enchantOpen: null, enchantItem: null, enchantLapis: null, grindstoneOpen: null, grindSlots: [null, null] });
 }
 
 beforeEach(() => setup());
@@ -90,23 +90,65 @@ describe('XP 来源', () => {
 describe('附魔应用与效果', () => {
   const offer: EnchOffer = { enchants: [{ ench: 'sharpness', lvl: 3 }], lapis: 3, levels: 3 };
 
-  it('应用附魔：耗青金石与整级，写入槽位；不足则拒', () => {
-    const slots = emptySlots();
-    slots[0] = { kind: 'tool', tool: 'diamond_sword', durability: 1561 };
-    slots[1] = { kind: 'material', material: 'lapis', count: 5 };
-    setup(slots);
-    useGameStore.setState({ xpTotal: xpForLevel(0) + xpForLevel(1) + xpForLevel(2) + 1 }); // 3 级+1
-    expect(useGameStore.getState().enchantApply(0, offer)).toBe(true);
-    const slot = useGameStore.getState().hotbarSlots[0];
+  /** Java 槽位模型：物品入附魔台物品槽、青金石入青金石槽 */
+  function setupEnchantTable(item: Slot | null, lapis: number, xp: number): void {
+    useGameStore.setState({
+      enchantOpen: '0,64,0',
+      enchantItem: item,
+      enchantLapis: lapis > 0 ? { kind: 'material', material: 'lapis', count: lapis } : null,
+      xpTotal: xp,
+    });
+  }
+
+  it('应用附魔：耗槽内青金石与整级，附魔后物品留在槽内（Java）；不足则拒', () => {
+    setup();
+    setupEnchantTable({ kind: 'tool', tool: 'diamond_sword', durability: 1561 }, 5, xpForLevel(0) + xpForLevel(1) + xpForLevel(2) + 1); // 3 级+1
+    expect(useGameStore.getState().enchantApply(offer)).toBe(true);
+    // 附魔写入附魔台物品槽（物品留在槽内由玩家取走，MC Java）
+    const slot = useGameStore.getState().enchantItem;
     expect(slot?.kind === 'tool' && slot.ench?.sharpness).toBe(3);
-    // 青金石扣 3 剩 2（回归：曾被后续 set 覆盖成不扣）
-    const lapisSlot = useGameStore.getState().hotbarSlots[1];
+    // 青金石槽扣 3 剩 2
+    const lapisSlot = useGameStore.getState().enchantLapis;
     expect(lapisSlot?.kind === 'material' ? lapisSlot.count : -1).toBe(2);
     // 青金石耗 3，经验扣 3 级 → 剩 0 级余 1
     const xpLeft = useGameStore.getState().xpTotal;
     expect(levelFromXp(xpLeft).level).toBe(0);
     // 经验不足再拒
-    expect(useGameStore.getState().enchantApply(0, offer)).toBe(false);
+    expect(useGameStore.getState().enchantApply(offer)).toBe(false);
+  });
+
+  it('应用附魔：青金石槽为空时即使背包有青金石也拒绝（Java 槽位模型，不再自动从背包扣）', () => {
+    const slots = emptySlots();
+    slots[1] = { kind: 'material', material: 'lapis', count: 10 };
+    setup(slots);
+    setupEnchantTable({ kind: 'tool', tool: 'diamond_sword', durability: 1561 }, 0, xpForLevel(0) + xpForLevel(1) + xpForLevel(2) + 1);
+    expect(useGameStore.getState().enchantApply(offer)).toBe(false);
+    // 背包青金石未动
+    const inv = useGameStore.getState().hotbarSlots[1];
+    expect(inv?.kind === 'material' ? inv.count : -1).toBe(10);
+  });
+
+  it('附魔台槽约束：物品槽拒非可附魔物、青金石槽拒非青金石', () => {
+    setup();
+    useGameStore.setState({ enchantOpen: '0,64,0' });
+    // 方块进不了物品槽
+    useGameStore.setState({ cursorSlot: { kind: 'block', id: BLOCK_BY_KEY.stone.id, count: 1 } });
+    useGameStore.getState().enchantSlotMouseDown('item', { button: 0, shift: false });
+    expect(useGameStore.getState().enchantItem).toBe(null);
+    expect(useGameStore.getState().cursorSlot?.kind).toBe('block');
+    // 石头进不了青金石槽
+    useGameStore.getState().enchantSlotMouseDown('lapis', { button: 0, shift: false });
+    expect(useGameStore.getState().enchantLapis).toBe(null);
+    // 青金石可入青金石槽；工具可入物品槽
+    useGameStore.setState({ cursorSlot: { kind: 'material', material: 'lapis', count: 10 } });
+    useGameStore.getState().enchantSlotMouseDown('lapis', { button: 0, shift: false });
+    const lapis = useGameStore.getState().enchantLapis;
+    expect(lapis?.kind === 'material' ? lapis.count : -1).toBe(10);
+    expect(useGameStore.getState().cursorSlot).toBe(null);
+    useGameStore.setState({ cursorSlot: { kind: 'tool', tool: 'iron_pickaxe', durability: 250 } });
+    useGameStore.getState().enchantSlotMouseDown('item', { button: 0, shift: false });
+    expect(useGameStore.getState().enchantItem?.kind).toBe('tool');
+    expect(useGameStore.getState().cursorSlot).toBe(null);
   });
 
   it('耐久附魔：概率不掉耐久（大数下总有省耐久的次数）', () => {

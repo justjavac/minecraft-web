@@ -825,6 +825,11 @@ for (let lv = 1; lv <= 7; lv++) {
   });
 }
 
+// 砂轮：祛魔返经验 / 两件同种工具装备合并修复（逻辑 lib/grindstone.ts，界面 components/game/GrindstoneDialog.tsx）
+// 只能追加在注册表末尾（id 写入存档）。MC 硬度 2、镐挖（digTime 与 bone_block 同档 ×5）。
+// 贴图回退：atlas 无 grindstone 专用 tile（Faithful 包未收录），用石质近似——顶面 smooth_stone 拟磨轮、侧面 stone
+add('grindstone', '砂轮', { side: 'stone', top: 'smooth_stone', bottom: 'stone' }, { cat: 'utility', tool: 'pickaxe', needsPick: true, digTime: 10, ...STONE_SND });
+
 /** 以方块 id 为下标 */
 export const BLOCKS: BlockDef[] = defs;
 

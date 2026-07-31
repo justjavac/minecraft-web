@@ -19,6 +19,7 @@ import { CraftingDialog } from './CraftingDialog';
 import { FurnaceDialog } from './FurnaceDialog';
 import { BrewingDialog } from './BrewingDialog';
 import { EnchantingDialog } from './EnchantingDialog';
+import { GrindstoneDialog } from './GrindstoneDialog';
 import { TradingDialog } from './TradingDialog';
 import { StorageDialog } from './StorageDialog';
 import { CursorItem } from './CursorItem';
@@ -499,6 +500,9 @@ export function Hud() {
 
       {/* 附魔台界面 */}
       <EnchantingDialog />
+
+      {/* 砂轮界面 */}
+      <GrindstoneDialog />
 
       {/* 村民交易界面 */}
       <TradingDialog />

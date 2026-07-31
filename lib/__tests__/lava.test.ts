@@ -163,8 +163,9 @@ describe('流动岩浆（MC Java：维度距离/节奏/水火反应）', () => {
   });
 
   it('读档兼容：流动岩浆 id 追加在注册表末尾，chunk 数据往返不变', () => {
-    // 追加位置回归：lava_flow_1..7 是注册表最后 7 项；既有 id 锚点不动（id 写入存档 Uint16Array）
-    expect(LAVA_FLOW_1).toBe(BLOCKS.length - 7);
+    // 追加位置回归：lava_flow_1..7 锚在历史 id 段（此后新方块如 grindstone 继续往末尾追加；既有 id 不动，id 写入存档 Uint16Array）
+    expect(LAVA_FLOW_1).toBe(511);
+    expect(BLOCKS[LAVA_FLOW_1 + 6].key).toBe('lava_flow_7');
     expect(WATER_FLOW_1).toBe(14);
     expect(LAVA).toBe(21);
     const saved = new Map<string, Uint16Array>();

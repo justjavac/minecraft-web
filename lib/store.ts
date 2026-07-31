@@ -24,6 +24,7 @@ import {
   slotToItemKey,
 } from './inventory';
 import { applyCraft, canCraft, hasSpaceFor } from './recipes';
+import { grindResult } from './grindstone';
 import { netheriteUpgradeOf } from './smithing';
 import { setPersistenceNoticeHandler } from './persistence';
 import { addArmorToSlots, addStackToSlots, addToolToSlots, emptyBackpack, emptySlots, type Slot } from './slots';
@@ -70,6 +71,46 @@ function replaceSlot(slots: Slot[], index: number, slot: Slot): Slot[] {
   return next;
 }
 
+type StoreSet = (partial: Partial<GameStore>) => void;
+
+/** 把一个槽位物品退回背包（热键栏优先，溢出到主物品栏）；放不下在玩家脚下生成掉落实体（与死亡掉落同路径）。
+ *  stowCursor / stowEnchantSlots / stowGrindSlots 共用 */
+function stowOneToInventory(get: () => GameStore, set: StoreSet, slot: NonNullable<Slot>): void {
+  let remaining: Slot = slot;
+  if (slot.kind === 'block' || slot.kind === 'material') {
+    const item = slot.kind === 'block' ? { kind: 'block' as const, id: slot.id } : { kind: 'material' as const, material: slot.material };
+    const hot = addStackToSlots(get().hotbarSlots, item, slot.count);
+    if (hot.slots !== get().hotbarSlots) set({ hotbarSlots: hot.slots });
+    let left = hot.leftover;
+    if (left > 0) {
+      const main = addStackToSlots(get().mainSlots, item, left);
+      if (main.slots !== get().mainSlots) set({ mainSlots: main.slots });
+      left = main.leftover;
+    }
+    remaining = left > 0 ? { ...slot, count: left } : null;
+  } else {
+    // 工具/装备：热键栏 → 背包找第一个空槽
+    const hi = get().hotbarSlots.indexOf(null);
+    if (hi >= 0) {
+      set({ hotbarSlots: replaceSlot(get().hotbarSlots, hi, slot) });
+      remaining = null;
+    } else {
+      const mi = get().mainSlots.indexOf(null);
+      if (mi >= 0) {
+        set({ mainSlots: replaceSlot(get().mainSlots, mi, slot) });
+        remaining = null;
+      }
+    }
+  }
+  if (remaining) {
+    const { x, y, z } = playerPosition;
+    if (remaining.kind === 'block') spawnBlockDrop(remaining.id, x, y + 0.5, z, remaining.count);
+    else if (remaining.kind === 'material') spawnMaterialDrop(remaining.material, x, y + 0.5, z, remaining.count);
+    else if (remaining.kind === 'tool') spawnToolDrop(remaining.tool, x, y + 0.5, z, remaining.durability, remaining.ench);
+    else spawnArmorDrop(remaining.piece, x, y + 0.5, z, remaining.durability, remaining.material, remaining.ench);
+  }
+}
+
 /** 光标拖动 pending/进行态（不入 zustand：mousedown 记录，进入第二格晋升为真拖动，pointerup 结算） */
 interface GuiDrag {
   button: 0 | 2;
@@ -112,6 +153,9 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   mainSlots: emptyBackpack(),
   armorSlots: emptyArmorSlots(),
   cursorSlot: null,
+  enchantItem: null,
+  enchantLapis: null,
+  grindSlots: [null, null],
   guiTick: 0,
   notice: null,
   setNotice: (notice) => set({ notice }),
@@ -129,12 +173,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       deathPos: null,
       // 创造模式热键栏给默认方块面板（hotbarSlots 与生存共用一套——创造可持工具/材料，MC 模型）；生存为空
       hotbarSlots: worldMode === 'creative' ? HOTBAR_BLOCKS.map((id) => ({ kind: 'block' as const, id, count: 1 })) : emptySlots(),
-      mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
+      mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, grindstoneOpen: null, enchantItem: null, enchantLapis: null, grindSlots: [null, null],
     });
   },
   continueGame: () =>
-    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, respawnPoint: null, dead: false, deathPos: null, cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null }),
-  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, respawnPoint: null, cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, loadError: null }),
+    set({ screen: 'playing', mode: 'continue', paused: false, flying: false, worldReady: false, loadError: null, hasLocked: false, spawnPoint: null, respawnPoint: null, dead: false, deathPos: null, cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, grindstoneOpen: null, enchantItem: null, enchantLapis: null, grindSlots: [null, null] }),
+  backToMenu: () => set({ screen: 'menu', paused: false, hasLocked: false, spawnPoint: null, respawnPoint: null, cursorSlot: null, craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null, grindstoneOpen: null, enchantItem: null, enchantLapis: null, grindSlots: [null, null], loadError: null }),
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
@@ -193,28 +237,29 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set((s) => ({ xpTotal: s.xpTotal + Math.max(0, Math.floor(amount)) }));
     if (levelFromXp(get().xpTotal).level > before) levelupSound();
   },
-  enchantApply: (slotIndex, offer) => {
+  enchantApply: (offer) => {
     const s = get();
-    const slot = s.hotbarSlots[slotIndex];
+    const slot = s.enchantItem;
     if (!slot || (slot.kind !== 'tool' && slot.kind !== 'armor')) return false;
     const { level } = levelFromXp(s.xpTotal);
     if (level < offer.levels) {
       s.setNotice(`经验等级不足（需要 ${offer.levels} 级）`);
       return false;
     }
-    if (!s.consumeMaterial('lapis', offer.lapis)) {
+    // Java 槽位模型：消耗附魔台青金石槽内的青金石（不再是自动从背包扣）
+    const lapisCount = s.enchantLapis?.kind === 'material' && s.enchantLapis.material === 'lapis' ? s.enchantLapis.count : 0;
+    if (lapisCount < offer.lapis) {
       s.setNotice(`青金石不足（需要 ${offer.lapis} 个）`);
       return false;
     }
-    // 同种附魔取更高级（MC 不降级）；必须从扣料后的最新状态构造 next（否则覆盖掉刚扣的青金石）
-    const curSlots = get().hotbarSlots;
-    const cur = curSlots[slotIndex];
-    if (!cur || (cur.kind !== 'tool' && cur.kind !== 'armor')) return false;
-    const ench = { ...cur.ench };
+    // 同种附魔取更高级（MC 不降级）；附魔后物品留在槽内由玩家取走（MC Java）
+    const ench = { ...slot.ench };
     for (const e of offer.enchants) ench[e.ench] = Math.max(ench[e.ench] ?? 0, e.lvl);
-    const next = [...curSlots];
-    next[slotIndex] = { ...cur, ench };
-    set({ hotbarSlots: next, xpTotal: subtractLevels(get().xpTotal, offer.levels) });
+    set({
+      enchantItem: { ...slot, ench },
+      enchantLapis: lapisCount > offer.lapis ? { kind: 'material', material: 'lapis', count: lapisCount - offer.lapis } : null,
+      xpTotal: subtractLevels(s.xpTotal, offer.levels),
+    });
     return true;
   },
   setHealth: (health) => set({ health }),
@@ -257,7 +302,7 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         const dropXp = Math.min(levelFromXp(s.xpTotal).level * 7, 100);
         if (dropXp > 0) spawnXpOrbs(x, y + 0.5, z, dropXp);
         xpTotal = 0;
-        for (const slot of [...s.hotbarSlots, ...s.mainSlots]) {
+        for (const slot of [...s.hotbarSlots, ...s.mainSlots, s.enchantItem, s.enchantLapis, ...s.grindSlots]) {
           if (!slot) continue;
           if (slot.kind === 'block') spawnBlockDrop(slot.id, x, y + 0.5, z, slot.count);
           else if (slot.kind === 'material') spawnMaterialDrop(slot.material, x, y + 0.5, z, slot.count);
@@ -290,8 +335,8 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         mainSlots,
         armorSlots,
         xpTotal,
-        // 死亡时关掉所有打开的界面（仅受伤未死不动）
-        ...(died ? { ...ALL_PANELS_CLOSED, cursorSlot: null } : {}),
+        // 死亡时关掉所有打开的界面（仅受伤未死不动）；附魔台/砂轮槽内物品已随上面一并掉落
+        ...(died ? { ...ALL_PANELS_CLOSED, cursorSlot: null, enchantItem: null, enchantLapis: null, grindSlots: [null, null] as [Slot, Slot] } : {}),
       };
     });
     hurtSound(); // 实际扣血才播（创造/无敌帧上面已 return false）
@@ -395,44 +440,130 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   },
   // ——— 光标拖拽（MC Java 语义；纯规则在 lib/inventory.ts，此处只做状态接线） ———
   stowCursor: () => {
-    const s = get();
-    const c = s.cursorSlot;
+    const c = get().cursorSlot;
     if (!c) return;
-    let remaining: Slot = c;
-    if (c.kind === 'block' || c.kind === 'material') {
-      const item = c.kind === 'block' ? { kind: 'block' as const, id: c.id } : { kind: 'material' as const, material: c.material };
-      const hot = addStackToSlots(s.hotbarSlots, item, c.count);
-      if (hot.slots !== s.hotbarSlots) set({ hotbarSlots: hot.slots });
-      let left = hot.leftover;
-      if (left > 0) {
-        const main = addStackToSlots(get().mainSlots, item, left);
-        if (main.slots !== get().mainSlots) set({ mainSlots: main.slots });
-        left = main.leftover;
-      }
-      remaining = left > 0 ? { ...c, count: left } : null;
-    } else {
-      // 工具/装备：热键栏 → 背包找第一个空槽
-      const hi = s.hotbarSlots.indexOf(null);
-      if (hi >= 0) {
-        set({ hotbarSlots: replaceSlot(s.hotbarSlots, hi, c) });
-        remaining = null;
-      } else {
-        const mi = s.mainSlots.indexOf(null);
-        if (mi >= 0) {
-          set({ mainSlots: replaceSlot(s.mainSlots, mi, c) });
-          remaining = null;
-        }
-      }
-    }
-    if (remaining) {
-      // 背包放不下：在玩家脚下生成掉落实体（与死亡掉落同路径）
-      const { x, y, z } = playerPosition;
-      if (remaining.kind === 'block') spawnBlockDrop(remaining.id, x, y + 0.5, z, remaining.count);
-      else if (remaining.kind === 'material') spawnMaterialDrop(remaining.material, x, y + 0.5, z, remaining.count);
-      else if (remaining.kind === 'tool') spawnToolDrop(remaining.tool, x, y + 0.5, z, remaining.durability, remaining.ench);
-      else spawnArmorDrop(remaining.piece, x, y + 0.5, z, remaining.durability, remaining.material, remaining.ench);
-    }
+    stowOneToInventory(get, set, c);
     set({ cursorSlot: null });
+  },
+  stowEnchantSlots: () => {
+    const s = get();
+    if (!s.enchantItem && !s.enchantLapis) return;
+    if (s.enchantItem) stowOneToInventory(get, set, s.enchantItem);
+    if (s.enchantLapis) stowOneToInventory(get, set, s.enchantLapis);
+    set({ enchantItem: null, enchantLapis: null });
+  },
+  stowGrindSlots: () => {
+    const s = get();
+    if (!s.grindSlots[0] && !s.grindSlots[1]) return;
+    if (s.grindSlots[0]) stowOneToInventory(get, set, s.grindSlots[0]);
+    if (s.grindSlots[1]) stowOneToInventory(get, set, s.grindSlots[1]);
+    set({ grindSlots: [null, null] });
+  },
+  // ——— 附魔台 Java 槽位模型：物品槽（仅工具/装备）+ 青金石槽（仅青金石） ———
+  enchantSlotMouseDown: (which, info) => {
+    const s = get();
+    if (!s.enchantOpen) return;
+    const button = info.button === 2 ? 2 : 0;
+    if (which === 'item') {
+      const cur = s.enchantItem;
+      if (info.shift && button === 0) {
+        // shift 取出到背包（热键栏优先，溢出到主物品栏）
+        if (!cur) return;
+        const r1 = shiftMove(cur, s.hotbarSlots);
+        let left = r1.slot;
+        let mainSlots = s.mainSlots;
+        if (left) {
+          const r2 = shiftMove(left, s.mainSlots);
+          mainSlots = r2.target;
+          left = r2.slot;
+        }
+        set({ enchantItem: left, ...(r1.target !== s.hotbarSlots ? { hotbarSlots: r1.target } : {}), ...(mainSlots !== s.mainSlots ? { mainSlots } : {}), guiTick: s.guiTick + 1 });
+        return;
+      }
+      const cursor = s.cursorSlot;
+      if (cursor !== null && cursor.kind !== 'tool' && cursor.kind !== 'armor') return; // 仅可附魔物品（本项目：工具/装备）
+      const r = button === 0 ? clickSlot([cur], 0, cursor) : rightClickSlot([cur], 0, cursor);
+      if (r.slots[0] === cur && r.cursor === cursor) return;
+      set({ enchantItem: r.slots[0], cursorSlot: r.cursor, guiTick: s.guiTick + 1 });
+      return;
+    }
+    // 青金石槽（{ item, count } 字符串栈语义，复用 clickItemStack；上限 64）
+    const stack = s.enchantLapis?.kind === 'material' ? { item: 'material:lapis', count: s.enchantLapis.count } : null;
+    if (info.shift && button === 0) {
+      if (!stack) return;
+      const r1 = shiftMove(itemKeyToSlot(stack.item, stack.count), s.hotbarSlots);
+      let left = r1.slot;
+      let mainSlots = s.mainSlots;
+      if (left) {
+        const r2 = shiftMove(left, s.mainSlots);
+        mainSlots = r2.target;
+        left = r2.slot;
+      }
+      set({
+        enchantLapis: left ? { kind: 'material', material: 'lapis', count: (left as { count: number }).count } : null,
+        ...(r1.target !== s.hotbarSlots ? { hotbarSlots: r1.target } : {}),
+        ...(mainSlots !== s.mainSlots ? { mainSlots } : {}),
+        guiTick: s.guiTick + 1,
+      });
+      return;
+    }
+    const cursor = s.cursorSlot;
+    if (cursor !== null && !(cursor.kind === 'material' && cursor.material === 'lapis')) return; // 仅青金石
+    const r = clickItemStack(stack, cursor, button);
+    if (r.stack === stack && r.cursor === cursor) return;
+    set({ enchantLapis: r.stack ? { kind: 'material', material: 'lapis', count: r.stack.count } : null, cursorSlot: r.cursor, guiTick: s.guiTick + 1 });
+  },
+  // ——— 砂轮：两输入槽（仅工具/装备）+ 派生产出槽（取出即生效） ———
+  grindSlotMouseDown: (which, info) => {
+    const s = get();
+    if (!s.grindstoneOpen) return;
+    const button = info.button === 2 ? 2 : 0;
+    const cur = s.grindSlots[which];
+    if (info.shift && button === 0) {
+      // shift 取出到背包（热键栏优先，溢出到主物品栏）
+      if (!cur) return;
+      const r1 = shiftMove(cur, s.hotbarSlots);
+      let left = r1.slot;
+      let mainSlots = s.mainSlots;
+      if (left) {
+        const r2 = shiftMove(left, s.mainSlots);
+        mainSlots = r2.target;
+        left = r2.slot;
+      }
+      const grindSlots: [Slot, Slot] = which === 0 ? [left, s.grindSlots[1]] : [s.grindSlots[0], left];
+      set({ grindSlots, ...(r1.target !== s.hotbarSlots ? { hotbarSlots: r1.target } : {}), ...(mainSlots !== s.mainSlots ? { mainSlots } : {}), guiTick: s.guiTick + 1 });
+      return;
+    }
+    const cursor = s.cursorSlot;
+    if (cursor !== null && cursor.kind !== 'tool' && cursor.kind !== 'armor') return; // 砂轮只收工具/装备
+    const r = button === 0 ? clickSlot([cur], 0, cursor) : rightClickSlot([cur], 0, cursor);
+    if (r.slots[0] === cur && r.cursor === cursor) return;
+    const grindSlots: [Slot, Slot] = which === 0 ? [r.slots[0], s.grindSlots[1]] : [s.grindSlots[0], r.slots[0]];
+    set({ grindSlots, cursorSlot: r.cursor, guiTick: s.guiTick + 1 });
+  },
+  grindTakeOutput: (info) => {
+    const s = get();
+    if (!s.grindstoneOpen) return;
+    const r = grindResult(s.grindSlots[0], s.grindSlots[1]);
+    if (!r) return;
+    if (info.shift && info.button === 0) {
+      // shift：成品直接入背包（热键栏优先）；背包满则不取（输入不消耗）
+      const r1 = shiftMove(r.out, s.hotbarSlots);
+      let left = r1.slot;
+      let mainSlots = s.mainSlots;
+      if (left) {
+        const r2 = shiftMove(left, s.mainSlots);
+        mainSlots = r2.target;
+        left = r2.slot;
+      }
+      if (left) return;
+      set({ grindSlots: [null, null], ...(r1.target !== s.hotbarSlots ? { hotbarSlots: r1.target } : {}), ...(mainSlots !== s.mainSlots ? { mainSlots } : {}), guiTick: s.guiTick + 1 });
+      s.addXp(r.xp);
+      return;
+    }
+    if (s.cursorSlot !== null) return; // 成品为工具/装备不可堆叠：光标须为空（不放也不并）
+    set({ grindSlots: [null, null], cursorSlot: r.out, guiTick: s.guiTick + 1 });
+    s.addXp(r.xp); // 祛魔返还经验（MC：取出产出时结算）
   },
   slotMouseDown: (area, index, info) => {
     const s = get();
@@ -460,6 +591,42 @@ export const useGameStore = create<GameStore>()((set, get) => ({
         const slots = readAreaSlots(s, area);
         const next = shiftIntoBrewing(slots[index] ?? null, b);
         if (next !== slots[index]) set({ ...writeAreaSlots(s, area, replaceSlot(slots, index, next)), guiTick: s.guiTick + 1 });
+        return;
+      }
+      if (s.enchantOpen) {
+        // 附魔台（Java）：青金石 → 青金石槽（并到 64，余数留原格）；工具/装备 → 空物品槽；其余背包 ↔ 热键栏
+        const slots = readAreaSlots(s, area);
+        const slot = slots[index] ?? null;
+        if (slot?.kind === 'material' && slot.material === 'lapis') {
+          const curCount = s.enchantLapis?.kind === 'material' ? s.enchantLapis.count : 0;
+          const add = Math.min(64 - curCount, slot.count);
+          if (add <= 0) return;
+          set({
+            ...writeAreaSlots(s, area, replaceSlot(slots, index, slot.count > add ? { ...slot, count: slot.count - add } : null)),
+            enchantLapis: { kind: 'material', material: 'lapis', count: curCount + add },
+            guiTick: s.guiTick + 1,
+          });
+          return;
+        }
+        if (slot && (slot.kind === 'tool' || slot.kind === 'armor') && s.enchantItem === null) {
+          set({ ...writeAreaSlots(s, area, replaceSlot(slots, index, null)), enchantItem: slot, guiTick: s.guiTick + 1 });
+          return;
+        }
+        s.moveSlot(area, index);
+        return;
+      }
+      if (s.grindstoneOpen) {
+        // 砂轮（Java）：工具/装备 → 第一个空输入槽（满则不动）；其余背包 ↔ 热键栏
+        const slots = readAreaSlots(s, area);
+        const slot = slots[index] ?? null;
+        if (slot && (slot.kind === 'tool' || slot.kind === 'armor')) {
+          const emptyIdx = s.grindSlots[0] === null ? 0 : s.grindSlots[1] === null ? 1 : -1;
+          if (emptyIdx < 0) return;
+          const grindSlots: [Slot, Slot] = emptyIdx === 0 ? [slot, s.grindSlots[1]] : [s.grindSlots[0], slot];
+          set({ ...writeAreaSlots(s, area, replaceSlot(slots, index, null)), grindSlots, guiTick: s.guiTick + 1 });
+          return;
+        }
+        s.moveSlot(area, index);
         return;
       }
       // 合成/交易/附魔等：背包 ↔ 热键栏（moveSlot 语义）
