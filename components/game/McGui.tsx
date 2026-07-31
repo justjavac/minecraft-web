@@ -5,10 +5,9 @@
 
 import type { ReactNode } from 'react';
 import { BLOCKS } from '@/lib/blocks';
-import { armorDefOf } from '@/lib/armor';
 import { materialTile } from '@/lib/materials';
-import { TOOLS } from '@/lib/tools';
 import type { Slot } from '@/lib/slots';
+import { slotDurabilityPct, slotTile } from './slotDisplay';
 import { TileIcon } from './TileIcon';
 
 /** MC 格 18px × 2（Faithful 32x 纹理为 176×166 的 2 倍） */
@@ -69,22 +68,9 @@ export function GuiSlot({
   title?: string;
   disabled?: boolean;
 }) {
-  const tile = !slot
-    ? 0
-    : slot.kind === 'block'
-      ? BLOCKS[slot.id].side
-      : slot.kind === 'material'
-        ? materialTile(slot.material)
-        : slot.kind === 'tool'
-          ? TOOLS[slot.tool].iconTile
-          : armorDefOf(slot).iconTile;
+  const tile = slotTile(slot);
   /** 工具/装备耐久比例（其余 null 不显示耐久条） */
-  const pct =
-    slot?.kind === 'tool'
-      ? slot.durability / TOOLS[slot.tool].durability
-      : slot?.kind === 'armor'
-        ? slot.durability / armorDefOf(slot).durability
-        : null;
+  const pct = slotDurabilityPct(slot);
   return (
     <button
       onClick={onClick}

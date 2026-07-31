@@ -20,9 +20,6 @@ export interface EndCrystal {
 /** 场上的末影水晶（每根黑曜石柱顶一个，MC） */
 export const endCrystals: EndCrystal[] = [];
 
-/** 水晶列表变更版本号（渲染组件重建用） */
-export const crystalVersion = { v: 0 };
-
 /** 龙是否已被击杀（杀死后重进末地不再生成龙，祭坛保持激活；经 lib/persistence.ts 持久化，刷新页面后读档恢复） */
 export const dragonState = { slain: false };
 
@@ -38,7 +35,6 @@ export function initEndFight(world: World): Promise<void> {
     handlerRegistered = true;
   }
   endCrystals.length = 0;
-  crystalVersion.v++;
   if (dragonState.slain) {
     spawnGateway(world); // 已屠龙：折跃门结构补齐（旧档/重进——同位置同方块，幂等）
     return Promise.resolve();
@@ -46,19 +42,16 @@ export function initEndFight(world: World): Promise<void> {
   for (const p of endPillars(world.seedHash)) {
     endCrystals.push({ x: p.x + 0.5, y: p.top + 1.2, z: p.z + 0.5, alive: true });
   }
-  crystalVersion.v++;
   return loadDragonSlain(world.seed).then((slain) => {
     if (!slain || dragonState.slain) return;
     dragonState.slain = true;
     endCrystals.length = 0;
-    crystalVersion.v++;
     for (let i = mobs.length - 1; i >= 0; i--) if (mobs[i].type === 'ender_dragon') mobs.splice(i, 1);
   });
 }
 
 export function clearEndFight(): void {
   endCrystals.length = 0;
-  crystalVersion.v++;
   gatewayState.active = false;
 }
 
@@ -71,7 +64,6 @@ export function hitCrystal(
 ): void {
   if (!c.alive) return;
   c.alive = false;
-  crystalVersion.v++;
   explodeAt(world, c.x, c.y, c.z, playerPos, onAttackPlayer, { radius: 3, maxDamage: 12, hurtRadius: 4.5 });
 }
 
@@ -125,7 +117,6 @@ function onDragonKilled(world: World): void {
   dragonState.slain = true;
   void saveDragonSlain(world.seed);
   endCrystals.length = 0;
-  crystalVersion.v++;
   const ay = world.terrain.heightAt(0, 0);
   if (ay < 0) return;
   for (let dx = -1; dx <= 1; dx++) {
@@ -140,6 +131,5 @@ export function resetEndFight(): void {
   dragonState.slain = false;
   endCrystals.length = 0;
   healAcc = 0;
-  crystalVersion.v++;
   gatewayState.active = false;
 }

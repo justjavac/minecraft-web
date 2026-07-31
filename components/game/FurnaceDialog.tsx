@@ -3,15 +3,14 @@
 import { useEffect, useState } from 'react';
 import { BLOCKS } from '@/lib/blocks';
 import { FUELS, getFurnace, SMELTING, SMELT_TIME, type FurnaceStack } from '@/lib/furnace';
-import { armorDefOf } from '@/lib/armor';
 import { materialName, materialTile } from '@/lib/materials';
 import { useGameStore } from '@/lib/store';
-import { TOOLS } from '@/lib/tools';
 import {
   Dialog,
   DialogContent,
 } from '@/components/ui/dialog';
 import { TileIcon } from './TileIcon';
+import { slotTile } from './slotDisplay';
 import type { Slot } from '@/lib/slots';
 
 /** MC 格 18px × 2（Faithful 32x 纹理为 176×166 的 2 倍） */
@@ -60,15 +59,7 @@ function AbsInvSlot({ pos, slot, index }: { pos: [number, number]; slot: Slot; i
     slot?.kind === 'block' ? `block:${slot.id}` : slot?.kind === 'material' ? `material:${slot.material}` : null;
   const usable = item !== null && (FUELS[item] !== undefined || SMELTING[item] !== undefined);
   const both = item !== null && FUELS[item] !== undefined && SMELTING[item] !== undefined;
-  const tile = !slot
-    ? 0
-    : slot.kind === 'block'
-      ? BLOCKS[slot.id].side
-      : slot.kind === 'material'
-        ? materialTile(slot.material)
-        : slot.kind === 'tool'
-          ? TOOLS[slot.tool].iconTile
-          : armorDefOf(slot).iconTile;
+  const tile = slotTile(slot);
   return (
     <div className="absolute" style={{ left: pos[0], top: pos[1], width: G, height: G }}>
       <button
@@ -101,7 +92,6 @@ export function FurnaceDialog() {
   const furnaceKey = useGameStore((s) => s.furnaceOpen);
   const setOpen = useGameStore((s) => s.setFurnaceOpen);
   const slots = useGameStore((s) => s.hotbarSlots);
-  const furnacePut = useGameStore((s) => s.furnacePut);
   const takeOutput = useGameStore((s) => s.furnaceTakeOutput);
   const [, setTick] = useState(0);
 

@@ -22,10 +22,6 @@ export function slotTile(slot: Slot): number {
   return armorDefOf(slot).iconTile;
 }
 
-export function slotCount(slot: Slot): number {
-  return slot && (slot.kind === 'block' || slot.kind === 'material') ? slot.count : 0;
-}
-
 export function slotDurabilityPct(slot: Slot): number | null {
   if (!slot) return null;
   if (slot.kind === 'tool') return slot.durability / TOOLS[slot.tool].durability;

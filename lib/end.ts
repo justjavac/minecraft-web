@@ -4,7 +4,7 @@
 import { AIR, BLOCK_BY_KEY } from './blocks';
 import { hash2, hashString, type Terrain } from './noise';
 import { fillChest, type LootEntry } from './structures';
-import { CHUNK_SIZE, localIndex, WORLD_HEIGHT } from './grid';
+import { CHUNK_SIZE, localIndex, WORLD_HEIGHT, put } from './grid';
 
 const K = (key: string) => BLOCK_BY_KEY[key].id;
 
@@ -244,13 +244,6 @@ const END_CITY_SIDE_LOOT: LootEntry[] = [
   ['iron_ingot', 2, 5, 0.5],
 ];
 
-function putLocal(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
-  const lx = x - cx * CHUNK_SIZE;
-  const lz = z - cz * CHUNK_SIZE;
-  if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
-  data[localIndex(lx, y, lz)] = id;
-}
-
 /** 外岛特征：紫颂树散布（主干 + 侧枝 + 顶花）；末地城塔楼（岛心有城时） */
 function applyOuterFeatures(terrain: Terrain, cx: number, cz: number, data: Uint16Array, seedHash: number): void {
   const x0 = cx * CHUNK_SIZE;
@@ -272,8 +265,8 @@ function applyOuterFeatures(terrain: Terrain, cx: number, cz: number, data: Uint
           const h = terrain.heightAt(wx, wz);
           if (h < 0) continue;
           const trunk = 4 + Math.floor(hash2(seedHash ^ 0xc0a502, wx, wz) * 4); // 4-7
-          for (let t = 1; t <= trunk; t++) putLocal(data, cx, cz, wx, h + t, wz, K('chorus_plant'));
-          putLocal(data, cx, cz, wx, h + trunk + 1, wz, K('chorus_flower'));
+          for (let t = 1; t <= trunk; t++) put(data, cx, cz, wx, h + t, wz, K('chorus_plant'));
+          put(data, cx, cz, wx, h + trunk + 1, wz, K('chorus_flower'));
           // 1-2 条斜上侧枝（MC 分叉简化）
           const branches = 1 + Math.floor(hash2(seedHash ^ 0xc0a503, wx, wz) * 2);
           for (let b = 0; b < branches; b++) {
@@ -287,9 +280,9 @@ function applyOuterFeatures(terrain: Terrain, cx: number, cz: number, data: Uint
             for (let t = 0; t < bl; t++) {
               bx += sx;
               bz += sz;
-              putLocal(data, cx, cz, bx, by + t, bz, K('chorus_plant'));
+              put(data, cx, cz, bx, by + t, bz, K('chorus_plant'));
             }
-            putLocal(data, cx, cz, bx, by + bl, bz, K('chorus_flower'));
+            put(data, cx, cz, bx, by + bl, bz, K('chorus_flower'));
           }
         }
       }
@@ -313,24 +306,24 @@ function writeEndCity(terrain: Terrain, isle: OuterIsland, cx: number, cz: numbe
         const wz = isle.z + z;
         const edge = Math.abs(x) === 4 || Math.abs(z) === 4;
         if (dy % 5 === 0) {
-          putLocal(data, cx, cz, wx, baseY + 1 + dy, wz, dy % 10 === 0 ? purpur : bricks); // 隔板
+          put(data, cx, cz, wx, baseY + 1 + dy, wz, dy % 10 === 0 ? purpur : bricks); // 隔板
           continue;
         }
         if (!edge) {
-          putLocal(data, cx, cz, wx, baseY + 1 + dy, wz, AIR);
+          put(data, cx, cz, wx, baseY + 1 + dy, wz, AIR);
           continue;
         }
         const win = dy % 5 >= 2 && dy % 5 <= 3 && ((Math.abs(x) <= 1 && Math.abs(z) === 4) || (Math.abs(z) <= 1 && Math.abs(x) === 4));
-        putLocal(data, cx, cz, wx, baseY + 1 + dy, wz, win ? AIR : bricks);
+        put(data, cx, cz, wx, baseY + 1 + dy, wz, win ? AIR : bricks);
       }
     }
   }
   // 南门洞 + 紫珀柱顶饰 + 顶箱（鞘翅）
-  for (let dy = 1; dy <= 2; dy++) putLocal(data, cx, cz, isle.x, baseY + dy, isle.z + 4, AIR);
+  for (let dy = 1; dy <= 2; dy++) put(data, cx, cz, isle.x, baseY + dy, isle.z + 4, AIR);
   for (const [px, pz] of [[-4, -4], [4, -4], [-4, 4], [4, 4]] as const) {
-    for (let dy = 17; dy <= 19; dy++) putLocal(data, cx, cz, isle.x + px, baseY + dy, isle.z + pz, pillar);
+    for (let dy = 17; dy <= 19; dy++) put(data, cx, cz, isle.x + px, baseY + dy, isle.z + pz, pillar);
   }
-  putLocal(data, cx, cz, isle.x, baseY + 16, isle.z, K('chest'));
+  put(data, cx, cz, isle.x, baseY + 16, isle.z, K('chest'));
   fillChest(seedHash, isle.x, baseY + 16, isle.z, END_CITY_MAIN_LOOT);
   // 小塔两座（±9 偏移）：5×5×9 空箱塔
   for (const [ox, oz] of [[9, 0], [-9, 0]] as const) {
@@ -343,14 +336,14 @@ function writeEndCity(terrain: Terrain, isle: OuterIsland, cx: number, cz: numbe
         for (let dy = 0; dy <= 9; dy++) {
           const edge = Math.abs(x) === 2 || Math.abs(z) === 2;
           if (dy % 4 === 0 || dy === 9) {
-            putLocal(data, cx, cz, tx + x, ty + 1 + dy, tz + z, bricks);
+            put(data, cx, cz, tx + x, ty + 1 + dy, tz + z, bricks);
             continue;
           }
-          putLocal(data, cx, cz, tx + x, ty + 1 + dy, tz + z, edge ? bricks : AIR);
+          put(data, cx, cz, tx + x, ty + 1 + dy, tz + z, edge ? bricks : AIR);
         }
       }
     }
-    putLocal(data, cx, cz, tx, ty + 2, tz, K('chest'));
+    put(data, cx, cz, tx, ty + 2, tz, K('chest'));
     fillChest(seedHash, tx, ty + 2, tz, END_CITY_SIDE_LOOT);
   }
 }

@@ -10,3 +10,13 @@ export const localIndex = (x: number, y: number, z: number): number =>
   (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
 
 export const chunkKey = (cx: number, cz: number): string => `${cx},${cz}`;
+
+/** 把世界坐标 (x, y, z) 的方块写入 chunk (cx, cz) 的数据；xz 落在本 chunk 外或 y 越界时直接忽略 */
+export const put = (
+  data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number,
+): void => {
+  const lx = x - cx * CHUNK_SIZE;
+  const lz = z - cz * CHUNK_SIZE;
+  if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+  data[localIndex(lx, y, lz)] = id;
+};

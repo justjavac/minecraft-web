@@ -20,6 +20,23 @@ export function blockBox(id: BlockId): Box3 | null {
 
 const EPS = 0.001;
 
+/** 玩家碰撞盒半宽（Player 移动/潜行防跌、放置拒绝与放置预览共用） */
+export const PLAYER_HALF_W = 0.3;
+/** 玩家碰撞盒高度（同上） */
+export const PLAYER_HEIGHT = 1.8;
+
+/** 方块格 [bx,by,bz] 是否与玩家 AABB 重叠（tryPlace 的放置拒绝与 PlacePreview 的预览隐藏共用同一判定） */
+export function blockIntersectsPlayer(p: Aabb, bx: number, by: number, bz: number): boolean {
+  return (
+    bx + 1 > p.x - PLAYER_HALF_W &&
+    bx < p.x + PLAYER_HALF_W &&
+    bz + 1 > p.z - PLAYER_HALF_W &&
+    bz < p.z + PLAYER_HALF_W &&
+    by + 1 > p.y &&
+    by < p.y + PLAYER_HEIGHT
+  );
+}
+
 function overlaps(p: Aabb, halfW: number, height: number, x: number, y: number, z: number, b: Box3): boolean {
   return (
     p.x + halfW > x + b[0] + EPS &&

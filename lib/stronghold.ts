@@ -4,7 +4,7 @@
 import { AIR, BLOCK_BY_KEY } from './blocks';
 import { fillChest, type LootEntry } from './structures';
 import { type World } from './world';
-import { CHUNK_SIZE, localIndex, WORLD_HEIGHT } from './grid';
+import { CHUNK_SIZE, put } from './grid';
 
 const K = (key: string) => BLOCK_BY_KEY[key].id;
 const STONE_BRICKS = () => K('stone_bricks');
@@ -63,13 +63,6 @@ const LOOT: LootEntry[] = [
   ['book', 1, 2, 0.4],
   ['iron_ingot', 1, 3, 0.4],
 ];
-
-function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
-  const lx = x - cx * CHUNK_SIZE;
-  const lz = z - cz * CHUNK_SIZE;
-  if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
-  data[localIndex(lx, y, lz)] = id;
-}
 
 /** 把要塞写入 chunk 数据（若不相交则立即返回）。结构：石砖外壳 25×25，中央 9×9 末地门房间 */
 export function applyStronghold(seedHash: number, cx: number, cz: number, data: Uint16Array): void {

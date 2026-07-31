@@ -5,27 +5,12 @@ import { useFrame } from '@react-three/fiber';
 import { Group, Mesh, type Material } from 'three';
 import { getActiveWorld, playerPosition, targetBlock } from '@/lib/game';
 import { buildBlockGeometry } from '@/lib/mesher';
+import { blockIntersectsPlayer } from '@/lib/physics';
 import { useGameStore } from '@/lib/store';
 import { getAtlasMaterials } from '@/lib/textures';
 import { WORLD_HEIGHT } from '@/lib/world';
 import { toGeometry } from './ChunkMesh';
 import { useRendererKind } from './renderer-kind';
-
-const HALF_W = 0.3;
-const HEIGHT = 1.8;
-
-/** 放置位置与玩家 AABB 重叠时不显示预览（与 tryPlace 的拒绝逻辑一致） */
-function intersectsPlayer(bx: number, by: number, bz: number): boolean {
-  const p = playerPosition;
-  return (
-    bx + 1 > p.x - HALF_W &&
-    bx < p.x + HALF_W &&
-    bz + 1 > p.z - HALF_W &&
-    bz < p.z + HALF_W &&
-    by + 1 > p.y &&
-    by < p.y + HEIGHT
-  );
-}
 
 /** 当前要放置的方块 id（创造/生存同一套槽位：选中方块则放置，非方块则 -1） */
 function placingId(): number {
@@ -85,7 +70,7 @@ export function PlacePreview() {
       const x = hit.block[0] + face[0];
       const y = hit.block[1] + face[1];
       const z = hit.block[2] + face[2];
-      if (y >= 0 && y < WORLD_HEIGHT && !intersectsPlayer(x, y, z)) {
+      if (y >= 0 && y < WORLD_HEIGHT && !blockIntersectsPlayer(playerPosition, x, y, z)) {
         id = placingId();
         px = x;
         py = y;

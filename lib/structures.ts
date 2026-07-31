@@ -3,7 +3,7 @@
 import { AIR, BLOCK_BY_KEY, COBBLE, DIRT, GLASS, LOG, PLANKS, WATER, WHEAT_CROP_0, type BlockId } from './blocks';
 import { hash2, mulberry32, SEA_LEVEL, type Terrain } from './noise';
 import { getStorage } from './storage';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './grid';
+import { CHUNK_SIZE, localIndex, put } from './grid';
 
 const REGION = 64; // 结构区域边长（格）
 
@@ -192,13 +192,6 @@ const VILLAGE_MATS: Record<StructureKind, VillageMats> = {
   ocean_monument: PLAINS_MATS,
   shipwreck: PLAINS_MATS,
 };
-
-function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
-  const lx = x - cx * CHUNK_SIZE;
-  const lz = z - cz * CHUNK_SIZE;
-  if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
-  data[localIndex(lx, y, lz)] = id;
-}
 
 function putBase(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
   // 地板 + 地板下柱桩回填直到触地（上限 12 格，MC 村庄在坡地用柱桩接地；只在本 chunk 内读写——邻 chunk 由各自写入补齐）

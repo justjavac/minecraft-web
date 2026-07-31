@@ -97,7 +97,7 @@ export function hash2(seed: number, x: number, z: number): number {
   return (h >>> 0) / 4294967296;
 }
 
-function smoothstep(edge0: number, edge1: number, x: number): number {
+export function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
   return t * t * (3 - 2 * t);
 }

@@ -2,7 +2,7 @@
 
 import { AIR, BLOCK_BY_KEY } from './blocks';
 import { hash2, type Terrain } from './noise';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './grid';
+import { CHUNK_SIZE, put } from './grid';
 
 const REGION = 32; // 区域边长（格）
 const R_OUT = 5.5; // 玄武岩外壳半径
@@ -24,13 +24,6 @@ export function geodeAt(seedHash: number, rx: number, rz: number): GeodeSpot | n
     y: 12 + Math.floor(hash2(seedHash ^ 0x9e0d3c, rx, rz) * 17),
     z: rz * REGION + 6 + Math.floor(hash2(seedHash ^ 0x9e0d4d, rx, rz) * 20),
   };
-}
-
-function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
-  const lx = x - cx * CHUNK_SIZE;
-  const lz = z - cz * CHUNK_SIZE;
-  if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
-  data[localIndex(lx, y, lz)] = id;
 }
 
 /** 地形填充后调用：写入本 chunk 覆盖的晶洞部分（须在洞穴雕刻前，洞穴可自然把晶洞破开） */

@@ -4,7 +4,7 @@
 import { AIR, BLOCK_BY_KEY } from './blocks';
 import { hash2, type Terrain } from './noise';
 import { fillChest, type LootEntry } from './structures';
-import { CHUNK_SIZE, WORLD_HEIGHT, localIndex } from './grid';
+import { CHUNK_SIZE, put } from './grid';
 import { LAVA_SEA } from './nether';
 
 const REGION = 64;
@@ -45,13 +45,6 @@ export function fortressNear(seedHash: number, terrain: Terrain, x: number, z: n
     }
   }
   return false;
-}
-
-function put(data: Uint16Array, cx: number, cz: number, x: number, y: number, z: number, id: number): void {
-  const lx = x - cx * CHUNK_SIZE;
-  const lz = z - cz * CHUNK_SIZE;
-  if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
-  data[localIndex(lx, y, lz)] = id;
 }
 
 /** 桥廊：一段 floor 桥面 + 两侧栏杆柱 + 桥墩（每隔 5 格下伸到实心/岩浆面 3 格） */
