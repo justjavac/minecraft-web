@@ -157,9 +157,9 @@ export const RECIPES: Recipe[] = [
   { id: 'glistering_melon', name: '闪烁的西瓜片', out: { kind: 'material', material: 'glistering_melon', count: 1 }, cost: [{ item: K('melon'), count: 1 }, { item: 'material:gold_ingot', count: 1 }], needsTable: false },
   // TNT：火药 ×5 + 沙子 ×4（MC 配方）
   { id: 'tnt', name: 'TNT', out: { kind: 'block', id: KID('tnt'), count: 1 }, cost: [{ item: 'material:gunpowder', count: 5 }, { item: K('sand'), count: 4 }], needsTable: true },
-  // 活塞：圆石×3 + 木板×3 + 铁锭×1 + 红石×1（MC）；粘性活塞：活塞 + 黏液块（替代黏液球）
+  // 活塞：圆石×3 + 木板×3 + 铁锭×1 + 红石×1（MC）；粘性活塞：活塞 + 1 黏液球（MC）
   { id: 'piston', name: '活塞', out: { kind: 'block', id: KID('piston_n'), count: 1 }, cost: [{ item: COBBLE_ITEM, count: 3 }, { item: PLANKS_ITEM, count: 3 }, { item: 'material:iron_ingot', count: 1 }, { item: 'material:redstone', count: 1 }], needsTable: true },
-  { id: 'piston_sticky', name: '粘性活塞', out: { kind: 'block', id: KID('piston_sticky_n'), count: 1 }, cost: [{ item: K('piston_n'), count: 1 }, { item: K('slime_block'), count: 1 }], needsTable: false },
+  { id: 'piston_sticky', name: '粘性活塞', out: { kind: 'block', id: KID('piston_sticky_n'), count: 1 }, cost: [{ item: K('piston_n'), count: 1 }, { item: 'material:slime_ball', count: 1 }], needsTable: false },
   // 黏液块：9 黏液球（MC 3×3）；反向 1 块拆 9 球（MC）
   { id: 'slime_block', name: '黏液块', out: { kind: 'block', id: KID('slime_block'), count: 1 }, cost: [{ item: 'material:slime_ball', count: 9 }], needsTable: true },
   { id: 'slime_ball_from_block', name: '黏液球 ×9', out: { kind: 'material', material: 'slime_ball', count: 9 }, cost: [{ item: K('slime_block'), count: 1 }], needsTable: false },

@@ -332,7 +332,7 @@ const ORES: [key: string, cn: string, tier: 0 | 1 | 2 | 3, material: string, cou
   ['iron_ore', '铁矿石', 1, 'raw_iron', [1, 1]],
   ['copper_ore', '铜矿石', 1, 'raw_copper', [2, 5]],
   ['gold_ore', '金矿石', 2, 'raw_gold', [1, 1]],
-  ['lapis_ore', '青金石矿石', 1, 'lapis', [4, 8]],
+  ['lapis_ore', '青金石矿石', 1, 'lapis', [4, 9]], // MC：掉 4-9 青金石
   ['redstone_ore', '红石矿石', 2, 'redstone', [4, 5]],
   ['diamond_ore', '钻石矿石', 2, 'diamond', [1, 1]],
   ['emerald_ore', '绿宝石矿石', 2, 'emerald', [1, 1]],
@@ -344,16 +344,16 @@ for (const [k, cn, tier, material, count] of ORES) {
   const dk = `deepslate_${k}`;
   add(dk, `深层${cn}`, dk, { cat: 'ore', tool: 'pickaxe', pickTier: tier, drop: { material, count }, digTime: 22.5 });
 }
-add('raw_iron_block', '粗铁块', 'raw_iron_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('raw_gold_block', '粗金块', 'raw_gold_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('raw_copper_block', '粗铜块', 'raw_copper_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('iron_block', '铁块', 'iron_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('gold_block', '金块', 'gold_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('diamond_block', '钻石块', 'diamond_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('emerald_block', '绿宝石块', 'emerald_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
+add('raw_iron_block', '粗铁块', 'raw_iron_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, pickTier: 1, digTime: 25 }); // MC：需石镐
+add('raw_gold_block', '粗金块', 'raw_gold_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, pickTier: 1, digTime: 25 }); // MC：需石镐
+add('raw_copper_block', '粗铜块', 'raw_copper_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, pickTier: 1, digTime: 25 }); // MC：需石镐
+add('iron_block', '铁块', 'iron_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, pickTier: 1, digTime: 25 }); // MC：需石镐
+add('gold_block', '金块', 'gold_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, pickTier: 2, digTime: 25 }); // MC：需铁镐
+add('diamond_block', '钻石块', 'diamond_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, pickTier: 2, digTime: 25 }); // MC：需铁镐
+add('emerald_block', '绿宝石块', 'emerald_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, pickTier: 2, digTime: 25 }); // MC：需铁镐
 add('lapis_block', '青金石块', 'lapis_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
 add('coal_block', '煤块', 'coal_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
-add('copper_block', '铜块', 'copper_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 25 });
+add('copper_block', '铜块', 'copper_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, pickTier: 1, digTime: 25 }); // MC：需石镐
 add('amethyst_block', '紫水晶块', 'amethyst_block', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 7.5 });
 add('budding_amethyst', '紫水晶母岩', 'budding_amethyst', { cat: 'ore', tool: 'pickaxe', needsPick: true, digTime: 7.5 });
 
