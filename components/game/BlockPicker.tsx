@@ -198,7 +198,7 @@ export function BlockPicker() {
                     className="absolute flex items-center justify-center hover:bg-white/25"
                     style={{ left: (i % COLS) * G, top: Math.floor(i / COLS) * G, width: G, height: G }}
                   >
-                    <TileIcon tile={d.side} size={30} />
+                    <TileIcon tile={d.side} size={30} blockId={id} />
                   </button>
                 );
               })}

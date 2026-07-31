@@ -282,6 +282,11 @@ const TEXTURE_OVERLAYS: Record<number, (ctx: CanvasRenderingContext2D, dx: numbe
  * inline style 各存一份超长 base64（BlockPicker 一次渲染 ~291 个图标，DOM 内存放大数百倍） */
 export let atlasDataUrl = '';
 
+/** atlas 画布本体（lib/blockIcon3d.ts 等轴 3D 图标从画布裁面，免解码 dataURL；build 完成后可用） */
+export let atlasCanvas: HTMLCanvasElement | null = null;
+/** atlas 构建版本号：每次 build（含贴图包重载）+1，3D 图标缓存据此失效重建 */
+export let atlasVersion = 0;
+
 /** 渲染器类型（由 renderer-kind.tsx 的 Context 下发） */
 export type RendererKind = 'webgl' | 'webgpu';
 
@@ -490,6 +495,8 @@ async function build(kind: RendererKind): Promise<AtlasMaterials> {
   texture.anisotropy = 16; // 高各向异性：斜视地表不糊（配合格间挤出，杜绝跨格混色条纹）
   texture.colorSpace = THREE.SRGBColorSpace;
   atlasDataUrl = canvas.toDataURL();
+  atlasCanvas = canvas;
+  atlasVersion += 1;
   // 全量 dataURL 只挂一份到 :root 的 CSS 变量，TileIcon 用 background-image: var(--mc-atlas) 共享；
   // 贴图包重建（getAtlasMaterials 重新 build）走到这里时变量随之更新
   document.documentElement.style.setProperty('--mc-atlas', `url("${atlasDataUrl}")`);
