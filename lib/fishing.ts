@@ -5,6 +5,7 @@ import { AIR, BLOCKS } from './blocks';
 import { weather, precipAt } from './weather';
 import { type World } from './world';
 import { WORLD_HEIGHT } from './grid';
+import { registerWorldScope } from './worldScope';
 
 export type BobberState = 'flying' | 'waiting' | 'bite';
 
@@ -152,3 +153,6 @@ export function tickFishing(world: World, dt: number): void {
 export function clearFishing(): void {
   bobber.current = null;
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：浮标随世界清理
+registerWorldScope({ name: 'fishing', clear: clearFishing });

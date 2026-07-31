@@ -3,6 +3,7 @@
 import { BLOCKS } from './blocks';
 import { explodeAt } from './explosion';
 import type { World } from './world';
+import { registerWorldScope } from './worldScope';
 
 export interface PrimedTnt {
   id: number;
@@ -62,3 +63,14 @@ export function tickTnt(
     }
   }
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：点燃的 TNT 随维度暂存/恢复（否则跨维度泄漏/误删）
+registerWorldScope<PrimedTnt[]>({
+  name: 'tnt',
+  clear: clearTnt,
+  snapshot: () => [...primedTnt],
+  restore: (entries) => {
+    primedTnt.length = 0;
+    primedTnt.push(...entries);
+  },
+});

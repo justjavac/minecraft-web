@@ -2,6 +2,7 @@
 
 import { spawnMaterialDrop } from './items';
 import { addStackToSlots, type Slot } from './slots';
+import { registerWorldScope } from './worldScope';
 
 export interface PotionDef {
   name: string;
@@ -164,3 +165,14 @@ export function dropBrewingContents(key: string, x: number, y: number, z: number
   }
   brews.delete(key);
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：酿造台状态可快照/恢复（跨维度暂存 + 存档 dims 持久化）
+registerWorldScope<[string, BrewState][]>({
+  name: 'brewing',
+  clear: clearBrews,
+  snapshot: () => [...brews],
+  restore: (entries) => {
+    brews.clear();
+    for (const [k, v] of entries) brews.set(k, v);
+  },
+});

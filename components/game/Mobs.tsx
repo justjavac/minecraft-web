@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { BoxGeometry, Group, Mesh, Vector3, type Material } from 'three';
-import { getActiveWorld, playerPosition } from '@/lib/game';
-import { arrows, clearMobs, mobs, tickMobs, type Mob, type MobType } from '@/lib/mobs';
+import { playerPosition } from '@/lib/game';
+import { arrows, clearMobs, mobs, type Mob, type MobType } from '@/lib/mobs';
 import { professionOf, PROFESSION_INFO, type Profession } from '@/lib/trading';
 import { useGameStore } from '@/lib/store';
 import { getAtlasMaterials, type AtlasMaterials } from '@/lib/textures';
-import { useRendererKind } from './renderer-kind';
+import { useRendererKind, type RendererKind } from './renderer-kind';
 
 // ——— 共享几何 ———
 const headGeo = new BoxGeometry(0.42, 0.42, 0.42);
@@ -85,6 +85,25 @@ const villagerNoseGeo = new BoxGeometry(0.1, 0.24, 0.12);
 const villagerArmsGeo = new BoxGeometry(0.56, 0.2, 0.3);
 
 type MobMats = Record<string, Material>;
+
+/**
+ * 生物材质表模块级缓存（key = 渲染器类型，材质参数全部由渲染器类型 + 固定颜色表决定）。
+ * 取舍：生物材质是无纹理的纯色 Lambert（~80 个/套，GPU 占用极小），缓存常驻页面生命周期、
+ * 不随进/出世界 dispose —— 换取同局同种生物部件共享、反复进出世界零重建
+ * （此前每次进世界新建一套且从不 dispose，GL program 会累积）。
+ * 几何不受影响：部件几何本就是模块级共享常量，与尺寸无关的材质缓存不改变这一现状。
+ */
+const mobMatsCache = new Map<RendererKind, MobMats>();
+
+/** 取生物材质表：按渲染器类型缓存复用，未命中才构建 */
+function getMobMats(kind: RendererKind, mats: AtlasMaterials): MobMats {
+  let cached = mobMatsCache.get(kind);
+  if (!cached) {
+    cached = buildMobMats(mats);
+    mobMatsCache.set(kind, cached);
+  }
+  return cached;
+}
 
 /** 按渲染器类型构建生物材质表 */
 function buildMobMats(mats: AtlasMaterials): MobMats {
@@ -437,9 +456,9 @@ export function Mobs() {
   const [mobMats, setMobMats] = useState<MobMats | null>(null);
   const kind = useRendererKind();
 
-  // 按渲染器类型构建材质表；卸载（退出世界）时清空怪物与网格
+  // 按渲染器类型取材质表（模块级缓存，进出世界不重建）；卸载（退出世界）时清空怪物与网格
   useEffect(() => {
-    void getAtlasMaterials(kind).then((m) => setMobMats(buildMobMats(m)));
+    void getAtlasMaterials(kind).then((m) => setMobMats(getMobMats(kind, m)));
     const meshes = meshMap.current;
     const arrowMeshes = arrowMeshMap.current;
     return () => {
@@ -449,22 +468,12 @@ export function Mobs() {
     };
   }, [kind]);
 
-  useFrame((_, delta) => {
-    const world = getActiveWorld();
+  // 生物 AI 已收口到 lib/sim.ts 的统一模拟循环（tickWorld）；本组件只负责渲染网格同步
+  useFrame(() => {
     const group = groupRef.current;
-    if (!world || !group) return;
-    const store = useGameStore.getState();
-    // MC 创造模式也刷生物（动物/怪物都正常生成），只是敌对不追击不伤害玩家（tickMobs hostile=false 用假目标）
-    if (store.paused) return;
-    const dt = Math.min(delta, 0.05);
-    const survival = store.worldMode === 'survival';
-
-    const held = store.hotbarSlots[store.selectedSlot];
-    const lureFood = held?.kind === 'material' ? held.material : null;
-    // MC 创造模式正常刷怪（动物/怪物都有），只是敌对不追击不伤害——hostile=false 时 AI 用假目标
-    tickMobs(world, dt, playerPosition, (dmg) => {
-      if (survival && !useGameStore.getState().dead) useGameStore.getState().damagePlayer(dmg);
-    }, lureFood, survival);
+    if (!group) return;
+    // 暂停时冻结网格同步（画面停在暂停前最后一帧；AI 由 sim 统一暂停）
+    if (useGameStore.getState().paused) return;
 
     // 同步生物网格（材质表就绪后才创建）
     if (mobMats) {

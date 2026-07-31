@@ -21,13 +21,12 @@ import {
 } from 'three';
 import { isLavaId, isWaterId } from '@/lib/blocks';
 import { atmosphere, debugInfo, getActiveWorld, worldClock } from '@/lib/game';
-import { mulberry32 } from '@/lib/noise';
+import { mulberry32, smoothstep } from '@/lib/noise';
 import { useGameStore } from '@/lib/store';
 import { getAtlasMaterials, tickWaterTexture } from '@/lib/textures';
 import { tickWeather, weather, weatherDim } from '@/lib/weather';
 import { useRendererKind } from './renderer-kind';
 
-const CYCLE_SECONDS = 600; // 一昼夜 10 分钟
 const ORBIT_RADIUS = 280;
 const BODY_SIZE = 36; // 太阳/月亮贴图尺寸
 const CLOUD_Y = 80;
@@ -40,11 +39,6 @@ const SKY_DUSK = new Color('#e8935c');
 const SKY_FLASH = new Color('#e8ecff');
 const sky = new Color();
 const sunDir = new Vector3();
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
-  return t * t * (3 - 2 * t);
-}
 
 /** MC 风格方形天体贴图：主体色方块 + 内部明暗像素 */
 function makeBodyTexture(base: string, shade: string, size: number): CanvasTexture {
@@ -120,11 +114,8 @@ export function DayNight() {
   useFrame(({ scene, camera }, delta) => {
     const dt = Math.min(delta, 0.05);
     tickWaterTexture(performance.now());
-    // 昼夜时钟在 game.ts 共享（0=日出 0.25=正午 0.5=日落 0.75=午夜），随存档持久化；暂停时冻结
-    if (!useGameStore.getState().paused) {
-      worldClock.t = (worldClock.t + dt / CYCLE_SECONDS) % 1;
-      tickWeather(weather, delta);
-    }
+    // 昼夜时钟由 lib/sim.ts 的统一模拟循环推进（game.ts 共享 worldClock，随存档持久化；暂停时冻结）；这里只读 t 做视觉
+    if (!useGameStore.getState().paused) tickWeather(weather, delta);
     const t = worldClock.t;
     const a = t * Math.PI * 2;
     const elevation = Math.sin(a);

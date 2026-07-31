@@ -5,7 +5,7 @@ import { hash2, type Biome } from './noise';
 import { dayFactorAt, bossState, pearlTeleport, survivalStats, worldClock } from './game';
 import { effects } from './effects';
 import { useGameStore } from './store';
-import { XP_MOB } from './xp';
+import { XP_BREED, XP_MOB } from './xp';
 import { explodeAt } from './explosion';
 import { endCrystals, hitCrystal } from './endfight';
 import { spawnBlockDrop, spawnMaterialDrop } from './items';
@@ -18,6 +18,7 @@ import { weather, precipAt, type WeatherKind } from './weather';
 // 循环引用说明：redstone.ts 的 tickPlates 引用本文件 mobs 列表；此处 strikeTarget 仅运行时调用，ESM live binding 安全
 import { strikeTarget } from './redstone';
 import { type World } from './world';
+import { registerWorldScope } from './worldScope';
 import { chunkKey, localIndex, WORLD_HEIGHT } from './grid';
 
 export type MobType = 'zombie' | 'skeleton' | 'spider' | 'creeper' | 'pig' | 'cow' | 'chicken' | 'villager' | 'mooshroom' | 'zombified_piglin' | 'piglin' | 'piglin_brute' | 'blaze' | 'wither_skeleton' | 'ghast' | 'sheep' | 'wolf' | 'enderman' | 'wither' | 'ender_dragon' | 'shulker' | 'slime' | 'phantom' | 'iron_golem';
@@ -290,7 +291,7 @@ export function breedMob(parent: Mob): Mob {
   const baby = makeMob(parent.type, parent.x + 0.6, parent.y, parent.z + 0.6);
   baby.baby = true;
   baby.growUp = 90;
-  useGameStore.getState().addXp(1 + Math.floor(Math.random() * 7));
+  useGameStore.getState().addXp(XP_BREED[0] + Math.floor(Math.random() * (XP_BREED[1] - XP_BREED[0] + 1)));
   mobs.push(baby);
   return baby;
 }
@@ -1666,3 +1667,6 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   removeMob(mob);
   return true;
 }
+
+// 世界作用域自注册：卸载/切维度的清理由 registry 统一驱动（lib/worldScope.ts）；生物不跨维度暂存
+registerWorldScope({ name: 'mobs', clear: clearMobs });

@@ -2,6 +2,7 @@
 // 世界作用域状态（维度切换清空）；纯逻辑可单测
 
 import type { World } from './world';
+import { registerWorldScope } from './worldScope';
 
 export interface XpOrb {
   id: number;
@@ -106,3 +107,6 @@ export function tickXpOrbs(
 export function clearXpOrbs(): void {
   xpOrbs.length = 0;
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：经验球随世界清理
+registerWorldScope({ name: 'xporb', clear: clearXpOrbs });

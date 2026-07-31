@@ -6,40 +6,36 @@ import { World, type Chunk } from '@/lib/world';
 import { getAtlasMaterials, type AtlasMaterials } from '@/lib/textures';
 import {
   clearWorldStore,
+  DIM_KEYS,
+  dimExtrasToScopes,
   listChunkKeys,
   loadChunks,
   loadWorldMeta,
+  mergeDims,
   saveChunk,
   saveModifiedChunks,
   saveWorldMeta,
+  scopesToDimExtras,
   worldMeta,
+  type DimExtras,
+  type DimKey,
   type SaveExtras,
 } from '@/lib/persistence';
 import { playerPosition, setActiveWorld, debugInfo, teleportState, worldClock } from '@/lib/game';
 import { findLanding, ensurePortal, mapCoords, type Dimension } from '@/lib/dimension';
 import { createEndTerrain } from '@/lib/end';
 import { createNetherTerrain } from '@/lib/nether';
-import { clearFurnaces, furnaces, tickFurnaces, type FurnaceState } from '@/lib/furnace';
-import { brews, clearBrews, tickBrewing, type BrewState } from '@/lib/brewing';
-import { clearStorages, storages } from '@/lib/storage';
-import { clearMobs, makeEnderDragon, mobs } from '@/lib/mobs';
+import { makeEnderDragon, mobs } from '@/lib/mobs';
 import { clearEndFight, dragonState, initEndFight } from '@/lib/endfight';
-import { tickFluids, clearFluids } from '@/lib/fluids';
-import { clearGravity, tickGravity } from '@/lib/gravity';
-import { clearXpOrbs } from '@/lib/xporb';
-import { clearFishing } from '@/lib/fishing';
-import { tickCrops, clearCrops } from '@/lib/crops';
-import { tickGrowth } from '@/lib/growth';
-import { tickSaplings, clearSaplings } from '@/lib/saplings';
-import { clearRedstone, rescanSources, tickRedstone } from '@/lib/redstone';
-import { clearDrops } from '@/lib/items';
-import { clearTnt, primedTnt, type PrimedTnt } from '@/lib/tnt';
-import { activeBeacons, clearBeacons, type ActiveBeacon } from '@/lib/beacon';
 import { clearEffects } from '@/lib/effects';
+import { rescanCropsChunk } from '@/lib/crops';
+import { rescanSaplingsChunk } from '@/lib/saplings';
+import { resetSimClock, tickWorld } from '@/lib/sim';
+import { clearWorldScopes, restoreWorldScopes, snapshotWorldScopes } from '@/lib/worldScope';
 import { flushLight } from '@/lib/lights';
 import { preloadSounds } from '@/lib/sound';
 import { useRendererKind } from './renderer-kind';
-import { emptySlots, type Slot } from '@/lib/slots';
+import { emptySlots } from '@/lib/slots';
 import { MAX_HEALTH, MAX_HUNGER, useGameStore } from '@/lib/store';
 import { ChunkMesh } from './ChunkMesh';
 
@@ -83,15 +79,38 @@ async function loadDimWorld(d: Dimension, seedStr: string, center: { x: number; 
   // 后台加载剩余存档 chunk：本局未修改的直接替换为存档版本
   void loadChunks(rest)
     .then((restData) => {
-      for (const [k, v] of restData) w.applySavedChunk(prefix ? k.slice(prefix.length) : k, v);
+      for (const [k, v] of restData) {
+        const plain = prefix ? k.slice(prefix.length) : k;
+        w.applySavedChunk(plain, v);
+        // chunk 已生成时数据被存档整体替换（直写 data 不走 setBlock 钩子）：重扫让作物/树苗登记与新数据同步。
+        // 未生成的 chunk 存入备用，之后创建时由 WorldRenderer 的首次出现重扫覆盖（此处重扫幂等）
+        const c = w.chunks.get(plain);
+        if (c) {
+          rescanCropsChunk(w, c.cx, c.cz);
+          rescanSaplingsChunk(w, c.cx, c.cz);
+        }
+      }
     })
     .catch((err) => console.warn('后台补齐存档 chunk 失败（不影响游玩）', err));
   return w;
 }
 
-/** 当前要随 meta 保存的附加状态（位置/时刻/模式/生存数值/熔炉/容器/维度） */
-function currentExtras(d: Dimension): SaveExtras {
+/** 维度暂存：世界作用域快照（registry，含容器/熔炉/酿造/TNT/信标）+ 玩家位置。
+ * player 缺省表示该维度状态来自存档而非本局造访（位置走传送/默认出生点） */
+interface DimState {
+  player?: { x: number; y: number; z: number };
+  scopes: Record<string, unknown>;
+}
+
+/** 当前要随 meta 保存的附加状态（位置/时刻/模式/生存数值/各维度容器状态）。
+ * dims 合并：当前维度取 live 模块（registry 快照），其余维度取 dimStates 暂存——任何维度都不丢（修复跨维度存档互相覆盖） */
+function currentExtras(d: Dimension, dimStates: Partial<Record<Dimension, DimState>>): SaveExtras {
   const s = useGameStore.getState();
+  const stashed: Partial<Record<DimKey, DimExtras>> = {};
+  for (const dim of DIM_KEYS) {
+    const ds = dimStates[dim];
+    if (ds) stashed[dim] = scopesToDimExtras(ds.scopes);
+  }
   return {
     player: { ...playerPosition },
     respawnPoint: s.respawnPoint ?? undefined,
@@ -102,23 +121,8 @@ function currentExtras(d: Dimension): SaveExtras {
       s.worldMode === 'survival'
         ? { health: s.health, hunger: s.hunger, saturation: s.saturation, slots: s.hotbarSlots, backpack: s.mainSlots, armor: s.armorSlots, xp: s.xpTotal }
         : undefined,
-    furnaces: furnaces.size > 0 ? Object.fromEntries(furnaces) : undefined,
-    brews: brews.size > 0 ? Object.fromEntries(brews) : undefined,
-    storages:
-      storages.size > 0
-        ? Object.fromEntries([...storages].filter(([, slots]) => slots.some((s) => s !== null)))
-        : undefined,
+    dims: mergeDims(d, scopesToDimExtras(snapshotWorldScopes()), stashed),
   };
-}
-
-interface DimState {
-  player: { x: number; y: number; z: number };
-  storages: [string, Slot[]][];
-  furnaces: [string, FurnaceState][];
-  brews: [string, BrewState][];
-  /** 点燃的 TNT 与激活的信标（同属世界作用域状态，随维度暂存/恢复，否则跨维度泄漏/误删） */
-  tnt: PrimedTnt[];
-  beacons: [string, ActiveBeacon][];
 }
 
 export function WorldRenderer() {
@@ -133,13 +137,14 @@ export function WorldRenderer() {
   const worldRef = useRef<World | null>(null);
   /** 两个维度的世界实例缓存（切换不丢 chunk 与生成状态） */
   const worldsRef = useRef<Partial<Record<Dimension, World>>>({});
-  /** 各维度的模块状态（位置/容器/熔炉），切换时暂存/恢复 */
+  /** 各维度的世界作用域暂存（registry 快照 + 玩家位置），切换时暂存/恢复 */
   const dimStateRef = useRef<Partial<Record<Dimension, DimState>>>({});
   const firstLoadRef = useRef(true);
   /** 初始加载中（出生点周围尚未铺满）：updateAround 用大预算全速生成；铺满后转游玩小预算 */
   const initialLoadRef = useRef(true);
-  const lastFluid = useRef(0);
   const lastGeneration = useRef(-1);
+  /** 已做作物/树苗重扫的 chunk key（generation 变化时按差集补扫，避免每帧重复扫已扫 chunk） */
+  const scannedChunksRef = useRef(new Set<string>());
 
   // 创建/加载世界 + 贴图（维度切换时重跑：暂存旧维度状态，加载/恢复新维度）
   useEffect(() => {
@@ -161,17 +166,13 @@ export function WorldRenderer() {
             return;
           }
           worldClock.t = meta?.dayTime ?? 0.3; // 恢复昼夜时刻，无记录则从上午开始
-          clearFurnaces();
-          if (meta?.furnaces) {
-            for (const [k, v] of Object.entries(meta.furnaces)) furnaces.set(k, v);
-          }
-          clearBrews();
-          if (meta?.brews) {
-            for (const [k, v] of Object.entries(meta.brews)) brews.set(k, v);
-          }
-          clearStorages();
-          if (meta?.storages) {
-            for (const [k, v] of Object.entries(meta.storages)) storages.set(k, v);
+          // 按维度恢复容器/站点状态：当前维度与其他维度一样进暂存，由下方统一 restore 进 live 模块
+          // （避免「先 restore 再被通用恢复逻辑清空」的双重恢复问题）
+          dimStates[dimension] = { scopes: dimExtrasToScopes(meta?.dims?.[dimension]) };
+          for (const dim of DIM_KEYS) {
+            if (dim === dimension) continue;
+            const de = meta?.dims?.[dim];
+            if (de) dimStates[dim] = { scopes: dimExtrasToScopes(de) };
           }
           const store = useGameStore.getState();
           if (meta?.player) store.setSpawnPoint(meta.player);
@@ -188,9 +189,9 @@ export function WorldRenderer() {
           await clearWorldStore();
           worldClock.t = 0.3; // 新世界从上午开始
           worlds[dimension] = makeDimWorld(dimension, seed);
-          clearStorages(); // 清空上一个世界的容器残留
-          clearRedstone(); // 清空上一个世界的红石残留
-          clearEffects(); // 新世界清空药水效果（上个世界的效果不带入）
+          for (const k of Object.keys(dimStates)) delete dimStates[k as Dimension]; // 新世界不沿用旧世界的维度暂存
+          clearWorldScopes(); // 清空上一个世界的全部世界作用域残留（容器/红石/生物/掉落物……）
+          clearEffects(); // 新世界清空药水效果（玩家作用域，不走世界 registry）
           await saveWorldMeta(worldMeta(seed, { mode: useGameStore.getState().worldMode, dimension: 'overworld' }));
         }
         // 切换维度/首次造访：取缓存或读档新建
@@ -200,21 +201,11 @@ export function WorldRenderer() {
           worlds[dimension] = w;
         }
         if (cancelled) return;
-        // 恢复该维度的模块状态
+        // 恢复该维度的世界作用域状态（registry：快照里有的整体替换，缺失的可恢复系统自动清空）
         const ds = dimStates[dimension];
-        clearStorages();
-        clearFurnaces();
-        clearBrews();
-        clearTnt();
-        clearBeacons();
-        if (ds) {
-          for (const [k, v] of ds.storages) storages.set(k, v);
-          for (const [k, v] of ds.furnaces) furnaces.set(k, v);
-          for (const [k, v] of ds.brews) brews.set(k, v);
-          primedTnt.push(...ds.tnt);
-          for (const [k, v] of ds.beacons) activeBeacons.set(k, v);
-          useGameStore.getState().setSpawnPoint(ds.player);
-        }
+        delete dimStates[dimension];
+        restoreWorldScopes(ds?.scopes ?? {});
+        if (ds?.player) useGameStore.getState().setSpawnPoint(ds.player);
         // 跨维度传送：落点扫描 + 无门造门 + 传送坐标落定（末地落固定出生平台，不造下界门；末地返回主世界不造门）
         if (teleportState.pending) {
           const tp = teleportState.pending;
@@ -241,7 +232,10 @@ export function WorldRenderer() {
         };
         worldRef.current = w;
         setActiveWorld(w);
+        resetSimClock(); // 新维度/新世界：模拟时间累加器清零，不带入旧世界
         initialLoadRef.current = true; // 新维度/新世界：先全速铺满出生点周围
+        scannedChunksRef.current.clear(); // 重扫记录按世界实例归零（chunk 首次出现时补扫）
+        lastGeneration.current = -1;
         setWorld(w);
         setMaterials(mats);
         useGameStore.getState().setLoadError(null);
@@ -257,30 +251,13 @@ export function WorldRenderer() {
       cancelled = true;
       useGameStore.getState().setWorldReady(false);
       const w = worlds[dimension];
-      if (w) void saveModifiedChunks(w, currentExtras(dimension), dimPrefix(dimension));
-      // 暂存本维度模块状态（位置/容器/熔炉/酿造/TNT/信标），其余运行时状态清掉
+      if (w) void saveModifiedChunks(w, currentExtras(dimension, dimStates), dimPrefix(dimension));
+      // 暂存本维度世界作用域状态（registry 快照：位置/容器/熔炉/酿造/TNT/信标），随后统一清理全部作用域系统
       dimStates[dimension] = {
         player: { ...playerPosition },
-        storages: [...storages],
-        furnaces: [...furnaces],
-        brews: [...brews],
-        tnt: [...primedTnt],
-        beacons: [...activeBeacons],
+        scopes: snapshotWorldScopes(),
       };
-      clearMobs();
-      clearFurnaces();
-      clearBrews();
-      clearStorages();
-      clearFluids();
-      clearFishing();
-      clearSaplings();
-      clearCrops();
-      clearRedstone();
-      clearGravity(); // 下落中的重力方块同属世界作用域
-      clearXpOrbs(); // 经验球同属世界作用域
-      clearTnt();
-      clearBeacons(); // 信标/TNT 同属世界作用域：不清则主世界 TNT 在下界继续 tick 爆炸、信标被当下界方块校验误删
-      clearDrops(); // 掉落物也随维度/世界清理（否则主世界掉落物跟到下界继续 tick，回菜单再开新图旧掉落物残留）
+      clearWorldScopes();
       worldRef.current = null;
       setActiveWorld(null);
     };
@@ -290,7 +267,7 @@ export function WorldRenderer() {
   useEffect(() => {
     if (!world) return;
     const flush = () => {
-      void saveModifiedChunks(world, currentExtras(dimension), dimPrefix(dimension));
+      void saveModifiedChunks(world, currentExtras(dimension, dimStateRef.current), dimPrefix(dimension));
     };
     const timer = setInterval(flush, 5000);
     // beforeunload 在移动端 Safari 不可靠，pagehide 是兜底
@@ -303,7 +280,7 @@ export function WorldRenderer() {
     };
   }, [world, dimension]);
 
-  // 每帧：重建脏 chunk 网格（限流）+ 按玩家位置调度 chunk + 推进熔炉烧炼 + 流体传播
+  // 每帧：重建脏 chunk 网格（限流）+ 按玩家位置调度 chunk + 统一模拟循环（lib/sim.ts）
   useFrame((_, delta) => {
     const w = worldRef.current;
     if (!w) return;
@@ -317,7 +294,6 @@ export function WorldRenderer() {
       if (c) c.version++;
       drained++;
     }
-    const now = performance.now();
     // 每帧按时间片调度 chunk 生成：加载期大预算全速铺满，游玩期 6ms 防止成批生成叠出长任务
     try {
       const remaining = w.updateAround(
@@ -330,30 +306,24 @@ export function WorldRenderer() {
     } catch (err) {
       console.error('chunk 调度失败（下帧重试）', err);
     }
-    if (now - lastFluid.current > 400) {
-      lastFluid.current = now;
-      try {
-        tickFluids(w);
-        tickGravity(w, 0.2); // 重力方块下落推进（与流体同节奏）
-        tickSaplings(w, 0.4); // 内部按 2s 累计触发生长/凋零
-        tickCrops(w, 0.4); // 同上节奏推进小麦生长
-        tickGrowth(w, 0.4); // 柱状作物随机刻（仙人掌/甘蔗/竹子）
-        rescanSources(w); // 重扫新加载 chunk 的电源（换维度/读档后恢复供能）
-      } catch (err) {
-        console.error('世界 tick 失败（下帧重试）', err);
-      }
-    }
-    // 红石 tick 每帧实时结算：中继器延迟翻转、按钮/侦测器/标靶脉冲（0.1s 级）、压力板检测
-    try {
-      tickRedstone(w, Math.min(delta, 0.05));
-    } catch (err) {
-      console.error('红石 tick 失败（下帧重试）', err);
-    }
-    // 熔炉烧炼不做暂停门控（与流体/作物一致）：打开熔炉界面会解锁指针，门控会让烧炼整个冻结
-    tickFurnaces(Math.min(delta, 0.05));
-    tickBrewing(Math.min(delta, 0.05)); // 酿造同理（MC 20s 一轮）
+    // 统一模拟循环：生物/流体/重力/作物/昼夜/红石/熔炉/酿造的 tick 与暂停策略全部收口在 lib/sim.ts
+    tickWorld(w, delta);
     debugInfo.chunks = w.chunks.size;
     debugInfo.dirty = w.dirtyChunks.size;
+    if (w.generation !== lastGeneration.current) {
+      // chunk 集合变化：对首次出现的 chunk 重扫登记作物/树苗（新生成与读档恢复都直写 data，
+      // 不走 setBlock 钩子，村庄农田的小麦也靠这里开始生长）；卸载的 chunk 从记录中移除
+      const scanned = scannedChunksRef.current;
+      for (const [k, c] of w.chunks) {
+        if (scanned.has(k)) continue;
+        rescanCropsChunk(w, c.cx, c.cz);
+        rescanSaplingsChunk(w, c.cx, c.cz);
+        scanned.add(k);
+      }
+      for (const k of scanned) {
+        if (!w.chunks.has(k)) scanned.delete(k);
+      }
+    }
     if (drained > 0 || w.generation !== lastGeneration.current) {
       lastGeneration.current = w.generation;
       setChunkList(Array.from(w.chunks.values()));

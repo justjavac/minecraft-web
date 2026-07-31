@@ -2,6 +2,7 @@
 
 import { spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop } from './items';
 import { addStackToSlots, type Slot } from './slots';
+import { registerWorldScope } from './worldScope';
 
 export const STORAGE_SIZE = 27;
 
@@ -100,3 +101,14 @@ export function dropStorageContents(key: string, x: number, y: number, z: number
   }
   storages.delete(key);
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：容器内容可快照/恢复（跨维度暂存 + 存档 dims 持久化）
+registerWorldScope<[string, Slot[]][]>({
+  name: 'storage',
+  clear: clearStorages,
+  snapshot: () => [...storages],
+  restore: (entries) => {
+    storages.clear();
+    for (const [k, v] of entries) storages.set(k, v);
+  },
+});
