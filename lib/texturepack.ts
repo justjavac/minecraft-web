@@ -40,7 +40,7 @@ const NAME_SET = new Set(TILE_NAMES.flatMap((t) => t.names));
 /** 13 张中至少识别到的张数，否则判定为不支持的包 */
 const MIN_FOUND = 10;
 
-/** tile 索引 → 规范 stem（与 matchTiles 的 TILE_NAMES 顺序一致；导入/旧存档迁移共用） */
+/** tile 索引 → 规范 stem（与 matchTiles 的 TILE_NAMES 顺序一致） */
 const STEM_BY_INDEX = TILE_NAMES.map((t) => t.names[0]);
 
 export function loadCustomPack(): CustomPack | null {
@@ -50,12 +50,6 @@ export function loadCustomPack(): CustomPack | null {
     if (!raw) return null;
     const p = JSON.parse(raw) as CustomPack;
     if (!p || typeof p.tilePx !== 'number' || !p.tiles) return null;
-    // 旧版按数字索引存储 → 迁移为 stem 键
-    if (Object.keys(p.tiles).every((k) => /^\d+$/.test(k))) {
-      p.tiles = Object.fromEntries(
-        Object.entries(p.tiles).map(([k, v]) => [STEM_BY_INDEX[Number(k)] ?? k, v]),
-      );
-    }
     return p;
   } catch {
     return null;

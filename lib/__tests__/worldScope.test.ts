@@ -55,7 +55,7 @@ describe('worldScope registry', () => {
     const chest = emptySlots();
     chest[0] = { kind: 'block', id: 1, count: 3 };
     storages.set('1,64,1', chest);
-    furnaces.set('2,64,2', { input: null, fuel: null, output: null, burnLeft: 0, progress: 0 });
+    furnaces.set('2,64,2', { input: null, fuel: null, output: null, burnLeft: 0, progress: 0, xp: 0 });
     brews.set('3,64,3', { ingredient: null, fuel: null, potions: [null, null, null], burnLeft: 0, progress: 0 });
     primedTnt.push({ id: 1, x: 0.5, y: 64, z: 0.5, vy: 0, fuse: 4 });
     activeBeacons.set('4,64,4', { x: 4, y: 64, z: 4, effect: 'speed' });

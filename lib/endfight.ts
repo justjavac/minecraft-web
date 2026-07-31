@@ -36,7 +36,7 @@ export function initEndFight(world: World): Promise<void> {
   }
   endCrystals.length = 0;
   if (dragonState.slain) {
-    spawnGateway(world); // 已屠龙：折跃门结构补齐（旧档/重进——同位置同方块，幂等）
+    spawnGateway(world); // 已屠龙：折跃门结构补齐（重进幂等——同位置同方块）
     return Promise.resolve();
   }
   for (const p of endPillars(world.seedHash)) {

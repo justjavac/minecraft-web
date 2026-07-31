@@ -114,8 +114,8 @@ export interface FurnaceState {
   burnLeft: number;
   /** 当前烧炼进度（秒） */
   progress: number;
-  /** 已累积的烧炼经验（小数，MC 炉内暂存；取出成品时结算整数部分，余数保留。可选字段，旧档缺省 0） */
-  xp?: number;
+  /** 已累积的烧炼经验（小数，MC 炉内暂存；取出成品时结算整数部分，余数保留） */
+  xp: number;
 }
 
 /** 世界内所有熔炉，key = "x,y,z" */
@@ -124,7 +124,7 @@ export const furnaces = new Map<string, FurnaceState>();
 export function getFurnace(key: string): FurnaceState {
   let f = furnaces.get(key);
   if (!f) {
-    f = { input: null, fuel: null, output: null, burnLeft: 0, progress: 0 };
+    f = { input: null, fuel: null, output: null, burnLeft: 0, progress: 0, xp: 0 };
     furnaces.set(key, f);
   }
   return f;

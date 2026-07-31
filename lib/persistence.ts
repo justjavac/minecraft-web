@@ -22,16 +22,16 @@ export interface PlayerPos {
 export interface SurvivalSnapshot {
   health: number;
   hunger: number;
-  /** MC 隐藏饱和度（可选，旧存档缺省回满） */
-  saturation?: number;
-  /** 经验总量（可选，旧存档缺省 0） */
-  xp?: number;
-  /** 热键栏 9 格（v2 槽位格式） */
+  /** MC 隐藏饱和度 */
+  saturation: number;
+  /** 经验总量 */
+  xp: number;
+  /** 热键栏 9 格 */
   slots: Slot[];
-  /** 主物品栏（背包）27 格（v5 新增，旧存档缺省为空） */
-  backpack?: Slot[];
-  /** 装备槽（v4 新增，旧存档缺省为空） */
-  armor?: ArmorSlots;
+  /** 主物品栏（背包）27 格 */
+  backpack: Slot[];
+  /** 装备槽 */
+  armor: ArmorSlots;
 }
 
 /** 维度键（与 lib/dimension.ts 的 Dimension 同构；此处内联避免循环依赖） */
@@ -39,7 +39,7 @@ export type DimKey = 'overworld' | 'nether' | 'end';
 
 export const DIM_KEYS: readonly DimKey[] = ['overworld', 'nether', 'end'];
 
-/** 单个维度的容器/站点状态（v8 起按维度隔离存储，修复跨维度存档互相覆盖） */
+/** 单个维度的容器/站点状态（按维度隔离存储，防跨维度存档互相覆盖） */
 export interface DimExtras {
   /** 该维度熔炉状态（"x,y,z" → 状态） */
   furnaces?: Record<string, FurnaceState>;
@@ -47,7 +47,7 @@ export interface DimExtras {
   brews?: Record<string, BrewState>;
   /** 该维度容器（箱子/木桶）内容（"x,y,z" → 27 格） */
   storages?: Record<string, Slot[]>;
-  /** 该维度已激活的信标（"x,y,z" → 激活态；v8 加法兼容，旧档缺省为无激活信标） */
+  /** 该维度已激活的信标（"x,y,z" → 激活态） */
   beacons?: Record<string, ActiveBeacon>;
 }
 
@@ -65,13 +65,13 @@ export interface SaveExtras {
   dimension?: DimKey;
   /** 生存数值快照（仅生存模式） */
   survival?: SurvivalSnapshot;
-  /** 按维度隔离的容器/熔炉/酿造台/激活信标状态（v8 新增；保存时必须三个维度齐全，任何维度都不丢） */
+  /** 按维度隔离的容器/熔炉/酿造台/激活信标状态（保存时必须三个维度齐全，任何维度都不丢） */
   dims?: Partial<Record<DimKey, DimExtras>>;
 }
 
 export interface WorldMeta extends SaveExtras {
   seed: string;
-  /** 存档格式版本，经 migrations 链逐级迁移到 SAVE_VERSION；无法迁移才清库（并明示用户） */
+  /** 存档格式版本：不等于 SAVE_VERSION 即清库（项目无存量用户，不维护迁移链），清库前明示用户 */
   version: number;
   updatedAt: number;
 }
@@ -95,51 +95,7 @@ function notifyPersistence(message: string): void {
   noticeHandler?.(message);
 }
 
-// ——— 版本迁移链 ———
-
-/** v7 及更早的单层容器字段（已按维度迁入 dims，仅迁移读取用） */
-interface LegacyContainerFields {
-  furnaces?: Record<string, FurnaceState>;
-  brews?: Record<string, BrewState>;
-  storages?: Record<string, Slot[]>;
-}
-
-/**
- * 逐级迁移链：键 = 源版本，值 = 升级到下一版本。
- * v5/v6 → v7：新增字段均为可选（背包 v5、饱和度/经验等），读档处已有缺省，仅需归一化版本号；
- * v7 → v8：单层容器字段按 meta.dimension 归属迁入 dims。
- * 版本过旧（无迁移路径）或来自更新版本时 migrateWorldMeta 返回 null（调用方清库并明示用户）。
- */
-const migrations: Record<number, (meta: WorldMeta & LegacyContainerFields) => WorldMeta> = {
-  5: (m) => ({ ...m, version: 6 }),
-  6: (m) => ({ ...m, version: 7 }),
-  7: (m) => {
-    const { furnaces, brews, storages, ...rest } = m;
-    const dim = m.dimension ?? 'overworld';
-    const legacy: DimExtras = {};
-    if (furnaces) legacy.furnaces = furnaces;
-    if (brews) legacy.brews = brews;
-    if (storages) legacy.storages = storages;
-    // 旧单层字段归属存档时的当前维度；与已有 dims 合并时旧字段优先（它是更贴近玩家的真实数据）
-    const dims =
-      Object.keys(legacy).length > 0 ? { ...m.dims, [dim]: { ...m.dims?.[dim], ...legacy } } : m.dims;
-    return { ...rest, version: 8, dims };
-  },
-};
-
-/** 纯函数：把旧版本 meta 逐级迁移到 SAVE_VERSION；无法迁移（过旧/来自更新版本/结构不合法）返回 null */
-export function migrateWorldMeta(raw: unknown): WorldMeta | null {
-  if (!raw || typeof raw !== 'object') return null;
-  let meta = raw as WorldMeta & LegacyContainerFields;
-  if (typeof meta.version !== 'number') return null;
-  if (meta.version > SAVE_VERSION) return null; // 来自更新版本的游戏，无向下兼容路径
-  while (meta.version < SAVE_VERSION) {
-    const step = migrations[meta.version];
-    if (!step) return null; // 过旧，无迁移路径
-    meta = { ...step(meta) } as WorldMeta & LegacyContainerFields;
-  }
-  return meta;
-}
+// ——— 版本与损坏校验 ———
 
 /** 读档后的浅校验：seed 类型、survival 槽位是否数组、dims 结构（损坏返回 false，走「明示损坏 + 清库」路径） */
 export function validateWorldMeta(meta: WorldMeta): boolean {
@@ -239,15 +195,15 @@ export async function loadWorldMeta(): Promise<WorldMeta | null> {
   const d = await db();
   const raw = (await d.get('meta', META_KEY)) as unknown;
   if (raw == null) return null;
-  const meta = migrateWorldMeta(raw);
-  if (!meta) {
-    // 无法迁移：版本过旧（无迁移路径）、来自更新版本、或结构根本不合法——明示用户后清库（不再静默丢档）
-    const version = (raw as { version?: unknown }).version;
+  const meta = raw as WorldMeta;
+  // 版本不符即清库（无存量用户，不做迁移）；过旧/来自更新版本/损坏分别给明示文案，不静默丢档
+  if (!meta || typeof meta !== 'object' || typeof meta.version !== 'number' || meta.version !== SAVE_VERSION) {
+    const version = (raw as { version?: unknown })?.version;
     const reason =
       typeof version === 'number' && version > SAVE_VERSION
         ? `存档由更新版本的游戏创建（v${version}），无法读取，已重置存档`
         : typeof version === 'number'
-          ? `存档版本过旧（v${version}），无法迁移到当前格式，已重置存档`
+          ? `存档版本（v${version}）与当前格式（v${SAVE_VERSION}）不符，已重置存档`
           : '存档数据损坏，无法读取，已重置存档';
     notifyPersistence(reason);
     await clearWorldStore();

@@ -139,11 +139,11 @@ describe('熔炉', () => {
     useGameStore.setState({ furnaceOpen: null });
   });
 
-  it('旧档兼容：无 xp 字段的炉状态取出成品不给经验、不报错', async () => {
+  it('从未烧炼（xp=0）的炉取出成品不给经验、不报错', async () => {
     const { useGameStore } = await import('../store');
     const f = getFurnace('11,11,11');
-    f.output = { item: `block:${STONE}`, count: 2 }; // 旧档直接有产出，从未累积 xp 字段
-    expect(f.xp).toBeUndefined();
+    f.output = { item: `block:${STONE}`, count: 2 };
+    expect(f.xp).toBe(0);
     useGameStore.setState({ worldMode: 'survival', furnaceOpen: '11,11,11', hotbarSlots: emptySlots(), xpTotal: 0 });
     useGameStore.getState().furnaceTakeOutput();
     expect(useGameStore.getState().xpTotal).toBe(0);

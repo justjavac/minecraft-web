@@ -1,4 +1,4 @@
-// 存档持久化：按维度隔离的容器状态（跨维度覆盖回归）、migration 链、损坏校验、写失败用户提示。
+// 存档持久化：按维度隔离的容器状态（跨维度覆盖回归）、版本/损坏校验、写失败用户提示。
 // IndexedDB 用内存 fake（vi.mock('idb')），persistence 模块每用例 fresh import（重置 dbPromise/提示节流等模块态）。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -79,7 +79,7 @@ describe('跨维度存档（任务 1 回归）', () => {
     const loaded = await p.loadWorldMeta();
     const stashed = { overworld: loaded!.dims!.overworld! };
     const netherLive = p.scopesToDimExtras({
-      furnace: [['5,60,5', { input: null, fuel: null, output: null, burnLeft: 0, progress: 0 }]],
+      furnace: [['5,60,5', { input: null, fuel: null, output: null, burnLeft: 0, progress: 0, xp: 0 }]],
     });
     const dims = p.mergeDims('nether', netherLive, stashed);
     await p.saveModifiedChunks(world, { dimension: 'nether', dims });
@@ -95,7 +95,7 @@ describe('跨维度存档（任务 1 回归）', () => {
     const dims = p.mergeDims(
       'overworld',
       { storages: { '1,1,1': chestWithStone() } },
-      { overworld: { furnaces: { '9,9,9': { input: null, fuel: null, output: null, burnLeft: 0, progress: 0 } } }, nether: {} },
+      { overworld: { furnaces: { '9,9,9': { input: null, fuel: null, output: null, burnLeft: 0, progress: 0, xp: 0 } } }, nether: {} },
     );
     expect(dims.overworld?.storages).toBeDefined();
     expect(dims.overworld?.furnaces).toBeUndefined(); // live 优先于暂存
@@ -135,40 +135,16 @@ describe('信标激活态持久化（任务 6）', () => {
   });
 });
 
-describe('migration 链与损坏校验（任务 2）', () => {
-  it('v7 旧格式：单层容器字段按 meta.dimension 迁入 dims', async () => {
-    const p = await freshPersistence();
-    const chest = chestWithStone();
-    h.stores.meta = new Map([
-      ['current', { seed: 's', version: 7, updatedAt: 0, dimension: 'nether', storages: { '1,64,1': chest } }],
-    ]);
-    const meta = await p.loadWorldMeta();
-    expect(meta?.version).toBe(8);
-    expect(meta?.dims?.nether?.storages?.['1,64,1']).toEqual(chest);
-    expect((meta as unknown as Record<string, unknown>).storages).toBeUndefined();
-  });
-
-  it('v5 旧档经 5→6→7→8 链式迁移（可选字段读档处缺省，归一化即可）', async () => {
-    const p = await freshPersistence();
-    h.stores.meta = new Map([
-      ['current', { seed: 's', version: 5, updatedAt: 0, survival: { health: 20, hunger: 20, slots: [] } }],
-    ]);
-    const meta = await p.loadWorldMeta();
-    expect(meta?.version).toBe(8);
-    expect(meta?.survival?.health).toBe(20);
-    // 未清库：meta 仍在
-    expect(h.stores.meta.get('current')).toBeDefined();
-  });
-
-  it('版本过旧（无迁移路径）：明示用户 + 清库，不静默丢档', async () => {
+describe('版本与损坏校验', () => {
+  it('旧版本存档：明示用户 + 清库，不静默丢档（无迁移链）', async () => {
     const p = await freshPersistence();
     const messages: string[] = [];
     p.setPersistenceNoticeHandler((m) => messages.push(m));
-    h.stores.meta = new Map([['current', { seed: 's', version: 4, updatedAt: 0 }]]);
+    h.stores.meta = new Map([['current', { seed: 's', version: 7, updatedAt: 0, dimension: 'nether', storages: { '1,64,1': chestWithStone() } }]]);
     h.stores.chunks = new Map([['0,0', new Uint16Array(1)]]);
     const meta = await p.loadWorldMeta();
     expect(meta).toBeNull();
-    expect(messages.some((m) => m.includes('过旧'))).toBe(true);
+    expect(messages.some((m) => m.includes('v7') && m.includes('不符'))).toBe(true);
     expect(h.stores.meta.size).toBe(0);
     expect(h.stores.chunks.size).toBe(0);
   });

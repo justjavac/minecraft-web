@@ -426,9 +426,9 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     // 烧炼经验：炉内按配方表累积小数 xp，取出成品时结算整数部分、余数留炉（MC；热键栏满取不出则不给）
     const taken = before - (f.output?.count ?? 0);
     if (taken > 0) {
-      const award = Math.floor(f.xp ?? 0);
+      const award = Math.floor(f.xp);
       if (award > 0) {
-        f.xp = (f.xp ?? 0) - award;
+        f.xp -= award;
         s.addXp(award);
       }
     }
@@ -741,9 +741,9 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       }
       f.output = before > take ? { item, count: before - take } : null;
       // 烧炼经验：取出成品时结算整数部分、余数留炉（同 furnaceTakeOutput）
-      const award = Math.floor(f.xp ?? 0);
+      const award = Math.floor(f.xp);
       if (award > 0) {
-        f.xp = (f.xp ?? 0) - award;
+        f.xp -= award;
         s.addXp(award);
       }
       set({ cursorSlot: nextCursor, guiTick: s.guiTick + 1 });
