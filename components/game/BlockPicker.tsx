@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { armorDef, type ArmorMaterial, type ArmorPiece } from '@/lib/armor';
 import { BLOCKS, type BlockCat, type BlockId } from '@/lib/blocks';
+import { MATERIAL_INFO } from '@/lib/materials';
 import { useGameStore } from '@/lib/store';
+import type { Slot } from '@/lib/slots';
+import { TOOLS, type ToolType } from '@/lib/tools';
 import { TileIcon } from './TileIcon';
 import { G, GuiSlot } from './McGui';
 
@@ -27,6 +31,35 @@ const PICKABLE: BlockId[] = BLOCKS.filter(
     (d.solid || d.fluid || d.shape === 'cross' || (d.shape === 'panel' && d.facing === 0)),
 ).map((d) => d.id);
 
+/** 创造物品栏「物品」页签内容（MC：创造物品栏含全部工具/武器/装备/材料食物） */
+interface CreativeItem {
+  name: string;
+  tile: number;
+  slot: Slot;
+}
+const CREATIVE_ITEMS: CreativeItem[] = [
+  // 工具与武器（满耐久）
+  ...(Object.keys(TOOLS) as ToolType[]).map((t) => ({
+    name: TOOLS[t].name,
+    tile: TOOLS[t].iconTile,
+    slot: { kind: 'tool' as const, tool: t, durability: TOOLS[t].durability },
+  })),
+  // 装备（皮革/金/铁/钻/下界合金 × 头/胸/腿/靴，满耐久）
+  ...(['leather', 'gold', 'iron', 'diamond', 'netherite'] as ArmorMaterial[]).flatMap((m) =>
+    (['helmet', 'chestplate', 'leggings', 'boots'] as ArmorPiece[]).map((piece) => ({
+      name: armorDef(m, piece).name,
+      tile: armorDef(m, piece).iconTile,
+      slot: { kind: 'armor' as const, piece, material: m, durability: armorDef(m, piece).durability },
+    })),
+  ),
+  // 材料/食物/杂项（满叠 64）
+  ...Object.entries(MATERIAL_INFO).map(([k, info]) => ({
+    name: info.name,
+    tile: info.tile,
+    slot: { kind: 'material' as const, material: k, count: 64 },
+  })),
+];
+
 /** tab_item_search.png 面板坐标（×2，面板 390x270） */
 const PANEL_W = 390;
 const PANEL_H = 270;
@@ -46,6 +79,7 @@ export function BlockPicker() {
   const hotbarSlots = useGameStore((s) => s.hotbarSlots);
   const setHotbarBlock = useGameStore((s) => s.setHotbarBlock);
   const setPickerOpen = useGameStore((s) => s.setPickerOpen);
+  const [mode, setMode] = useState<'blocks' | 'items'>('blocks');
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState<BlockCat | 'all'>('all');
   const [scrollRow, setScrollRow] = useState(0);
@@ -60,8 +94,13 @@ export function BlockPicker() {
       return true;
     });
   }, [query, cat]);
+  const itemList = useMemo(() => {
+    const q = query.trim();
+    return q ? CREATIVE_ITEMS.filter((it) => it.name.includes(q)) : CREATIVE_ITEMS;
+  }, [query]);
 
-  const totalRows = Math.ceil(list.length / COLS);
+  const activeLen = mode === 'blocks' ? list.length : itemList.length;
+  const totalRows = Math.ceil(activeLen / COLS);
   const maxRow = Math.max(0, totalRows - ROWS);
   const clampedRow = Math.min(scrollRow, maxRow);
 
@@ -89,6 +128,7 @@ export function BlockPicker() {
 
   if (!open) return null;
   const visible = list.slice(clampedRow * COLS, (clampedRow + ROWS) * COLS);
+  const visibleItems = itemList.slice(clampedRow * COLS, (clampedRow + ROWS) * COLS);
   /** 滚动条拇指：高度按可见比例、位置按滚动进度 */
   const thumbH = totalRows > 0 ? Math.max(24, (TRACK[3] * ROWS) / Math.max(ROWS, totalRows)) : TRACK[3];
   const thumbY = TRACK[1] + (maxRow > 0 ? ((TRACK[3] - thumbH) * clampedRow) / maxRow : 0);
@@ -96,17 +136,28 @@ export function BlockPicker() {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50" onClick={() => setPickerOpen(false)}>
       <div className="flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
-        {/* 分类页签（MC 创造物品栏顶部页签） */}
+        {/* 模式页签（方块 / 物品；MC 创造物品栏含全部物品） */}
         <div className="mb-1 flex gap-1">
-          {CATS.map((c) => (
+          {(['blocks', 'items'] as const).map((m) => (
             <button
-              key={c.key}
-              onClick={() => { setCat(c.key); setScrollRow(0); }}
-              className={`mc-btn mc-btn-sm ${cat === c.key ? 'outline outline-2 outline-white' : ''}`}
+              key={m}
+              onClick={() => { setMode(m); setScrollRow(0); }}
+              className={`mc-btn mc-btn-sm ${mode === m ? 'outline outline-2 outline-white' : ''}`}
             >
-              {c.name}
+              {m === 'blocks' ? '方块' : '物品'}
             </button>
           ))}
+          {mode === 'blocks' && <span className="mx-0.5" />}
+          {mode === 'blocks' &&
+            CATS.map((c) => (
+              <button
+                key={c.key}
+                onClick={() => { setCat(c.key); setScrollRow(0); }}
+                className={`mc-btn mc-btn-sm ${cat === c.key ? 'outline outline-2 outline-white' : ''}`}
+              >
+                {c.name}
+              </button>
+            ))}
         </div>
         {/* 面板：tab_item_search.png（512 原图左上 390x270） */}
         <div className="relative select-none overflow-hidden" style={{ width: PANEL_W, height: PANEL_H }}>
@@ -122,7 +173,7 @@ export function BlockPicker() {
             autoFocus
             value={query}
             onChange={(e) => { setQuery(e.target.value); setScrollRow(0); }}
-            placeholder="搜索方块"
+            placeholder={mode === 'blocks' ? '搜索方块' : '搜索物品'}
             className="absolute bg-transparent text-[13px] text-white placeholder-white/40 outline-none"
             style={{ left: SEARCH_BOX[0] + 4, top: SEARCH_BOX[1], width: SEARCH_BOX[2] - 8, height: SEARCH_BOX[3] }}
           />
@@ -132,23 +183,39 @@ export function BlockPicker() {
             className="absolute overflow-hidden"
             style={{ left: GRID_X, top: GRID_Y, width: COLS * G, height: ROWS * G }}
           >
-            {visible.map((id, i) => {
-              const d = BLOCKS[id];
-              return (
+            {mode === 'blocks' &&
+              visible.map((id, i) => {
+                const d = BLOCKS[id];
+                return (
+                  <button
+                    key={id}
+                    title={d.name}
+                    onClick={() => {
+                      setHotbarBlock(selectedSlot, id);
+                      setPickerOpen(false);
+                    }}
+                    className="absolute flex items-center justify-center hover:bg-white/25"
+                    style={{ left: (i % COLS) * G, top: Math.floor(i / COLS) * G, width: G, height: G }}
+                  >
+                    <TileIcon tile={d.side} size={30} />
+                  </button>
+                );
+              })}
+            {mode === 'items' &&
+              visibleItems.map((it, i) => (
                 <button
-                  key={id}
-                  title={d.name}
+                  key={it.name}
+                  title={it.name}
                   onClick={() => {
-                    setHotbarBlock(selectedSlot, id);
+                    useGameStore.getState().creativeGive(it.slot);
                     setPickerOpen(false);
                   }}
                   className="absolute flex items-center justify-center hover:bg-white/25"
                   style={{ left: (i % COLS) * G, top: Math.floor(i / COLS) * G, width: G, height: G }}
                 >
-                  <TileIcon tile={d.side} size={30} />
+                  <TileIcon tile={it.tile} size={30} />
                 </button>
-              );
-            })}
+              ))}
           </div>
           {/* 滚动条拇指（轨道由纹理提供；点击轨道翻页） */}
           {maxRow > 0 && (
@@ -176,7 +243,7 @@ export function BlockPicker() {
           />
         </div>
         <p className="mt-1 text-center text-xs text-white/70 [text-shadow:1px_1px_0_#000]">
-          点击方块放入热键栏第 {selectedSlot + 1} 格（共 {list.length} 种）· 滚轮翻页 · Esc / 点击空白处关闭
+          {mode === 'blocks' ? `点击方块放入热键栏第 ${selectedSlot + 1} 格（共 ${list.length} 种）` : `点击物品放入热键栏第 ${selectedSlot + 1} 格（共 ${itemList.length} 种）`} · 滚轮翻页 · Esc / 点击空白处关闭
         </p>
       </div>
     </div>

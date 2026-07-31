@@ -1,6 +1,6 @@
 // 工具定义：挖掘速度倍率、耐久、近战伤害（数值对齐 MC Java：木/石/铁/钻 2x/4x/6x/8x，金 12x 最快但耐久仅 32）
 
-import { tileIcon, tileOf } from './blocks';
+import { tileIcon } from './blocks';
 
 export type ToolKind = 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe' | 'bow' | 'shears' | 'fishing';
 export type ToolTier = 'wood' | 'stone' | 'iron' | 'diamond' | 'netherite';
@@ -27,43 +27,38 @@ export interface ToolDef {
   attackDamage: number;
   /** 攻击冷却秒（剑 MC 攻速 1.6；工具/拳头按 4 攻速） */
   attackCd: number;
-  /** 图标 tile（热键栏/掉落物显示用：木系用木板，石系用圆石，铁用铁块，钻用钻石块） */
+  /** 图标 tile（MC 原版工具贴图，经 tileIcon 注册进 atlas） */
   iconTile: number;
 }
 
-const PLANKS_TILE = tileOf('oak_planks');
-const COBBLE_TILE = tileOf('cobblestone');
-const IRON_TILE = tileOf('iron_block');
-const GOLD_TILE = tileOf('gold_block');
-const DIAMOND_TILE = tileOf('diamond_block');
 
 export const TOOLS: Record<ToolType, ToolDef> = {
-  wooden_pickaxe: { type: 'wooden_pickaxe', kind: 'pickaxe', tier: 'wood', name: '木镐', speed: 2, durability: 59, attackDamage: 2, attackCd: 0.25, iconTile: PLANKS_TILE },
-  stone_pickaxe: { type: 'stone_pickaxe', kind: 'pickaxe', tier: 'stone', name: '石镐', speed: 4, durability: 131, attackDamage: 3, attackCd: 0.25, iconTile: COBBLE_TILE },
-  iron_pickaxe: { type: 'iron_pickaxe', kind: 'pickaxe', tier: 'iron', name: '铁镐', speed: 6, durability: 250, attackDamage: 4, attackCd: 0.25, iconTile: IRON_TILE },
-  diamond_pickaxe: { type: 'diamond_pickaxe', kind: 'pickaxe', tier: 'diamond', name: '钻石镐', speed: 8, durability: 1561, attackDamage: 5, attackCd: 0.25, iconTile: DIAMOND_TILE },
+  wooden_pickaxe: { type: 'wooden_pickaxe', kind: 'pickaxe', tier: 'wood', name: '木镐', speed: 2, durability: 59, attackDamage: 2, attackCd: 0.25, iconTile: tileIcon('item/wooden_pickaxe') },
+  stone_pickaxe: { type: 'stone_pickaxe', kind: 'pickaxe', tier: 'stone', name: '石镐', speed: 4, durability: 131, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/stone_pickaxe') },
+  iron_pickaxe: { type: 'iron_pickaxe', kind: 'pickaxe', tier: 'iron', name: '铁镐', speed: 6, durability: 250, attackDamage: 4, attackCd: 0.25, iconTile: tileIcon('item/iron_pickaxe') },
+  diamond_pickaxe: { type: 'diamond_pickaxe', kind: 'pickaxe', tier: 'diamond', name: '钻石镐', speed: 8, durability: 1561, attackDamage: 5, attackCd: 0.25, iconTile: tileIcon('item/diamond_pickaxe') },
   // 下界合金（MC：锻造台钻石工具 + 合金锭升级；速度 9x、耐久 2031、伤害 +1，防火不烧）
   netherite_pickaxe: { type: 'netherite_pickaxe', kind: 'pickaxe', tier: 'netherite', name: '下界合金镐', speed: 9, durability: 2031, attackDamage: 6, attackCd: 0.25, iconTile: tileIcon('item/netherite_pickaxe') },
   // 金制（MC：速度 12 全游戏最快、耐久仅 32、攻击同木；采掘层级等同木——tier 字段即采掘层级，故取 'wood'）
-  golden_pickaxe: { type: 'golden_pickaxe', kind: 'pickaxe', tier: 'wood', name: '金镐', speed: 12, durability: 32, attackDamage: 2, attackCd: 0.25, iconTile: GOLD_TILE },
-  wooden_axe: { type: 'wooden_axe', kind: 'axe', tier: 'wood', name: '木斧', speed: 2, durability: 59, attackDamage: 3, attackCd: 0.25, iconTile: PLANKS_TILE },
-  stone_axe: { type: 'stone_axe', kind: 'axe', tier: 'stone', name: '石斧', speed: 4, durability: 131, attackDamage: 4, attackCd: 0.25, iconTile: COBBLE_TILE },
-  iron_axe: { type: 'iron_axe', kind: 'axe', tier: 'iron', name: '铁斧', speed: 6, durability: 250, attackDamage: 5, attackCd: 0.25, iconTile: IRON_TILE },
-  diamond_axe: { type: 'diamond_axe', kind: 'axe', tier: 'diamond', name: '钻石斧', speed: 8, durability: 1561, attackDamage: 6, attackCd: 0.25, iconTile: DIAMOND_TILE },
+  golden_pickaxe: { type: 'golden_pickaxe', kind: 'pickaxe', tier: 'wood', name: '金镐', speed: 12, durability: 32, attackDamage: 2, attackCd: 0.25, iconTile: tileIcon('item/golden_pickaxe') },
+  wooden_axe: { type: 'wooden_axe', kind: 'axe', tier: 'wood', name: '木斧', speed: 2, durability: 59, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/wooden_pickaxe') },
+  stone_axe: { type: 'stone_axe', kind: 'axe', tier: 'stone', name: '石斧', speed: 4, durability: 131, attackDamage: 4, attackCd: 0.25, iconTile: tileIcon('item/stone_pickaxe') },
+  iron_axe: { type: 'iron_axe', kind: 'axe', tier: 'iron', name: '铁斧', speed: 6, durability: 250, attackDamage: 5, attackCd: 0.25, iconTile: tileIcon('item/iron_pickaxe') },
+  diamond_axe: { type: 'diamond_axe', kind: 'axe', tier: 'diamond', name: '钻石斧', speed: 8, durability: 1561, attackDamage: 6, attackCd: 0.25, iconTile: tileIcon('item/diamond_pickaxe') },
   netherite_axe: { type: 'netherite_axe', kind: 'axe', tier: 'netherite', name: '下界合金斧', speed: 9, durability: 2031, attackDamage: 7, attackCd: 0.25, iconTile: tileIcon('item/netherite_axe') },
-  golden_axe: { type: 'golden_axe', kind: 'axe', tier: 'wood', name: '金斧', speed: 12, durability: 32, attackDamage: 3, attackCd: 0.25, iconTile: GOLD_TILE },
-  wooden_shovel: { type: 'wooden_shovel', kind: 'shovel', tier: 'wood', name: '木锹', speed: 2, durability: 59, attackDamage: 2, attackCd: 0.25, iconTile: PLANKS_TILE },
-  stone_shovel: { type: 'stone_shovel', kind: 'shovel', tier: 'stone', name: '石锹', speed: 4, durability: 131, attackDamage: 3, attackCd: 0.25, iconTile: COBBLE_TILE },
-  iron_shovel: { type: 'iron_shovel', kind: 'shovel', tier: 'iron', name: '铁锹', speed: 6, durability: 250, attackDamage: 3, attackCd: 0.25, iconTile: IRON_TILE },
-  diamond_shovel: { type: 'diamond_shovel', kind: 'shovel', tier: 'diamond', name: '钻石锹', speed: 8, durability: 1561, attackDamage: 4, attackCd: 0.25, iconTile: DIAMOND_TILE },
+  golden_axe: { type: 'golden_axe', kind: 'axe', tier: 'wood', name: '金斧', speed: 12, durability: 32, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/golden_pickaxe') },
+  wooden_shovel: { type: 'wooden_shovel', kind: 'shovel', tier: 'wood', name: '木锹', speed: 2, durability: 59, attackDamage: 2, attackCd: 0.25, iconTile: tileIcon('item/wooden_pickaxe') },
+  stone_shovel: { type: 'stone_shovel', kind: 'shovel', tier: 'stone', name: '石锹', speed: 4, durability: 131, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/stone_pickaxe') },
+  iron_shovel: { type: 'iron_shovel', kind: 'shovel', tier: 'iron', name: '铁锹', speed: 6, durability: 250, attackDamage: 3, attackCd: 0.25, iconTile: tileIcon('item/iron_pickaxe') },
+  diamond_shovel: { type: 'diamond_shovel', kind: 'shovel', tier: 'diamond', name: '钻石锹', speed: 8, durability: 1561, attackDamage: 4, attackCd: 0.25, iconTile: tileIcon('item/diamond_pickaxe') },
   netherite_shovel: { type: 'netherite_shovel', kind: 'shovel', tier: 'netherite', name: '下界合金锹', speed: 9, durability: 2031, attackDamage: 5, attackCd: 0.25, iconTile: tileIcon('item/netherite_shovel') },
-  golden_shovel: { type: 'golden_shovel', kind: 'shovel', tier: 'wood', name: '金锹', speed: 12, durability: 32, attackDamage: 2, attackCd: 0.25, iconTile: GOLD_TILE },
-  wooden_sword: { type: 'wooden_sword', kind: 'sword', tier: 'wood', name: '木剑', speed: 1, durability: 59, attackDamage: 4, attackCd: 0.625, iconTile: PLANKS_TILE },
-  stone_sword: { type: 'stone_sword', kind: 'sword', tier: 'stone', name: '石剑', speed: 1, durability: 131, attackDamage: 5, attackCd: 0.625, iconTile: COBBLE_TILE },
-  iron_sword: { type: 'iron_sword', kind: 'sword', tier: 'iron', name: '铁剑', speed: 1, durability: 250, attackDamage: 6, attackCd: 0.625, iconTile: IRON_TILE },
-  diamond_sword: { type: 'diamond_sword', kind: 'sword', tier: 'diamond', name: '钻石剑', speed: 1, durability: 1561, attackDamage: 7, attackCd: 0.625, iconTile: DIAMOND_TILE },
+  golden_shovel: { type: 'golden_shovel', kind: 'shovel', tier: 'wood', name: '金锹', speed: 12, durability: 32, attackDamage: 2, attackCd: 0.25, iconTile: tileIcon('item/golden_pickaxe') },
+  wooden_sword: { type: 'wooden_sword', kind: 'sword', tier: 'wood', name: '木剑', speed: 1, durability: 59, attackDamage: 4, attackCd: 0.625, iconTile: tileIcon('item/wooden_pickaxe') },
+  stone_sword: { type: 'stone_sword', kind: 'sword', tier: 'stone', name: '石剑', speed: 1, durability: 131, attackDamage: 5, attackCd: 0.625, iconTile: tileIcon('item/stone_pickaxe') },
+  iron_sword: { type: 'iron_sword', kind: 'sword', tier: 'iron', name: '铁剑', speed: 1, durability: 250, attackDamage: 6, attackCd: 0.625, iconTile: tileIcon('item/iron_pickaxe') },
+  diamond_sword: { type: 'diamond_sword', kind: 'sword', tier: 'diamond', name: '钻石剑', speed: 1, durability: 1561, attackDamage: 7, attackCd: 0.625, iconTile: tileIcon('item/diamond_pickaxe') },
   netherite_sword: { type: 'netherite_sword', kind: 'sword', tier: 'netherite', name: '下界合金剑', speed: 1, durability: 2031, attackDamage: 8, attackCd: 0.625, iconTile: tileIcon('item/netherite_sword') },
-  golden_sword: { type: 'golden_sword', kind: 'sword', tier: 'wood', name: '金剑', speed: 1, durability: 32, attackDamage: 4, attackCd: 0.625, iconTile: GOLD_TILE },
+  golden_sword: { type: 'golden_sword', kind: 'sword', tier: 'wood', name: '金剑', speed: 1, durability: 32, attackDamage: 4, attackCd: 0.625, iconTile: tileIcon('item/golden_pickaxe') },
   // 弓：远程武器（MC 耐久 384），射箭消耗箭矢，近战极弱
   bow: { type: 'bow', kind: 'bow', tier: 'wood', name: '弓', speed: 1, durability: 384, attackDamage: 1, attackCd: 0.5, iconTile: tileIcon('item/bow') },
   // 锄头：整地工具（草方块/泥土 → 耕地），挖掘无加成

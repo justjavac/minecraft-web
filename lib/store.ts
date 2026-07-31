@@ -59,7 +59,6 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   hotbarSlots: emptySlots(),
   mainSlots: emptyBackpack(),
   armorSlots: emptyArmorSlots(),
-  hotbarBlocks: [...HOTBAR_BLOCKS],
   notice: null,
   setNotice: (notice) => set({ notice }),
   touchMode:
@@ -72,7 +71,10 @@ export const useGameStore = create<GameStore>()((set, get) => ({
       hasLocked: false, spawnPoint: null, respawnPoint: null,
       worldMode, health: MAX_HEALTH, hunger: MAX_HUNGER, saturation: MAX_SATURATION, xpTotal: 0,
       dimension: 'overworld',
-      dead: false, hotbarSlots: emptySlots(), mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
+      dead: false,
+      // 创造模式热键栏给默认方块面板（hotbarSlots 与生存共用一套——创造可持工具/材料，MC 模型）；生存为空
+      hotbarSlots: worldMode === 'creative' ? HOTBAR_BLOCKS.map((id) => ({ kind: 'block' as const, id, count: 1 })) : emptySlots(),
+      mainSlots: emptyBackpack(), armorSlots: emptyArmorSlots(), craftingOpen: false, pickerOpen: false, furnaceOpen: null, brewingOpen: null, enchantOpen: null, tradeMob: null, storageOpen: null,
     });
   },
   continueGame: () =>
@@ -81,17 +83,23 @@ export const useGameStore = create<GameStore>()((set, get) => ({
   setSlot: (i) => set({ selectedSlot: i }),
   setHotbarBlock: (slot, id) =>
     set((s) => {
-      if (slot < 0 || slot >= s.hotbarBlocks.length) return s;
-      const hotbarBlocks = [...s.hotbarBlocks];
-      hotbarBlocks[slot] = id;
-      return { hotbarBlocks };
+      if (slot < 0 || slot >= s.hotbarSlots.length) return s;
+      const hotbarSlots = [...s.hotbarSlots];
+      hotbarSlots[slot] = { kind: 'block', id, count: 1 };
+      return { hotbarSlots };
+    }),
+  creativeGive: (slot) =>
+    set((s) => {
+      const hotbarSlots = [...s.hotbarSlots];
+      hotbarSlots[s.selectedSlot] = slot;
+      return { hotbarSlots };
     }),
   pickBlock: (id) => {
     const s = get();
     if (!BLOCKS[id]) return; // 空气/无效方块不选
     if (s.worldMode === 'creative') {
       // 创造：hotbar 已有该方块则切换过去（MC pick block 不重复占格），否则放入当前格
-      const bi = s.hotbarBlocks.findIndex((b) => b === id);
+      const bi = s.hotbarSlots.findIndex((sl) => sl?.kind === 'block' && sl.id === id);
       if (bi >= 0) s.setSlot(bi);
       else s.setHotbarBlock(s.selectedSlot, id);
       return;

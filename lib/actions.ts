@@ -684,7 +684,10 @@ export function tryPlace(): boolean {
     id = held?.kind === 'block' && held.count > 0 ? held.id : null;
     if (id === null) return false;
   } else {
-    id = s.hotbarBlocks[s.selectedSlot];
+    // 创造模式：手持方块才可放置（无限不消耗；持工具/材料时不可放，MC）
+    const held = s.hotbarSlots[s.selectedSlot];
+    id = held?.kind === 'block' ? held.id : null;
+    if (id === null) return false;
   }
   const def = BLOCKS[id];
   if (!def) return false;

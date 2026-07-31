@@ -123,8 +123,6 @@ export interface GameStore {
   tradeMob: number | null;
   /** 打开的容器（箱子/木桶）位置 key，null 未打开 */
   storageOpen: string | null;
-  /** 创造模式热键栏 9 格内容（选块界面可更换） */
-  hotbarBlocks: BlockId[];
   /** 创造选块界面开关 */
   pickerOpen: boolean;
   startNew: (seed: string, worldMode: WorldMode) => void;
@@ -132,6 +130,8 @@ export interface GameStore {
   backToMenu: () => void;
   setSlot: (i: number) => void;
   setHotbarBlock: (slot: number, id: BlockId) => void;
+  /** 创造模式把任意物品放入当前热键栏格（创造物品栏「物品」页签；满叠/满耐久） */
+  creativeGive: (slot: Slot) => void;
   /** 中键选块（MC pick block）：创造直接放入当前格；生存 hotbar 有则切换、背包有则换到当前格 */
   pickBlock: (id: BlockId) => void;
   setPickerOpen: (open: boolean) => void;

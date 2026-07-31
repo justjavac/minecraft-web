@@ -27,10 +27,9 @@ function intersectsPlayer(bx: number, by: number, bz: number): boolean {
   );
 }
 
-/** 当前要放置的方块 id（创造=热键栏内容；生存=选中槽位的方块，非方块则 -1） */
+/** 当前要放置的方块 id（创造/生存同一套槽位：选中方块则放置，非方块则 -1） */
 function placingId(): number {
   const s = useGameStore.getState();
-  if (s.worldMode === 'creative') return s.hotbarBlocks[s.selectedSlot];
   const slot = s.hotbarSlots[s.selectedSlot];
   return slot?.kind === 'block' ? slot.id : -1;
 }
