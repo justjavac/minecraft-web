@@ -746,7 +746,7 @@ function explode(
   playerPos: { x: number; y: number; z: number },
   onAttackPlayer: (damage: number) => void,
 ): void {
-  explodeAt(world, m.x, m.y, m.z, playerPos, onAttackPlayer, { radius: 3, maxDamage: 22, hurtRadius: 4.5 });
+  explodeAt(world, m.x, m.y, m.z, playerPos, onAttackPlayer, { radius: 3, maxDamage: 43, hurtRadius: 4.5 }); // MC 普通难度贴脸约 43——标志性秒杀怪
 }
 
 function tickArrows(
@@ -1658,7 +1658,10 @@ export function damageMob(mob: Mob, damage: number, attackerPos?: { x: number; z
   }
   // 末影龙：击杀结算（龙蛋 + 返回门激活，lib/endfight.ts）
   if (mob.type === 'ender_dragon' && world) dragonDeathHandler?.(world);
-  useGameStore.getState().addXp(mob.type === 'slime' ? 1 : (XP_MOB[mob.type] ?? 5)); // 小史莱姆 1（MC）；新物种未登记经验时按 5 兜底
+  // 经验只发玩家击杀（attackerPos 有值）；摔死/烧死/铁傀儡代打等环境击杀不发（MC 规则）
+  if (attackerPos) {
+    useGameStore.getState().addXp(mob.type === 'slime' ? 1 : (XP_MOB[mob.type] ?? 5)); // 小史莱姆 1（MC）；新物种未登记经验时按 5 兜底
+  }
   removeMob(mob);
   return true;
 }

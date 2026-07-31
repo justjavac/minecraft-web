@@ -12,11 +12,12 @@ import { TOOLS } from './tools';
  * - 徒手或工具类型不匹配：原 digTime（需镐方块即 MC 的 hardness×5 慢速惩罚）
  * - 急迫效果：每级 +30%（MC 急迫 I +20%，与本项目效率附魔同风格取 30%；信标 4 层 II 级 +60%）
  */
-export function effectiveDigTime(blockId: BlockId, held: Slot, haste: boolean | number): number {
+export function effectiveDigTime(blockId: BlockId, held: Slot, haste: boolean | number, underwater = false): number {
   const def = BLOCKS[blockId];
   const digTime = def?.digTime ?? 1;
   const hasteLvl = haste === true ? 1 : haste || 0;
-  let speedMul = 1 + 0.3 * hasteLvl;
+  // MC：头在水中挖掘 5 倍慢
+  let speedMul = (1 + 0.3 * hasteLvl) / (underwater ? 5 : 1);
   let matched = false;
   if (held?.kind === 'tool') {
     const tool = TOOLS[held.tool];

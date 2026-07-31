@@ -133,6 +133,9 @@ export function Player() {
   /** 岩浆灼烧累计（满 1 点扣 1 血） */
   const lavaAcc = useRef(0);
   const voidAcc = useRef(0);
+  /** 着火计时（离开岩浆后续烧，MC 约 15s）与着火 DoT 累计 */
+  const fireAcc = useRef(0);
+  const fireDmgAcc = useRef(0);
   const attackCd = useRef(0);
   /** 创造模式即时破坏的上次时间戳（200ms 冷却，防止按住左键每帧破一块） */
   const lastCreativeBreak = useRef(0);
@@ -547,8 +550,10 @@ export function Player() {
       },
     );
 
-    // 岩浆灼烧：接触即掉血（2 心/秒，抗火药水免疫），离开后清零计时
-    if (inLava && gs.worldMode === 'survival' && effects.fireRes <= 0) {      lavaAcc.current += dt * 4;
+    // 岩浆灼烧：接触即掉血（4 心/秒，MC；抗火药水免疫）；离开后再烧 ~15s（着火 1 点/秒，入水熄灭）
+    if (inLava && gs.worldMode === 'survival' && effects.fireRes <= 0) {
+      fireAcc.current = 15;
+      lavaAcc.current += dt * 8;
       const dmg = Math.floor(lavaAcc.current);
       // damagePlayer 在 500ms 受击无敌帧内返回 false：伤害被拒时不扣累计（否则 DoT 被无敌帧吞掉，实际 DPS 减半）
       if (dmg > 0 && gs.damagePlayer(dmg)) {
@@ -556,9 +561,18 @@ export function Player() {
       }
     } else {
       lavaAcc.current = 0;
+      if (inWater || gs.worldMode !== 'survival' || effects.fireRes > 0) {
+        fireAcc.current = 0;
+        fireDmgAcc.current = 0;
+      } else if (fireAcc.current > 0) {
+        fireAcc.current -= dt;
+        fireDmgAcc.current += dt;
+        const fd = Math.floor(fireDmgAcc.current);
+        if (fd > 0 && gs.damagePlayer(fd)) fireDmgAcc.current -= fd;
+      }
     }
-    // 虚空伤害：掉出世界底部持续掉血（MC y<-64；本世界 y<-16，2 点/秒——末地掉岛即此结局；MC 虚空伤害不吃护甲）
-    if (p.y < -16 && gs.worldMode === 'survival' && !gs.dead) {
+    // 虚空伤害：掉出世界底部持续掉血（MC y<-64；本世界 y<-16，2 点/秒——末地掉岛即此结局；MC 虚空伤害不吃护甲，创造同样致死）
+    if (p.y < -16 && !gs.dead) {
       voidAcc.current += dt * 2;
       const vd = Math.floor(voidAcc.current);
       if (vd > 0 && gs.damagePlayer(vd, { bypassArmor: true })) {
@@ -716,7 +730,7 @@ export function Player() {
           attackCd.current = tool?.attackCd ?? 0.25; // MC 拳头 4 攻速，剑 1.6
           // 击退：MC 近战命中本就有基础击退（怪会后退），击退附魔在此之上增强；原仅附魔才击退导致普通攻击打不动怪
           const kbEnch = held?.kind === 'tool' ? (held.ench?.knockback ?? 0) : 0;
-          damageMob(mob, (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? (held.ench?.sharpness ?? 0) * 0.5 : 0) + (effects.strength > 0 ? 2 * Math.max(effectLvls.strength, beaconTiers.get('strength') ?? 1) : 0), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0, world, kbEnch > 0 ? kbEnch : 0.3); // 拳头 1 点（半心），锋利 +0.5/级，力量药水 +2/级（II 级 +4），抢夺加掉落，击退附魔击退目标
+          damageMob(mob, (tool?.attackDamage ?? 1) + (held?.kind === 'tool' ? ((held.ench?.sharpness ?? 0) * 0.5 + ((held.ench?.sharpness ?? 0) > 0 ? 0.5 : 0)) : 0) + (effects.strength > 0 ? 3 * Math.max(effectLvls.strength, beaconTiers.get('strength') ?? 1) : 0), playerPosition, held?.kind === 'tool' ? (held.ench?.looting ?? 0) : 0, world, kbEnch > 0 ? kbEnch : 0.3); // 拳头 1 点（半心），锋利 +0.5×级+0.5（MC Java），力量药水 +3/级（MC），抢夺加掉落，击退附魔击退目标
           if (tool) gs.damageHeldTool(tool.kind === 'sword' ? 1 : 2); // MC：剑耗 1，工具作武器耗 2
           playSound('dig_choppy', 0.8);
           survivalStats.exhaustion += 0.1; // MC：攻击消耗
@@ -763,7 +777,7 @@ export function Player() {
           } else {
             // MC 挖掘时间：工具类型匹配时切硬度×1.5 基值（需镐方块 = digTime×0.3）再除工具倍率；效率附魔仅匹配生效（lib/dig.ts）
             const held = gs.hotbarSlots[gs.selectedSlot];
-            digState.progress += dt / effectiveDigTime(blockId, held, effects.haste > 0 ? (beaconTiers.get('haste') ?? 1) : 0);
+            digState.progress += dt / effectiveDigTime(blockId, held, effects.haste > 0 ? (beaconTiers.get('haste') ?? 1) : 0, headInWater);
             if (digState.progress >= 1) {
               breakBlock(world, bx, by, bz);
               if (gs.worldMode === 'survival') {

@@ -68,16 +68,22 @@ describe('三档体型与分裂', () => {
     expect(mobs.length).toBe(0);
   });
 
-  it('经验按档：大 4 / 中 2 / 小 1（MC）', () => {
+  it('经验按档：大 4 / 中 2 / 小 1（MC）；环境击杀不发经验（仅玩家击杀发）', () => {
     const w = setup();
+    const player = { x: 8.5, z: 8.5 };
     const big = makeSlime(8.5, 41, 8.5, 4);
     mobs.push(big);
-    damageMob(big, 999, undefined, 0, w);
+    damageMob(big, 999, player, 0, w);
     expect(useGameStore.getState().xpTotal).toBe(4);
     const small = makeSlime(8.5, 41, 8.5, 1);
     mobs.push(small);
-    damageMob(small, 999, undefined, 0, w);
+    damageMob(small, 999, player, 0, w);
     expect(useGameStore.getState().xpTotal).toBe(5); // +1
+    // 环境击杀（无 attackerPos，如摔死/烧死）：MC 不发经验
+    const mid = makeSlime(8.5, 41, 8.5, 2);
+    mobs.push(mid);
+    damageMob(mid, 999, undefined, 0, w);
+    expect(useGameStore.getState().xpTotal).toBe(5); // 不变
   });
 });
 
