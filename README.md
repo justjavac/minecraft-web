@@ -36,9 +36,7 @@ pnpm dev         # 打开 http://localhost:3000
 
 ## 部署
 
-**GitHub Pages（自动）**：push 到 `main` 即触发 `.github/workflows/deploy.yml`，
-以子路径 `NEXT_PUBLIC_BASE_PATH=/minecraft-web` 构建并部署到 `https://justjavac.github.io/minecraft-web/`。
-仓库需开启 Pages（Settings → Pages → Source 选 GitHub Actions）。
+**Vercel（自动）**：仓库已接入 Vercel，push 到 `main` 即自动构建部署。
 
 **自托管**：`pnpm build` 的静态产物在 `out/`，默认按根路径部署生成，直接丢到任意静态托管即可。
 若要部署到子路径（如 `https://example.com/games/mc/`），构建时注入 basePath 即可，
