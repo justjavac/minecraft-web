@@ -8,6 +8,7 @@ import { BLOCK_BY_KEY, BLOCKS } from './blocks';
 import { effects, type Effects } from './effects';
 import { type World } from './world';
 import { WORLD_HEIGHT } from './grid';
+import { registerWorldScope } from './worldScope';
 
 /** 可搭建金字塔的矿物块（MC：铁块/金块/钻石块/绿宝石块） */
 const PYRAMID_IDS = new Set(
@@ -66,7 +67,7 @@ export interface ActiveBeacon {
   effect: keyof Effects;
 }
 
-/** 已激活的信标：posKey → 所选效果（内存态；重进游戏金字塔仍在，右击重激活即可） */
+/** 已激活的信标：posKey → 所选效果（随维度暂存并经存档 dims.beacons 持久化，读档后仍激活、右击切换不再收费） */
 export const activeBeacons = new Map<string, ActiveBeacon>();
 
 /** 光柱渲染等监听激活表变更的版本号（React 订阅用） */
@@ -137,3 +138,14 @@ export function clearBeacons(): void {
   beaconTiers.clear();
   beaconVersion.v++;
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：激活的信标随维度暂存/恢复（防跨维度误删），并经 persistence dims.beacons 落盘
+registerWorldScope<[string, ActiveBeacon][]>({
+  name: 'beacon',
+  clear: clearBeacons,
+  snapshot: () => [...activeBeacons],
+  restore: (entries) => {
+    activeBeacons.clear();
+    for (const [k, v] of entries) activeBeacons.set(k, v);
+  },
+});

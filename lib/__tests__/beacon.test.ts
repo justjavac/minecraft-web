@@ -144,6 +144,27 @@ describe('范围生效', () => {
   });
 });
 
+describe('存档持久化', () => {
+  it('激活 → scope 快照经 dims 往返恢复 → 仍激活；右击切换效果不再收费', async () => {
+    const w = setup();
+    buildPyramid(w, 0, 60, 0, 1);
+    expect(interactBeacon(w, 0, 60, 0, 'iron_ingot').ok).toBe(true);
+    const { snapshotWorldScopes, restoreWorldScopes } = await import('../worldScope');
+    const { dimExtrasToScopes, scopesToDimExtras } = await import('../persistence');
+    // 模拟「存档 → 读档」：registry 快照 → dims 存档字段 → registry 快照
+    const saved = dimExtrasToScopes(scopesToDimExtras(snapshotWorldScopes()));
+    clearBeacons();
+    expect(activeBeacons.size).toBe(0);
+    restoreWorldScopes(saved);
+    expect(activeBeacons.size).toBe(1); // 读档后仍激活
+    // 已激活右击 = 循环切换效果，不再消耗矿物锭
+    const r = interactBeacon(w, 0, 60, 0, 'iron_ingot');
+    expect(r.ok).toBe(true);
+    expect(r.consume).toBeNull();
+    expect(activeBeacons.get('0,60,0')!.effect).toBe('haste');
+  });
+});
+
 describe('合成配方', () => {
   it('信标：玻璃×5 + 黑曜石×3 + 下界之星×1（MC）', () => {
     const r = RECIPES.find((r) => r.id === 'beacon');

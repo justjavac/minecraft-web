@@ -257,7 +257,7 @@ describe('树形库（与树苗生长共用）', () => {
 });
 
 describe('存档版本', () => {
-  it('SAVE_VERSION=7（凋灵头骨方块加入后 id 表变化，旧档自动清库重置）', () => {
-    expect(SAVE_VERSION).toBe(7);
+  it('SAVE_VERSION=8（容器/熔炉/酿造按维度隔离存储，旧档经 migration 链迁移而非直接清库）', () => {
+    expect(SAVE_VERSION).toBe(8);
   });
 });

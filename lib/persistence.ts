@@ -1,7 +1,8 @@
-// IndexedDB 存档：meta 表存种子/玩家位置/昼夜/模式/生存数值，chunks 表存被玩家修改过的 chunk 完整数据
+// IndexedDB 存档：meta 表存种子/玩家位置/昼夜/模式/生存数值/按维度隔离的容器状态，chunks 表存被玩家修改过的 chunk 完整数据
 
 import { openDB, type IDBPDatabase } from 'idb';
 import type { ArmorSlots } from './armor';
+import type { ActiveBeacon } from './beacon';
 import type { BrewState } from './brewing';
 import type { FurnaceState } from './furnace';
 import type { Slot } from './slots';
@@ -33,6 +34,23 @@ export interface SurvivalSnapshot {
   armor?: ArmorSlots;
 }
 
+/** 维度键（与 lib/dimension.ts 的 Dimension 同构；此处内联避免循环依赖） */
+export type DimKey = 'overworld' | 'nether' | 'end';
+
+export const DIM_KEYS: readonly DimKey[] = ['overworld', 'nether', 'end'];
+
+/** 单个维度的容器/站点状态（v8 起按维度隔离存储，修复跨维度存档互相覆盖） */
+export interface DimExtras {
+  /** 该维度熔炉状态（"x,y,z" → 状态） */
+  furnaces?: Record<string, FurnaceState>;
+  /** 该维度酿造台状态（"x,y,z" → 状态） */
+  brews?: Record<string, BrewState>;
+  /** 该维度容器（箱子/木桶）内容（"x,y,z" → 27 格） */
+  storages?: Record<string, Slot[]>;
+  /** 该维度已激活的信标（"x,y,z" → 激活态；v8 加法兼容，旧档缺省为无激活信标） */
+  beacons?: Record<string, ActiveBeacon>;
+}
+
 /** meta 的可选附加字段 */
 export interface SaveExtras {
   /** 上次保存时的玩家位置（继续游戏时回到这里） */
@@ -43,26 +61,152 @@ export interface SaveExtras {
   dayTime?: number;
   /** 世界模式：创造 / 生存 */
   mode?: WorldMode;
-  /** 当前维度（主世界 / 下界） */
-  dimension?: 'overworld' | 'nether' | 'end';
+  /** 当前维度（主世界 / 下界 / 末地） */
+  dimension?: DimKey;
   /** 生存数值快照（仅生存模式） */
   survival?: SurvivalSnapshot;
-  /** 世界内熔炉状态（"x,y,z" → 状态） */
-  furnaces?: Record<string, FurnaceState>;
-  /** 世界内酿造台状态（"x,y,z" → 状态） */
-  brews?: Record<string, BrewState>;
-  /** 世界内容器（箱子/木桶）内容（"x,y,z" → 27 格） */
-  storages?: Record<string, Slot[]>;
+  /** 按维度隔离的容器/熔炉/酿造台/激活信标状态（v8 新增；保存时必须三个维度齐全，任何维度都不丢） */
+  dims?: Partial<Record<DimKey, DimExtras>>;
 }
 
 export interface WorldMeta extends SaveExtras {
   seed: string;
-  /** 存档格式版本，与 SAVE_VERSION 不符则视为不兼容 */
+  /** 存档格式版本，经 migrations 链逐级迁移到 SAVE_VERSION；无法迁移才清库（并明示用户） */
   version: number;
   updatedAt: number;
 }
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
+
+// ——— 用户可见提示（persistence 不反向 import store，由外部经回调注入到 setNotice 通道） ———
+
+/** 用户可见提示回调（存档损坏/版本不兼容/写入失败等不能静默的问题） */
+export type PersistenceNoticeHandler = (message: string) => void;
+
+let noticeHandler: PersistenceNoticeHandler | null = null;
+
+/** 注册用户可见提示回调（store/World 注入 setNotice；传 null 解除） */
+export function setPersistenceNoticeHandler(fn: PersistenceNoticeHandler | null): void {
+  noticeHandler = fn;
+}
+
+function notifyPersistence(message: string): void {
+  console.warn(`[存档] ${message}`);
+  noticeHandler?.(message);
+}
+
+// ——— 版本迁移链 ———
+
+/** v7 及更早的单层容器字段（已按维度迁入 dims，仅迁移读取用） */
+interface LegacyContainerFields {
+  furnaces?: Record<string, FurnaceState>;
+  brews?: Record<string, BrewState>;
+  storages?: Record<string, Slot[]>;
+}
+
+/**
+ * 逐级迁移链：键 = 源版本，值 = 升级到下一版本。
+ * v5/v6 → v7：新增字段均为可选（背包 v5、饱和度/经验等），读档处已有缺省，仅需归一化版本号；
+ * v7 → v8：单层容器字段按 meta.dimension 归属迁入 dims。
+ * 版本过旧（无迁移路径）或来自更新版本时 migrateWorldMeta 返回 null（调用方清库并明示用户）。
+ */
+const migrations: Record<number, (meta: WorldMeta & LegacyContainerFields) => WorldMeta> = {
+  5: (m) => ({ ...m, version: 6 }),
+  6: (m) => ({ ...m, version: 7 }),
+  7: (m) => {
+    const { furnaces, brews, storages, ...rest } = m;
+    const dim = m.dimension ?? 'overworld';
+    const legacy: DimExtras = {};
+    if (furnaces) legacy.furnaces = furnaces;
+    if (brews) legacy.brews = brews;
+    if (storages) legacy.storages = storages;
+    // 旧单层字段归属存档时的当前维度；与已有 dims 合并时旧字段优先（它是更贴近玩家的真实数据）
+    const dims =
+      Object.keys(legacy).length > 0 ? { ...m.dims, [dim]: { ...m.dims?.[dim], ...legacy } } : m.dims;
+    return { ...rest, version: 8, dims };
+  },
+};
+
+/** 纯函数：把旧版本 meta 逐级迁移到 SAVE_VERSION；无法迁移（过旧/来自更新版本/结构不合法）返回 null */
+export function migrateWorldMeta(raw: unknown): WorldMeta | null {
+  if (!raw || typeof raw !== 'object') return null;
+  let meta = raw as WorldMeta & LegacyContainerFields;
+  if (typeof meta.version !== 'number') return null;
+  if (meta.version > SAVE_VERSION) return null; // 来自更新版本的游戏，无向下兼容路径
+  while (meta.version < SAVE_VERSION) {
+    const step = migrations[meta.version];
+    if (!step) return null; // 过旧，无迁移路径
+    meta = { ...step(meta) } as WorldMeta & LegacyContainerFields;
+  }
+  return meta;
+}
+
+/** 读档后的浅校验：seed 类型、survival 槽位是否数组、dims 结构（损坏返回 false，走「明示损坏 + 清库」路径） */
+export function validateWorldMeta(meta: WorldMeta): boolean {
+  if (typeof meta.seed !== 'string') return false;
+  if (meta.dayTime !== undefined && typeof meta.dayTime !== 'number') return false;
+  const sv = meta.survival;
+  if (sv !== undefined) {
+    if (!sv || typeof sv !== 'object') return false;
+    if (!Array.isArray(sv.slots)) return false;
+    if (sv.backpack !== undefined && !Array.isArray(sv.backpack)) return false;
+  }
+  if (meta.dims !== undefined) {
+    if (!meta.dims || typeof meta.dims !== 'object') return false;
+    for (const dim of Object.keys(meta.dims)) {
+      if (!DIM_KEYS.includes(dim as DimKey)) return false;
+      const de = meta.dims[dim as DimKey];
+      if (!de || typeof de !== 'object') return false;
+      if (de.storages !== undefined && (typeof de.storages !== 'object' || de.storages === null)) return false;
+      if (de.beacons !== undefined && (typeof de.beacons !== 'object' || de.beacons === null)) return false;
+    }
+  }
+  return true;
+}
+
+// ——— 维度化 extras 的收集与还原（scope 名与 lib/worldScope.ts 注册名对应：furnace/brewing/storage） ———
+
+/** 世界作用域 registry 快照 → 维度存档字段（空容器/空表不落字段，保持存档紧凑） */
+export function scopesToDimExtras(scopes: Record<string, unknown>): DimExtras {
+  const out: DimExtras = {};
+  const f = scopes.furnace;
+  if (Array.isArray(f) && f.length > 0) out.furnaces = Object.fromEntries(f as [string, FurnaceState][]);
+  const b = scopes.brewing;
+  if (Array.isArray(b) && b.length > 0) out.brews = Object.fromEntries(b as [string, BrewState][]);
+  const st = scopes.storage;
+  if (Array.isArray(st)) {
+    const nonEmpty = (st as [string, Slot[]][]).filter(([, slots]) => Array.isArray(slots) && slots.some((s) => s !== null));
+    if (nonEmpty.length > 0) out.storages = Object.fromEntries(nonEmpty);
+  }
+  const bc = scopes.beacon;
+  if (Array.isArray(bc) && bc.length > 0) out.beacons = Object.fromEntries(bc as [string, ActiveBeacon][]);
+  return out;
+}
+
+/** 维度存档字段 → registry 快照格式（restoreWorldScopes 直接消费；tnt 引信等纯运行时状态不落盘故不在此） */
+export function dimExtrasToScopes(dim: DimExtras | undefined): Record<string, unknown> {
+  const scopes: Record<string, unknown> = {};
+  if (!dim) return scopes;
+  if (dim.furnaces) scopes.furnace = Object.entries(dim.furnaces);
+  if (dim.brews) scopes.brewing = Object.entries(dim.brews);
+  if (dim.storages) scopes.storage = Object.entries(dim.storages);
+  if (dim.beacons) scopes.beacon = Object.entries(dim.beacons);
+  return scopes;
+}
+
+/** 合并出完整的 dims 字段：当前维度以 live 快照为准，其余维度以暂存为准——任何维度都不丢 */
+export function mergeDims(
+  currentDim: DimKey,
+  current: DimExtras,
+  stashed: Partial<Record<DimKey, DimExtras>>,
+): Partial<Record<DimKey, DimExtras>> {
+  const dims: Partial<Record<DimKey, DimExtras>> = {};
+  for (const dim of DIM_KEYS) {
+    const de = dim === currentDim ? current : stashed[dim];
+    if (de && (de.furnaces || de.brews || de.storages || de.beacons)) dims[dim] = de;
+  }
+  return dims;
+}
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -93,10 +237,24 @@ function db(): Promise<IDBPDatabase> {
 
 export async function loadWorldMeta(): Promise<WorldMeta | null> {
   const d = await db();
-  const meta = (await d.get('meta', META_KEY)) as WorldMeta | undefined;
-  if (!meta) return null;
-  if (meta.version !== SAVE_VERSION) {
-    // 存档格式不兼容：清库避免旧数据错套新方块表
+  const raw = (await d.get('meta', META_KEY)) as unknown;
+  if (raw == null) return null;
+  const meta = migrateWorldMeta(raw);
+  if (!meta) {
+    // 无法迁移：版本过旧（无迁移路径）、来自更新版本、或结构根本不合法——明示用户后清库（不再静默丢档）
+    const version = (raw as { version?: unknown }).version;
+    const reason =
+      typeof version === 'number' && version > SAVE_VERSION
+        ? `存档由更新版本的游戏创建（v${version}），无法读取，已重置存档`
+        : typeof version === 'number'
+          ? `存档版本过旧（v${version}），无法迁移到当前格式，已重置存档`
+          : '存档数据损坏，无法读取，已重置存档';
+    notifyPersistence(reason);
+    await clearWorldStore();
+    return null;
+  }
+  if (!validateWorldMeta(meta)) {
+    notifyPersistence('存档数据损坏，无法读取，已重置存档');
     await clearWorldStore();
     return null;
   }
@@ -162,7 +320,10 @@ export async function loadDragonSlain(seed: string): Promise<boolean> {
   }
 }
 
-/** 把世界里所有被修改过的 chunk 写入 IndexedDB 并清除标记；同时更新 meta（位置/时刻/模式/生存数值）。
+/** 连续写入失败只提示一次（autosave 每 5s 一次，不能刷屏）；恢复成功后重置，再次失败会再提示 */
+let saveErrorNotified = false;
+
+/** 把世界里所有被修改过的 chunk 写入 IndexedDB 并清除标记；同时更新 meta（位置/时刻/模式/生存数值/各维度容器状态）。
  * keyPrefix 用于下界存档隔离（下界 chunk 键加 'n:' 前缀） */
 export async function saveModifiedChunks(world: World, extras: SaveExtras = {}, keyPrefix = ''): Promise<void> {
   try {
@@ -178,7 +339,13 @@ export async function saveModifiedChunks(world: World, extras: SaveExtras = {}, 
       world.modifiedChunks.clear();
     }
     await saveWorldMeta(worldMeta(world.seed, extras));
+    saveErrorNotified = false; // 恢复成功：下次失败允许再次提示
   } catch (err) {
+    // 写失败不能静默：每段连续失败至少提示一次（经注入的 notice 通道），但不随 autosave 刷屏
+    if (!saveErrorNotified) {
+      saveErrorNotified = true;
+      notifyPersistence('存档写入失败：最近的进度可能不会被保存（请检查浏览器存储空间/权限）');
+    }
     console.warn('存档写入失败', err);
   }
 }
