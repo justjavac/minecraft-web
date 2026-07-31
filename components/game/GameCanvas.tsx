@@ -20,6 +20,7 @@ import { DayNight } from './DayNight';
 import { Rain } from './Rain';
 import { UnderwaterFX, skyFog } from './UnderwaterFX';
 import { RendererKindContext, type RendererKind } from './renderer-kind';
+import { loadingState } from '@/lib/game';
 import { useGameStore } from '@/lib/store';
 
 /** WebGPU 能力检测：无 API 或拿不到适配器则降级 WebGL */
@@ -45,16 +46,22 @@ export function GameCanvas() {
 
   useEffect(() => {
     let alive = true;
+    // 加载阶段上报给 LoadingOverlay：检测中 → 世界生成（世界进度走 debugInfo.chunks）
+    loadingState.phase = 'detect';
     void (async () => {
       // 渲染器选择在本会话生效一次；设置里切换在下次进入世界时才生效（避免中途重建丢进度）
       const k = useGameStore.getState().settings.renderer === 'webgpu' ? await detectKind() : 'webgl';
-      if (alive) setKind(k);
+      if (alive) {
+        loadingState.phase = 'world';
+        setKind(k);
+      }
     })();
     return () => {
       alive = false;
     };
   }, []);
 
+  // 检测期间渲染 null：page.tsx 的 LoadingOverlay 覆盖全程（worldReady 前一直在），按 loadingState.phase 显示「正在检测渲染器…」
   if (!kind) return null;
   const fog = skyFog(renderDistance);
   return (

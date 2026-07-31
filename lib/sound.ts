@@ -132,6 +132,46 @@ export function noteBlock(semitone: number, volume = 1): void {
   osc.stop(ac.currentTime + 0.6);
 }
 
+/** 单个振荡器音符：type/频率/起止时间/衰减（hurt/eat/levelup 的共用件，音量含全局设置与随机音高） */
+function blip(type: OscillatorType, freq: number, at: number, dur: number, volume: number, freqEnd?: number): void {
+  const ac = audioCtx();
+  if (!ac) return;
+  const p = 0.9 + Math.random() * 0.2; // 与 playSound 一致的随机音高，避免机械重复感
+  const osc = ac.createOscillator();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq * p, at);
+  if (freqEnd !== undefined) osc.frequency.exponentialRampToValueAtTime(freqEnd * p, at + dur);
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(useGameStore.getState().settings.volume * volume, at);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  osc.connect(gain);
+  gain.connect(ac.destination);
+  osc.start(at);
+  osc.stop(at + dur);
+}
+
+/** 受伤「咚」：三角波快速下滑短音（程序合成；public/sounds 无 hurt 素材）。音量克制，低于挖掘反馈 */
+export function hurtSound(volume = 0.5): void {
+  const ac = audioCtx();
+  if (!ac) return;
+  blip('triangle', 220, ac.currentTime, 0.18, volume, 90);
+}
+
+/** 进食「嚼」：三连短促方波脉冲（程序合成；public/sounds 无 eat 素材） */
+export function eatSound(volume = 0.4): void {
+  const ac = audioCtx();
+  if (!ac) return;
+  for (let i = 0; i < 3; i++) blip('square', 160 + i * 30, ac.currentTime + i * 0.09, 0.06, volume);
+}
+
+/** 升级「叮-叮-叮-叮」：C5 起上行琶音（程序合成，MC 升级钟声观感；public/sounds 无 levelup 素材） */
+export function levelupSound(volume = 0.5): void {
+  const ac = audioCtx();
+  if (!ac) return;
+  const semis = [12, 16, 19, 24]; // C5 E5 G5 C6
+  for (let i = 0; i < semis.length; i++) blip('sine', noteFreq(semis[i]), ac.currentTime + i * 0.1, 0.5, volume);
+}
+
 // 首次手势（点击/按键）时创建/恢复 AudioContext 并补做预载，减少第一次播放的延迟
 if (typeof window !== 'undefined') {
   const onGesture = () => {

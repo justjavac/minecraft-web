@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { STONE } from '../blocks';
-import { clearDrops, itemDrops, spawnBlockDrop, tickDrops } from '../items';
+import { STONE, DIRT } from '../blocks';
+import { clearDrops, itemDrops, spawnArmorDrop, spawnBlockDrop, spawnMaterialDrop, spawnToolDrop, tickDrops } from '../items';
 import { VOID_TERRAIN } from '../noise';
 import { World } from '../world';
 
@@ -63,5 +63,60 @@ describe('掉落物实体', () => {
     itemDrops[0].age = 299.9;
     tickDrops(w, 0.2, FAR_AWAY, () => false);
     expect(itemDrops.length).toBe(0);
+  });
+});
+
+describe('掉落物合并', () => {
+  beforeEach(() => clearDrops());
+
+  it('1 格内同种方块掉落合并 count', () => {
+    spawnBlockDrop(STONE, 0.5, 10.5, 0.5, 3);
+    spawnBlockDrop(STONE, 1.0, 10.5, 0.5, 2);
+    expect(itemDrops.length).toBe(1);
+    expect(itemDrops[0].count).toBe(5);
+  });
+
+  it('同种材料掉落同样合并', () => {
+    spawnMaterialDrop('wheat', 0.5, 10.5, 0.5, 2);
+    spawnMaterialDrop('wheat', 0.5, 11.0, 0.5, 1);
+    expect(itemDrops.length).toBe(1);
+    expect(itemDrops[0].count).toBe(3);
+  });
+
+  it('超过合并半径不合并', () => {
+    spawnBlockDrop(STONE, 0.5, 10.5, 0.5, 3);
+    spawnBlockDrop(STONE, 2.5, 10.5, 0.5, 2);
+    expect(itemDrops.length).toBe(2);
+  });
+
+  it('不同种掉落不合并', () => {
+    spawnBlockDrop(STONE, 0.5, 10.5, 0.5, 3);
+    spawnBlockDrop(DIRT, 0.5, 10.5, 0.5, 2);
+    spawnMaterialDrop('wheat_seeds', 0.5, 10.5, 0.5, 1);
+    expect(itemDrops.length).toBe(3);
+  });
+
+  it('堆叠上限 64：超出部分生成新实体', () => {
+    spawnBlockDrop(STONE, 0.5, 10.5, 0.5, 60);
+    spawnBlockDrop(STONE, 0.5, 10.5, 0.5, 10);
+    expect(itemDrops.length).toBe(2);
+    expect(itemDrops[0].count).toBe(64);
+    expect(itemDrops[1].count).toBe(6);
+  });
+
+  it('合并保留被并入堆的原年龄（Java：不刷新消失计时，防止合并续命）', () => {
+    spawnBlockDrop(STONE, 0.5, 10.5, 0.5, 1);
+    itemDrops[0].age = 100;
+    spawnBlockDrop(STONE, 0.5, 10.5, 0.5, 1);
+    expect(itemDrops.length).toBe(1);
+    expect(itemDrops[0].age).toBe(100);
+  });
+
+  it('工具/装备有个体差异（耐久/附魔），不合并', () => {
+    spawnToolDrop('wooden_pickaxe', 0.5, 10.5, 0.5, 30);
+    spawnToolDrop('wooden_pickaxe', 0.5, 10.5, 0.5, 58);
+    spawnArmorDrop('chestplate', 0.5, 10.5, 0.5, 80, 'iron');
+    spawnArmorDrop('chestplate', 0.5, 10.5, 0.5, 240, 'iron');
+    expect(itemDrops.length).toBe(4);
   });
 });

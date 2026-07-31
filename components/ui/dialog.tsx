@@ -63,7 +63,7 @@ function DialogContent({
             data-slot="dialog-close"
             className="absolute top-2 right-2 h-7 w-7 cursor-pointer bg-[url('/textures/gui/widget/cross_button.png')] bg-cover [image-rendering:pixelated] hover:bg-[url('/textures/gui/widget/cross_button_highlighted.png')]"
           >
-            <span className="sr-only">Close</span>
+            <span className="sr-only">关闭</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>

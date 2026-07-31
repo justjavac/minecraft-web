@@ -118,7 +118,9 @@ describe('柱状植物（仙人掌/甘蔗/竹子）', () => {
     breakBlock(w, 4, 32, 4);
     expect(w.getBlock(4, 33, 4)).toBe(AIR);
     const cactusDrops = itemDrops.filter((d) => d.drop.kind === 'block' && d.drop.blockId === K('cactus'));
-    expect(cactusDrops.length).toBe(2); // 中段 + 上段
+    // 中段 + 上段落点相距 1 格，按 MC 同类合并规则并成一堆（count 2）
+    expect(cactusDrops.length).toBe(1);
+    expect(cactusDrops[0].count).toBe(2);
   });
 
   it('随机刻下仙人掌会拔节', () => {

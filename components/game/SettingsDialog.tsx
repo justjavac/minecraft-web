@@ -43,7 +43,7 @@ function SettingRow({ label, display, min, max, step, value, onChange }: Setting
   );
 }
 
-/** 设置弹窗：音量 / FOV / 渲染距离 / 灵敏度 / 自动跳跃 / 云 / 粒子 / 渲染器 / 贴图包，改动即时生效并存 localStorage */
+/** 设置弹窗：音量 / FOV / 渲染距离 / 灵敏度（鼠标+触屏独立） / 反转 Y / 自动跳跃 / 云 / 粒子 / 渲染器 / 贴图包，改动即时生效并存 localStorage */
 export function SettingsDialog() {
   const settings = useGameStore((s) => s.settings);
   const updateSettings = useGameStore((s) => s.updateSettings);
@@ -114,6 +114,35 @@ export function SettingsDialog() {
             value={settings.sensitivity}
             onChange={(sensitivity) => updateSettings({ sensitivity })}
           />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="whitespace-nowrap">反转 Y 轴</Label>
+              <span className="text-sm text-white/60">鼠标与触屏视角均生效</span>
+            </div>
+            <div className="flex gap-2">
+              {[false, true].map((v) => (
+                <McButton
+                  key={String(v)}
+                  className={`flex-1 ${settings.invertY === v ? 'outline outline-2 outline-white' : ''}`}
+                  onClick={() => updateSettings({ invertY: v })}
+                >
+                  {v ? '开' : '关'}
+                </McButton>
+              ))}
+            </div>
+          </div>
+          <div>
+            <SettingRow
+              label="触屏灵敏度"
+              display={`×${settings.touchSensitivity.toFixed(1)}`}
+              min={0.5}
+              max={2}
+              step={0.1}
+              value={settings.touchSensitivity}
+              onChange={(touchSensitivity) => updateSettings({ touchSensitivity })}
+            />
+            <p className="mt-1 text-xs text-white/60">仅触屏拖动视角生效；鼠标用上面的「视角灵敏度」</p>
+          </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="whitespace-nowrap">自动跳跃</Label>

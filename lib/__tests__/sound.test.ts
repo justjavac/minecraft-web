@@ -1,7 +1,7 @@
 // 音符盒合成音：音高函数（C4 基准、八度倍频、半音等比）与无手势环境静默安全
 
 import { describe, expect, it } from 'vitest';
-import { noteBlock, noteFreq } from '../sound';
+import { eatSound, hurtSound, levelupSound, noteBlock, noteFreq } from '../sound';
 
 describe('音符盒音高', () => {
   it('C4=261.63Hz 基准；12 半音翻倍（C5），24 半音四倍（C6）', () => {
@@ -19,5 +19,13 @@ describe('音符盒音高', () => {
   it('无 AudioContext（无用户手势/非浏览器）时静默不抛错', () => {
     expect(() => noteBlock(0)).not.toThrow();
     expect(() => noteBlock(23)).not.toThrow();
+  });
+});
+
+describe('受伤/进食/升级合成音效', () => {
+  it('无 AudioContext（无用户手势/非浏览器）时静默不抛错', () => {
+    expect(() => hurtSound()).not.toThrow();
+    expect(() => eatSound()).not.toThrow();
+    expect(() => levelupSound()).not.toThrow();
   });
 });

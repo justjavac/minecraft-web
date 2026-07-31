@@ -21,6 +21,23 @@ const SPLASHES = [
   '小心苦力怕！',
 ];
 
+/** 主菜单提示条（存档过旧/损坏等来自 store.notice），2.5s 自动消失，与 Hud 的 Notice 同生命周期 */
+function MenuNotice() {
+  const notice = useGameStore((s) => s.notice);
+  const setNotice = useGameStore((s) => s.setNotice);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 2500);
+    return () => clearTimeout(timer);
+  }, [notice, setNotice]);
+  if (!notice) return null;
+  return (
+    <div className="absolute left-1/2 top-6 z-10 -translate-x-1/2 rounded bg-black/70 px-3 py-1.5 text-sm text-yellow-200 shadow [text-shadow:1px_1px_0_#000]">
+      {notice}
+    </div>
+  );
+}
+
 /** 主菜单（对齐 MC Java）：全景轮播背景 + 标题/标语 + MC 按钮列 */
 export function MainMenu() {
   const [seed, setSeed] = useState(() => randomSeed());
@@ -44,6 +61,9 @@ export function MainMenu() {
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden">
       {/* 泥土平铺背景（MC Java 创建世界/选项界面同款） */}
       <div aria-hidden className="mc-dirt pointer-events-none absolute inset-0" />
+
+      {/* 存档提示（过旧/损坏等） */}
+      <MenuNotice />
 
       {/* 标题 + 黄色标语 */}
       <div className="relative mb-8 text-center">

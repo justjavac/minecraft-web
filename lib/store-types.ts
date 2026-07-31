@@ -39,10 +39,14 @@ export interface Settings {
   volume: number;
   /** 视野角度 60..110 */
   fov: number;
-  /** 渲染距离（chunk 半径）2..8 */
+  /** 渲染距离（chunk 半径）2..8；桌面默认 6，移动端/低端设备首次启动默认 4（见 store-settings） */
   renderDistance: number;
-  /** 视角灵敏度倍率 0.5..2 */
+  /** 视角灵敏度倍率 0.5..2（鼠标） */
   sensitivity: number;
+  /** 触屏视角灵敏度倍率 0.5..2（仅触屏拖动生效，与鼠标灵敏度独立） */
+  touchSensitivity: number;
+  /** 反转 Y 轴（鼠标与触屏视角均生效） */
+  invertY: boolean;
   /** 渲染器：WebGPU（默认，不支持自动降级 WebGL）/ WebGL */
   renderer: 'webgl' | 'webgpu';
   /** 自动跳跃（MC 辅助功能）：着地行走自动跨上 1 格台阶 */
@@ -58,6 +62,8 @@ export const DEFAULT_SETTINGS: Settings = {
   fov: 75,
   renderDistance: 6,
   sensitivity: 1,
+  touchSensitivity: 1,
+  invertY: false,
   renderer: 'webgpu',
   autoJump: true,
   clouds: true,
@@ -102,6 +108,8 @@ export interface GameStore {
   /** MC 隐藏饱和度：先于饥饿消耗，满饥饿且有饱和度时快速回血 */
   saturation: number;
   dead: boolean;
+  /** 死亡地点（死亡界面显示坐标，重生或新开/读档时清空） */
+  deathPos: { x: number; y: number; z: number } | null;
   /** 最近一次实际受伤时间戳（HUD 红屏闪烁） */
   lastDamageAt: number;
   /** 生存模式热键栏 9 格（方块堆叠 / 材料 / 工具 / 装备） */

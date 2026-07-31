@@ -1,17 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { BLOCKS } from '@/lib/blocks';
-import { bossState, debugInfo, survivalStats } from '@/lib/game';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { attackState, bossState, debugInfo, survivalStats } from '@/lib/game';
 import { clearMobs } from '@/lib/mobs';
 import { anyPanelOpen, MAX_HEALTH, MAX_HUNGER, MAX_SATURATION, useGameStore } from '@/lib/store';
 import { effects, clearEffects } from '@/lib/effects';
 import { levelFromXp } from '@/lib/xp';
 import { loadWorldMeta, type WorldMeta } from '@/lib/persistence';
-import { armorDefOf, armorPoints } from '@/lib/armor';
-import { materialName, materialTile } from '@/lib/materials';
-import { TOOLS } from '@/lib/tools';
+import { armorPoints } from '@/lib/armor';
 import type { Slot } from '@/lib/slots';
+import { slotDurabilityPct, slotName, slotTile } from './slotDisplay';
 import { McButton } from './McButton';
 import { TouchControls } from './TouchControls';
 import { SettingsDialog } from './SettingsDialog';
@@ -35,7 +33,11 @@ function Notice() {
   }, [notice, setNotice]);
   if (!notice) return null;
   return (
-    <div className="absolute left-1/2 top-[18%] -translate-x-1/2 rounded bg-black/60 px-3 py-1.5 text-sm text-white shadow">
+    <div
+      role="status"
+      aria-live="polite"
+      className="absolute left-1/2 top-[18%] -translate-x-1/2 rounded bg-black/60 px-3 py-1.5 text-sm text-white shadow"
+    >
       {notice}
     </div>
   );
@@ -72,37 +74,28 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
       className="pointer-events-none absolute -inset-1 z-10 h-[calc(100%+8px)] w-[calc(100%+8px)] select-none [image-rendering:pixelated]"
     />
   ) : null;
+  // a11y：格子可聚焦，Enter/Space 触发选择（数字键选择在全局键盘处理里，不受影响）
+  const ariaLabel = slot
+    ? `物品栏 ${index + 1}：${slotName(slot)}${(slot.kind === 'block' || slot.kind === 'material') && slot.count > 1 ? ` ×${slot.count}` : ''}`
+    : `物品栏 ${index + 1}：空`;
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
   if (!slot) {
     return (
-      <div onClick={onClick} className={cls}>
+      <div role="button" tabIndex={0} aria-label={ariaLabel} onKeyDown={onKeyDown} onClick={onClick} className={cls}>
         {selBox}
       </div>
     );
   }
-  const tile =
-    slot.kind === 'block'
-      ? BLOCKS[slot.id].side
-      : slot.kind === 'material'
-        ? materialTile(slot.material)
-        : slot.kind === 'tool'
-          ? TOOLS[slot.tool].iconTile
-          : armorDefOf(slot).iconTile;
-  const title =
-    slot.kind === 'block'
-      ? BLOCKS[slot.id].name
-      : slot.kind === 'material'
-        ? materialName(slot.material)
-        : slot.kind === 'tool'
-          ? TOOLS[slot.tool].name
-          : armorDefOf(slot).name;
-  const durabilityPct =
-    slot.kind === 'tool'
-      ? slot.durability / TOOLS[slot.tool].durability
-      : slot.kind === 'armor'
-        ? slot.durability / armorDefOf(slot).durability
-        : null;
+  const tile = slotTile(slot);
+  const title = slotName(slot);
+  const durabilityPct = slotDurabilityPct(slot);
   return (
-    <div title={title} onClick={onClick} className={cls}>
+    <div title={title} role="button" tabIndex={0} aria-label={ariaLabel} onKeyDown={onKeyDown} onClick={onClick} className={cls}>
       {selBox}
       <TileIcon tile={tile} size={26} />
       <span className="absolute left-0.5 top-0 text-[10px] leading-3 text-white/70">{index + 1}</span>
@@ -119,6 +112,24 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/** 攻击冷却蓄力条（MC 1.9 Java 风格：准星下方小横条，冷却走满即隐藏）；50ms 轮询运行时单例，不进 React 状态 */
+function AttackIndicator() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 50);
+    return () => clearInterval(t);
+  }, []);
+  const p = attackState.progress;
+  if (p >= 1) return null; // 冷却走满：隐藏（MC 满时全亮/不显示）
+  return (
+    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-3.5 mix-blend-difference">
+      <div className="h-[3px] w-6 bg-black/60">
+        <div className="h-full bg-white" style={{ width: `${Math.min(1, p) * 100}%` }} />
+      </div>
     </div>
   );
 }
@@ -202,9 +213,39 @@ function SurvivalBars() {
   );
 }
 
+/** 竖屏触屏提示条：建议横屏游玩（仅触屏 + 竖屏显示，可关闭，不持久化） */
+function PortraitHint() {
+  const [portrait, setPortrait] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: portrait)');
+    const update = () => setPortrait(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  if (!portrait || dismissed) return null;
+  return (
+    <div
+      className="pointer-events-auto absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded bg-black/70 px-3 py-1.5 text-xs text-white"
+      style={{ top: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
+    >
+      <span>建议横屏游玩，体验更佳</span>
+      <button
+        aria-label="关闭提示"
+        className="flex h-6 w-6 items-center justify-center rounded bg-white/15"
+        onClick={() => setDismissed(true)}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 /** 死亡遮罩（对齐 MC Java 死亡界面：暗红渐变 + 大标题 + 按钮）；重生回出生点并清空怪物（物品已掉落在死亡点）；末地死亡回主世界（MC 规则） */
 function DeathOverlay() {
   const backToMenu = useGameStore((s) => s.backToMenu);
+  const deathPos = useGameStore((s) => s.deathPos);
   const respawn = () => {
     const s = useGameStore.getState();
     s.setHealth(MAX_HEALTH);
@@ -220,6 +261,13 @@ function DeathOverlay() {
   return (
     <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-center bg-gradient-to-b from-red-900/70 via-red-950/60 to-black/70">
       <h2 className="mb-8 text-4xl font-bold text-white [text-shadow:3px_3px_0_#3f3f3f]">你死了！</h2>
+      {deathPos && (
+        <p className="-mt-4 mb-6 text-center text-sm leading-6 text-white/90 [text-shadow:1px_1px_0_#000]">
+          死亡地点：{deathPos.x}, {deathPos.y}, {deathPos.z}
+          <br />
+          物品掉落在死亡点附近
+        </p>
+      )}
       <div className="flex w-72 flex-col gap-2">
         <McButton onClick={respawn}>重生</McButton>
         <McButton onClick={backToMenu}>标题画面</McButton>
@@ -342,15 +390,7 @@ export function Hud() {
 
   // 当前选中项名称（创造/生存同一套槽位：方块/材料/工具/装备）
   const heldSlot = hotbarSlots[selectedSlot];
-  const selectedName = !heldSlot
-    ? '空手'
-    : heldSlot.kind === 'block'
-      ? BLOCKS[heldSlot.id].name
-      : heldSlot.kind === 'material'
-        ? materialName(heldSlot.material)
-        : heldSlot.kind === 'tool'
-          ? TOOLS[heldSlot.tool].name
-          : armorDefOf(heldSlot).name;
+  const selectedName = heldSlot ? slotName(heldSlot) : '空手';
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 select-none">
@@ -359,8 +399,14 @@ export function Hud() {
         +
       </div>
 
+      {/* 攻击冷却蓄力条（MC 1.9，准星下方） */}
+      {!dead && <AttackIndicator />}
+
       {/* Boss 血条 */}
       <BossBar />
+
+      {/* 竖屏触屏提示（建议横屏） */}
+      {touchMode && <PortraitHint />}
 
       <Notice />
 
@@ -384,7 +430,7 @@ export function Hud() {
           <div className="mt-1 text-center">
             <button
               onClick={() => useGameStore.getState().setPickerOpen(true)}
-              className="rounded bg-black/50 px-2 py-0.5 text-xs text-white/80 hover:bg-black/70"
+              className={`rounded bg-black/50 text-white/80 hover:bg-black/70 ${touchMode ? 'px-4 py-2.5 text-sm' : 'px-2 py-0.5 text-xs'}`}
             >
               选块 (E)
             </button>
@@ -393,7 +439,7 @@ export function Hud() {
           <div className="mt-1 text-center">
             <button
               onClick={() => setCraftingOpen(true, false)}
-              className="rounded bg-black/50 px-2 py-0.5 text-xs text-white/80 hover:bg-black/70"
+              className={`rounded bg-black/50 text-white/80 hover:bg-black/70 ${touchMode ? 'px-4 py-2.5 text-sm' : 'px-2 py-0.5 text-xs'}`}
             >
               合成 (E)
             </button>

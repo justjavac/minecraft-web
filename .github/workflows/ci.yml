@@ -26,5 +26,18 @@ jobs:
 
       - run: pnpm test
 
+      # .next/cache 缓存（key 含 OS + lockfile hash + next 版本；前缀兜底）
+      - name: Get Next.js version
+        id: next-version
+        run: echo "version=$(node -p 'require("./package.json").dependencies.next')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ steps.next-version.outputs.version }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ steps.next-version.outputs.version }}-
+            ${{ runner.os }}-nextjs-
+
       # 静态导出 + 类型检查（产物为纯静态站点，无外部网络依赖）
       - run: pnpm build

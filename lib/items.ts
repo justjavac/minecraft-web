@@ -5,6 +5,7 @@ import type { ArmorMaterial, ArmorPiece } from './armor';
 import type { ToolType } from './tools';
 import type { World } from './world';
 import type { EnchMap } from './xp';
+import { registerWorldScope } from './worldScope';
 
 export type DropKind =
   | { kind: 'block'; blockId: BlockId }
@@ -35,11 +36,37 @@ const PICKUP_DELAY = 0.5; // MC：掉落 0.5 秒后才能拾取
 const PICKUP_RANGE = 1.25;
 const LIFETIME = 300; // MC：5 分钟消失
 const MAX_DROPS = 256;
+/** 同种掉落物合并半径（MC 观感：落点相近的同种掉落并成一堆） */
+const MERGE_RADIUS = 1;
+/** 合并堆叠上限（与背包一致） */
+const MAX_STACK = 64;
 
 let nextId = 1;
 
+/** 可合并掉落的身份键：仅方块/材料（工具/装备有耐久/附魔个体差异，一律不合并） */
+function mergeKeyOf(drop: DropKind): string | null {
+  if (drop.kind === 'block') return `b:${drop.blockId}`;
+  if (drop.kind === 'material') return `m:${drop.material}`;
+  return null;
+}
 
 function spawn(drop: DropKind, x: number, y: number, z: number, count: number, durability?: number, ench?: EnchMap): void {
+  const mk = mergeKeyOf(drop);
+  if (mk) {
+    // 附近同种掉落并入现存堆（不超过 64）；Java：合并保留被并入堆的原年龄，不刷新消失计时
+    for (const d of itemDrops) {
+      if (count <= 0) break;
+      if (d.count >= MAX_STACK || mergeKeyOf(d.drop) !== mk) continue;
+      const dx = d.x - x;
+      const dy = d.y - y;
+      const dz = d.z - z;
+      if (dx * dx + dy * dy + dz * dz > MERGE_RADIUS * MERGE_RADIUS) continue;
+      const take = Math.min(MAX_STACK - d.count, count);
+      d.count += take;
+      count -= take;
+    }
+    if (count <= 0) return;
+  }
   if (itemDrops.length >= MAX_DROPS) itemDrops.shift(); // 超上限丢弃最旧的
   itemDrops.push({ id: nextId++, drop, count, durability, ench, x, y, z, velY: 2, age: 0 });
 }
@@ -108,3 +135,6 @@ export function tickDrops(
     }
   }
 }
+
+// 世界作用域自注册（lib/worldScope.ts）：掉落物随世界清理
+registerWorldScope({ name: 'items', clear: clearDrops });
