@@ -1,7 +1,7 @@
 // 放置与破坏动作：鼠标（Player）与触屏按钮（TouchControls）共用
 
 import { Vector3 } from 'three';
-import { AIR, BLOCKS, BLOCK_BY_KEY, CRAFTING_TABLE, DIRT, FURNACE, GRASS, isColumnPlantId, WHEAT_CROP_0, type BlockId } from './blocks';
+import { AIR, BLOCKS, BLOCK_BY_KEY, CRAFTING_TABLE, DIRT, FURNACE, GRASS, isColumnPlantId, isWaterId, tileOf, WHEAT_CROP_0, type BlockId } from './blocks';
 import { dropFurnaceContents, FOODS } from './furnace';
 import { dropBrewingContents, POTIONS } from './brewing';
 import { effects, effectLvls } from './effects';
@@ -766,6 +766,17 @@ export function tryPlace(): boolean {
     // 火把点在方块侧面：转墙上火把（朝向 = 墙面外法线）
     const wallKey = fx === 1 ? 'torch_wall_e' : fx === -1 ? 'torch_wall_w' : fz === 1 ? 'torch_wall_s' : 'torch_wall_n';
     id = BLOCK_BY_KEY[wallKey].id;
+  }
+  // MC 维度规则：下界放水瞬间蒸发（不消耗）；湿海绵在下界被烤成干海绵
+  if (world.terrain.kind === 'nether') {
+    if (isWaterId(id)) {
+      s.setNotice('水在这里蒸发了…');
+      breakParticles.push({ x: px, y: py, z: pz, tile: tileOf('water_still') });
+      playSound('dig_glass', 0.6); // 嘶——（蒸发音效简化）
+      lastPlace = now;
+      return false;
+    }
+    if (id === BLOCK_BY_KEY.wet_sponge.id) id = BLOCK_BY_KEY.sponge.id;
   }
   // 校验全部通过：扣减并放置
   if (s.worldMode === 'survival' && s.consumeSelectedBlock() === null) return false;
