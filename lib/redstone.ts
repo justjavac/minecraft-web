@@ -8,11 +8,18 @@
 //
 // 红石火把反相（NOT 门，MC）：下方附着块被充能（邻接电源/带电粉/弱充能块）时火把熄灭停止供电，失去充能复亮；
 // 翻转经 pendingRecompute 下一 tick 生效，等价 MC 的火把延迟。火把不充能自己坐着的支撑块（否则自锁）。
+//
+// QC 半连接性（quasi-connectivity，MC Java）：活塞除常规 6 邻供电判定外，把上方一格 (x,y+1,z) 当作门位置
+// 再做一次供电判定——对角上方 / 正上方两格的电源也算供能。QC 供能时不立即动作（BUD 态），等活塞收到
+// 邻近方块更新（变动格与活塞 6 邻接，notifyRedstone 触发局部重算）才补推出；常规供电仍即时动作。
+// （简化：QC 断能后的收回不做 BUD 延迟，随重算即时收回——激活侧 BUD 是玩家主要利用方向。）
+//
+// 粘性活塞 1-tick 短脉冲（MC Java）：供电结束距供电开始 ≤1 红石刻（0.1s）时，收回不拉回方块（留在推到位）。
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, type BlockId } from './blocks';
 import { playerPosition } from './game';
 import { mobs } from './mobs';
-import { cleanupOrphanHeads, FACING_VEC, isExtended, isPistonId, retract, tryExtend } from './pistons';
+import { cleanupOrphanHeads, FACING_VEC, isExtended, isPistonId, isStickyPistonId, retract, tryExtend } from './pistons';
 import { noteBlock } from './sound';
 import { igniteTnt } from './tnt';
 import { type World } from './world';
@@ -167,6 +174,9 @@ export function dustPowerAt(x: number, y: number, z: number): number {
 
 const R = 17; // 元件反应扫描半径（粉最远传 15 格）
 
+/** 粘性活塞供电起始时刻（simTime 秒）：断供时据此判定 1-tick 短脉冲（≤1 红石刻收回不拉回方块，MC Java） */
+const pistonOnAt = new Map<string, number>();
+
 let applying = false; // 反应回写防重入
 
 /** 以 (cx,cy,cz) 为中心局部重算粉网络并应用元件反应 */
@@ -298,9 +308,25 @@ function recompute(world: World, cx: number, cy: number, cz: number): void {
             reacts.push(() => noteBlock(semi));
           }
         } else if (isPistonId(id)) {
-          // 活塞：供能推出、断能收回（粘性拉回）
-          if (on && !isExtended(world, x, y, z)) reacts.push(() => tryExtend(world, x, y, z));
-          else if (!on && isExtended(world, x, y, z)) reacts.push(() => retract(world, x, y, z));
+          // 活塞：供能推出、断能收回（粘性拉回）。
+          // QC 半连接性（MC Java）：上方一格 (x,y+1,z) 按门位置做供电判定；QC 供能时只在收到
+          // 邻近方块更新（本次重算的变动格与活塞 6 邻接，含活塞自身被放置）才动作（BUD 态），常规供电即时动作
+          const k = key(x, y, z);
+          const qc = poweredAt(x, y + 1, z);
+          const updated = Math.abs(x - cx) + Math.abs(y - cy) + Math.abs(z - cz) <= 1;
+          if ((on || qc) && !isExtended(world, x, y, z)) {
+            if (on || updated) {
+              pistonOnAt.set(k, simTime);
+              reacts.push(() => tryExtend(world, x, y, z));
+            }
+          } else if (!on && !qc && isExtended(world, x, y, z)) {
+            // 粘性活塞 1-tick 短脉冲：供电时长 ≤1 红石刻（0.1s，+0.05s 帧调度裕量）时收回不拉回方块（MC Java）；
+            // 同一时刻内供断（delta=0，如同帧拉杆开关）不算短脉冲，正常拉回
+            const started = pistonOnAt.get(k);
+            pistonOnAt.delete(k);
+            const shortPulse = isStickyPistonId(id) && started !== undefined && started < simTime && simTime - started <= 0.15;
+            reacts.push(() => retract(world, x, y, z, shortPulse));
+          }
         } else if (isRepeaterIdInternal(id)) {
           // 中继器：输入（背向）状态变化 → 按延迟档调度翻转（tickRedstone 结算）
           const f = BLOCKS[id].facing ?? 0;
@@ -398,9 +424,16 @@ export function notifyRedstone(world: World, x: number, y: number, z: number, ol
     observers.set(k, world.getBlock(x + dx, y + dy, z + dz));
   }
   if (applying) return; // 反应回写不再触发（状态已是目标态）
-  // 触发重算：电源/粉/元件变动；或本格贴着电源（实心块进出可能改变弱充能指向）
+  // 触发重算：电源/粉/元件变动；或本格贴着电源（实心块进出可能改变弱充能指向）；
+  // 或本格贴着活塞（方块更新可能触发 QC/BUD 激活，MC Java；未加载 chunk 方向跳过，不隐式生成）
   const nearSource = DIRS.some(([dx, dy, dz]) => sources.has(key(x + dx, y + dy, z + dz)));
-  if (isSourceId(oldId) || isSourceId(newId) || wasSource || oldId === DUST() || newId === DUST() || isConsumerId(oldId) || isConsumerId(newId) || nearSource) {
+  const nearPiston = DIRS.some(([dx, dy, dz]) => {
+    const nx = x + dx;
+    const nz = z + dz;
+    if (!world.chunks.has(chunkKey(nx >> 4, nz >> 4))) return false;
+    return isPistonId(world.getBlock(nx, y + dy, nz));
+  });
+  if (isSourceId(oldId) || isSourceId(newId) || wasSource || oldId === DUST() || newId === DUST() || isConsumerId(oldId) || isConsumerId(newId) || nearSource || nearPiston) {
     recompute(world, x, y, z);
   }
 }
@@ -469,6 +502,7 @@ export function clearRedstone(): void {
   activePlates.clear();
   noteStates.clear();
   notePitches.clear();
+  pistonOnAt.clear();
 }
 
 // ——— 电源重扫：换维度/读档后从已加载 chunk 重建登记表 ———

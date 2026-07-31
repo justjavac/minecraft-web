@@ -69,8 +69,9 @@ export function tryExtend(world: World, x: number, y: number, z: number): void {
   world.setBlock(x + dx, y + dy, z + dz, HEAD());
 }
 
-/** 断能收回：移除活塞头；粘性活塞把头部前方的块拉回（MC 粘性规则） */
-export function retract(world: World, x: number, y: number, z: number): void {
+/** 断能收回：移除活塞头；粘性活塞把头部前方的块拉回（MC 粘性规则）。
+ *  leavePulled：粘性活塞 1-tick 短脉冲（供电 ≤1 红石刻）收回时不拉回方块——块留在推到位（MC Java） */
+export function retract(world: World, x: number, y: number, z: number, leavePulled = false): void {
   const def = BLOCKS[world.getBlock(x, y, z)];
   const sticky = isStickyPistonId(world.getBlock(x, y, z));
   const f = def?.facing ?? 4;
@@ -80,7 +81,7 @@ export function retract(world: World, x: number, y: number, z: number): void {
   const hz = z + dz;
   if (world.getBlock(hx, hy, hz) !== HEAD()) return;
   world.setBlock(hx, hy, hz, AIR);
-  if (!sticky) return;
+  if (!sticky || leavePulled) return;
   // 粘性：把再前一格的块拉到头部原位置（只拉固体，MC 一致）
   const pulled = world.getBlock(hx + dx, hy + dy, hz + dz);
   if (pulled === AIR || immovable(pulled)) return;
