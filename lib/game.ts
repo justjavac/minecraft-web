@@ -74,8 +74,8 @@ export function dayFactorAt(t: number): number {
 /** 受击无敌帧（伤害冷却），damagePlayer 判定用；负无穷表示从未受伤 */
 export const hurtState = { lastAt: Number.NEGATIVE_INFINITY };
 
-/** 生存模式消耗度（MC exhaustion）：满 4 消耗 1 点饱和度/饥饿 */
-export const survivalStats = { exhaustion: 0, wither: 0 };
+/** 生存模式消耗度（MC exhaustion）：满 4 消耗 1 点饱和度/饥饿；wither 凋零 DoT 剩余秒；air 氧气剩余秒（HUD 气泡条，Player 每帧镜像自 survivalMem） */
+export const survivalStats = { exhaustion: 0, wither: 0, air: 15 };
 
 /** 每帧一次的准星射线结果：Player 计算，BlockHighlight / PlacePreview / 挖掘共用 */
 export const targetBlock: { hit: RaycastHit | null } = { hit: null };

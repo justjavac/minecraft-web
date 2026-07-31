@@ -123,6 +123,27 @@ function SurvivalCell({ index, slot, active, onClick }: { index: number; slot: S
   );
 }
 
+/** 氧气气泡条（MC：头入水时显示在饥饿行上方；剩余 <15s 才显示，气泡随剩余秒数逐个变空，快耗尽时最后几个爆泡） */
+function AirBubbles() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 200);
+    return () => clearInterval(t);
+  }, []);
+  const air = survivalStats.air;
+  if (air >= 15) return null; // 满氧气不显示（MC）
+  // 10 个气泡：每格 1.5s（氧气共 15s）；剩余 3s 内用爆泡图标（MC 气泡破裂动画的简化）
+  return (
+    <div className="flex justify-end">
+      {Array.from({ length: 10 }, (_, i) => {
+        const threshold = (i + 1) * 1.5;
+        const state = air >= threshold ? 'air' : air >= threshold - 3 ? 'air_bursting' : 'air_empty';
+        return <img key={i} src={`/textures/gui/hud/${state}.png`} alt="" draggable={false} className="h-[18px] w-[18px] select-none drop-shadow [image-rendering:pixelated]" />;
+      })}
+    </div>
+  );
+}
+
 /** 生存模式护甲 + 血条 + 饥饿条（护甲条在上，与 MC 一致；置于热键栏簇内最上方） */
 function SurvivalBars() {
   const health = useGameStore((s) => s.health);
@@ -172,6 +193,7 @@ function SurvivalBars() {
           </div>
         );
       })()}
+      <AirBubbles />
       <div className="flex justify-between">
         <Meter value={health} kind="heart" />
         <Meter value={hunger} kind="food" />

@@ -551,6 +551,7 @@ export function Player() {
         setSaturation: gs.setSaturation,
       },
     );
+    survivalStats.air = survivalMem.current.air; // 镜像给 HUD 气泡条（氧气 15s，见 lib/survival.ts）
 
     // 岩浆灼烧：接触即掉血（4 心/秒，MC；抗火药水免疫）；离开后再烧 ~15s（着火 1 点/秒，入水熄灭）
     if (inLava && gs.worldMode === 'survival' && effects.fireRes <= 0) {
