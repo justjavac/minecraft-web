@@ -3,9 +3,12 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import {
+  AdditiveBlending,
+  BoxGeometry,
   CanvasTexture,
   Color,
   DoubleSide,
+  Mesh,
   MeshBasicMaterial,
   NearestFilter,
   Object3D,
@@ -14,13 +17,14 @@ import {
   type AmbientLight,
   type DirectionalLight,
   type Fog,
+  type Group,
   type Material,
-  type Mesh,
   type Sprite,
   type SpriteMaterial,
 } from 'three';
 import { isLavaId, isWaterId } from '@/lib/blocks';
-import { atmosphere, debugInfo, getActiveWorld, worldClock } from '@/lib/game';
+import { atmosphere, debugInfo, getActiveWorld, playerPosition, worldClock } from '@/lib/game';
+import { bolts, BOLT_TTL, tickLightning } from '@/lib/lightning';
 import { mulberry32, smoothstep } from '@/lib/noise';
 import { useGameStore } from '@/lib/store';
 import { getAtlasMaterials, tickWaterTexture } from '@/lib/textures';
@@ -85,6 +89,41 @@ function makeCloudTexture(): CanvasTexture {
   return tex;
 }
 
+/** 闪电 bolt 共享资源（模块级，同本文件 sky/sunDir 惯例：避免 hook 内可变值争议） */
+const boltGeom = new BoxGeometry(0.22, 1, 0.22);
+const boltMat = new MeshBasicMaterial({ color: '#f4f8ff', transparent: true, blending: AdditiveBlending, depthWrite: false, fog: false });
+const boltSegDir = new Vector3();
+const boltUp = new Vector3(0, 1, 0);
+
+/** 闪电 bolt 渲染：白色竖直分段折线（细长方体段，加法混合），存活 ~0.2s 淡出；数据来自 lib/lightning.ts */
+function LightningBolts() {
+  const groupRef = useRef<Group>(null);
+  useFrame(() => {
+    const g = groupRef.current;
+    if (!g) return;
+    g.clear();
+    let strongest = 0;
+    for (const bolt of bolts) {
+      strongest = Math.max(strongest, bolt.ttl);
+      for (let i = 0; i < bolt.points.length - 1; i++) {
+        const a = bolt.points[i];
+        const b = bolt.points[i + 1];
+        boltSegDir.set(b.x - a.x, b.y - a.y, b.z - a.z);
+        const len = boltSegDir.length();
+        if (len < 0.01) continue;
+        const seg = new Mesh(boltGeom, boltMat);
+        seg.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+        seg.scale.set(1, len, 1);
+        seg.quaternion.setFromUnitVectors(boltUp, boltSegDir.normalize());
+        g.add(seg);
+      }
+    }
+    g.visible = bolts.length > 0;
+    boltMat.opacity = Math.min(1, (strongest / BOLT_TTL) * 1.2);
+  });
+  return <group ref={groupRef} />;
+}
+
 /** 昼夜循环：太阳/月亮轨道、云层漂移、光照与雾色随时间渐变 */
 export function DayNight() {
   const sunRef = useRef<Sprite>(null);
@@ -115,7 +154,17 @@ export function DayNight() {
     const dt = Math.min(delta, 0.05);
     tickWaterTexture(performance.now());
     // 昼夜时钟由 lib/sim.ts 的统一模拟循环推进（game.ts 共享 worldClock，随存档持久化；暂停时冻结）；这里只读 t 做视觉
-    if (!useGameStore.getState().paused) tickWeather(weather, delta);
+    if (!useGameStore.getState().paused) {
+      tickWeather(weather, delta);
+      // 闪电实体（雷暴落雷）：与天气同处推进（sim.ts 收口之外的既有天气入口），命中/雷声/ bolt 生命周期一并结算
+      const w = getActiveWorld();
+      if (w) {
+        tickLightning(w, delta, playerPosition, (dmg) => {
+          const s = useGameStore.getState();
+          if (s.worldMode === 'survival' && !s.dead) s.damagePlayer(dmg);
+        });
+      }
+    }
     const t = worldClock.t;
     const a = t * Math.PI * 2;
     const elevation = Math.sin(a);
@@ -213,6 +262,7 @@ export function DayNight() {
       <ambientLight ref={ambRef} intensity={0.8} />
       <directionalLight ref={dirRef} position={[80, 120, 60]} intensity={1.0} />
       <primitive object={lightTarget} />
+      <LightningBolts />
       {mats && (
         <>
           <sprite ref={sunRef} material={mats.sun as unknown as SpriteMaterial} scale={[BODY_SIZE, BODY_SIZE, 1]} />

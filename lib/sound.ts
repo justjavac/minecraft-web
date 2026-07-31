@@ -173,6 +173,38 @@ export function levelupSound(volume = 0.5): void {
   for (let i = 0; i < semis.length; i++) blip('sine', noteFreq(semis[i]), ac.currentTime + i * 0.1, 0.5, volume);
 }
 
+/** 雷声：低频棕噪声轰隆 + 两次回滚滚雷，低通随时间收紧（程序合成，MC 远雷观感）。
+ *  volume 由调用方按落点距离折算（lightning.ts：近 1.0 远 0.15，超出可闻距离只闪不炸） */
+export function thunder(volume = 1): void {
+  const ac = audioCtx();
+  if (!ac) return;
+  const dur = 3.2;
+  const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * dur), ac.sampleRate);
+  const data = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < data.length; i++) {
+    const t = i / data.length;
+    // 棕噪声（低频轰鸣）；包络 = 主轰隆快衰减 + 两次高斯回滚（滚雷）
+    const white = Math.random() * 2 - 1;
+    last = (last + 0.02 * white) / 1.02;
+    const envelope = Math.pow(1 - t, 1.6) + 0.5 * Math.exp(-(((t - 0.35) * 6) ** 2)) + 0.3 * Math.exp(-(((t - 0.65) * 7) ** 2));
+    data[i] = last * 8 * envelope;
+  }
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const lp = ac.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(320, ac.currentTime);
+  lp.frequency.exponentialRampToValueAtTime(70, ac.currentTime + dur);
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(useGameStore.getState().settings.volume * volume, ac.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+  src.connect(lp);
+  lp.connect(gain);
+  gain.connect(ac.destination);
+  src.start();
+}
+
 // 首次手势（点击/按键）时创建/恢复 AudioContext 并补做预载，减少第一次播放的延迟
 if (typeof window !== 'undefined') {
   const onGesture = () => {

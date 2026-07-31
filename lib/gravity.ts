@@ -1,6 +1,8 @@
 // 重力方块（MC）：沙子/沙砾/混凝土粉末/铁砧/龙蛋在失去支撑时下落，直到落在实心方块上；
 // 砸在火把/半砖/积雪层等非整格方块上则碎成掉落物（MC 落方块破碎规则）。
-// 简化实现：方块编辑（挖掘/放置）触发支撑检查，下落按 ~80ms 步进（MC 为掉落实体，此处逐格步进，性能友好）。
+// 简化实现：方块编辑（挖掘/放置）触发支撑检查，逐格步进下落（性能友好）。
+// 下落加速（对齐 MC 掉落实体持续加速的离散近似）：首格 0.4s，同一块连续下落每格间隔 ×0.7，
+// 下限 0.06s/格——结算仍是「一步挪 1 格」，只是步进节奏越来越快，高落差明显快于匀速。
 // 注意：自然生成的悬空沙（MC 也有）只在收到方块更新时坠落——与本实现的触发点一致（玩家编辑/爆炸）。
 
 import { AIR, BLOCKS, BLOCK_BY_KEY, isWaterId, isLavaId, type BlockId } from './blocks';
@@ -23,15 +25,22 @@ const GRAVITY_IDS = new Set<number>(GRAVITY_KEYS.map((k) => BLOCK_BY_KEY[k]?.id)
 
 export const isGravityBlock = (id: BlockId): boolean => GRAVITY_IDS.has(id);
 
-/** 每步下落间隔（秒；MC 掉落实体每 tick 加速，简化为匀速步进） */
-const FALL_STEP = 0.08;
+/** 首格下落间隔（秒；与 sim.ts 慢节奏拍长一致，起落不快于原匀速节奏） */
+const FALL_STEP_FIRST = 0.4;
+/** 连续下落每格间隔倍率（MC 掉落实体持续加速的离散近似） */
+const FALL_ACCEL = 0.7;
+/** 步进间隔下限（秒/格；约 16.7 格/s，接近 MC 掉落实体终端速度的观感） */
+const FALL_STEP_MIN = 0.06;
 
 interface Falling {
   x: number;
   y: number;
   z: number;
   id: BlockId;
+  /** 距下一步剩余秒数 */
   timer: number;
+  /** 当前步进间隔（连续下落逐格缩短，落地/移除即出队重置） */
+  interval: number;
 }
 
 /** 正在下落的方块（世界作用域状态，维度切换清空） */
@@ -68,11 +77,11 @@ export function checkGravityAt(world: World, x: number, y: number, z: number): v
     if (!passable(world, cx, cy - 1, cz)) continue;
     // 已在队列中不重复登记
     if (falling.some((f) => f.x === cx && f.y === cy && f.z === cz)) continue;
-    falling.push({ x: cx, y: cy, z: cz, id, timer: FALL_STEP });
+    falling.push({ x: cx, y: cy, z: cz, id, timer: FALL_STEP_FIRST, interval: FALL_STEP_FIRST });
   }
 }
 
-/** 每帧推进：到点下落一格；落地（下方不可穿越）则从队列移除 */
+/** 每帧推进：到点下落一格；连续下落步进间隔逐格 ×0.7（下限 0.06s），落地（下方不可穿越）则从队列移除 */
 export function tickGravity(world: World, dt: number): void {
   for (let i = falling.length - 1; i >= 0; i--) {
     const f = falling[i];
@@ -81,31 +90,35 @@ export function tickGravity(world: World, dt: number): void {
       falling.splice(i, 1);
       continue;
     }
-    // MC：砸在火把/半砖/积雪层等非整格方块上碎成掉落物（目标方块保留，落方块不穿过也不放置）
-    if (breaksFallingBlock(world.getBlock(f.x, f.y - 1, f.z))) {
-      world.setBlock(f.x, f.y, f.z, AIR);
-      spawnBlockDrop(f.id, f.x + 0.5, f.y - 0.6, f.z + 0.5);
-      falling.splice(i, 1);
-      continue;
-    }
-    if (!passable(world, f.x, f.y - 1, f.z)) {
-      falling.splice(i, 1); // 落地
-      continue;
-    }
     f.timer -= dt;
-    if (f.timer > 0) continue;
-    f.timer = FALL_STEP;
-    // 下到底部：落出世界即消失（MC 掉落实体坠入虚空消失）
-    if (f.y <= 1) {
+    // 结算模型不变：一步只挪 1 格；间隔短时一帧可结算多步（高落差加速下落）
+    while (f.timer <= 0) {
+      // MC：砸在火把/半砖/积雪层等非整格方块上碎成掉落物（目标方块保留，落方块不穿过也不放置）
+      if (breaksFallingBlock(world.getBlock(f.x, f.y - 1, f.z))) {
+        world.setBlock(f.x, f.y, f.z, AIR);
+        spawnBlockDrop(f.id, f.x + 0.5, f.y - 0.6, f.z + 0.5);
+        falling.splice(i, 1);
+        break;
+      }
+      if (!passable(world, f.x, f.y - 1, f.z)) {
+        falling.splice(i, 1); // 落地
+        break;
+      }
+      // 下到底部：落出世界即消失（MC 掉落实体坠入虚空消失）
+      if (f.y <= 1) {
+        world.setBlock(f.x, f.y, f.z, AIR);
+        falling.splice(i, 1);
+        break;
+      }
+      world.setBlock(f.x, f.y - 1, f.z, f.id);
       world.setBlock(f.x, f.y, f.z, AIR);
-      falling.splice(i, 1);
-      continue;
+      f.y -= 1;
+      // 连续下落加速：下一格间隔缩短（下限 FALL_STEP_MIN）
+      f.interval = Math.max(FALL_STEP_MIN, f.interval * FALL_ACCEL);
+      f.timer += f.interval;
+      // 新位置悬空后，上方一格的重力方块可能连锁失撑
+      checkGravityAt(world, f.x, f.y + 1, f.z);
     }
-    world.setBlock(f.x, f.y - 1, f.z, f.id);
-    world.setBlock(f.x, f.y, f.z, AIR);
-    f.y -= 1;
-    // 新位置悬空后，上方一格的重力方块可能连锁失撑
-    checkGravityAt(world, f.x, f.y + 1, f.z);
   }
 }
 

@@ -105,6 +105,8 @@ export interface Mob {
   arrowCd: number;
   /** 苦力怕引爆倒计时（<0 未引爆） */
   ignite: number;
+  /** 充能苦力怕（MC：被闪电击中转化，爆炸威力增强） */
+  powered?: boolean;
   /** 幼体（喂食繁殖产生；体型 0.55，growUp 倒计时结束长成） */
   baby?: boolean;
   /** 幼体成长剩余秒数 */
@@ -740,14 +742,15 @@ export function fireEyeOfEnder(origin: { x: number; y: number; z: number }, targ
   });
 }
 
-/** 苦力怕爆炸：委托共享爆炸逻辑（防爆方块除外，MC 一致） */
+/** 苦力怕爆炸：委托共享爆炸逻辑（防爆方块除外，MC 一致）；充能苦力怕威力增强（MC：爆炸功率 3→6 的近似） */
 function explode(
   world: World,
   m: Mob,
   playerPos: { x: number; y: number; z: number },
   onAttackPlayer: (damage: number) => void,
 ): void {
-  explodeAt(world, m.x, m.y, m.z, playerPos, onAttackPlayer, { radius: 3, maxDamage: 43, hurtRadius: 4.5 }); // MC 普通难度贴脸约 43——标志性秒杀怪
+  if (m.powered) explodeAt(world, m.x, m.y, m.z, playerPos, onAttackPlayer, { radius: 5, maxDamage: 72, hurtRadius: 6.5 }); // MC 充能苦力怕贴脸约 72
+  else explodeAt(world, m.x, m.y, m.z, playerPos, onAttackPlayer, { radius: 3, maxDamage: 43, hurtRadius: 4.5 }); // MC 普通难度贴脸约 43——标志性秒杀怪
 }
 
 function tickArrows(

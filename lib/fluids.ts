@@ -7,7 +7,9 @@
 // - 侧向流入水的岩浆 / 水流入流动岩浆 → 圆石
 // - 岩浆向下流入水 → 石头；岩浆源上方是水（水从上方浇下）→ 石头
 // - 岩浆源遇侧向水 → 黑曜石
-// 注：流动岩浆暂不做源头消退（同水 v1 的「只传播不消退」），挖掉源头后流岩浆保留。
+// 岩浆消退（对齐 MC：断源后逐级枯竭）：源头被挖/被反应消耗后，下游流动岩浆按等级逐级消退，
+// 节奏与扩散一致（主世界/末地 1.5s、下界 0.5s 每级）——消退判定在岩浆步里做，setBlock 入队邻居带动下一级。
+// 无限岩浆源规则：MC 岩浆不像水能成源，流动岩浆永不生成新源（本实现 tickLava 无任何成源路径，天然满足）。
 
 import { AIR, BLOCK_BY_KEY, BLOCKS, COBBLE, isLavaId, isWaterId, LAVA, LAVA_FLOW_1, STONE, WATER, WATER_FLOW_1, type BlockId } from './blocks';
 import type { World } from './world';
@@ -143,6 +145,19 @@ function tickLava(world: World, x: number, y: number, z: number, level: number, 
       return;
     }
   }
+  // 消退（仅流动岩浆，MC：断源逐级枯竭）：上方无岩浆 且 无 level-1 上游邻居 → 退化为空气。
+  // 消退发生在岩浆步里（主世界/末地 1.5s、下界 0.5s 一步），消退格 setBlock 会把下游邻居重新入队，
+  // 下一级在下一个岩浆步才消退——节奏与扩散一致。
+  if (level > 0 && !isLavaId(world.getBlock(x, y + 1, z))) {
+    const parentLevel = level - 1;
+    const hasParent = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(
+      ([dx, dz]) => loaded(x + dx, z + dz) && lavaLevel(world.getBlock(x + dx, y, z + dz)) === parentLevel,
+    );
+    if (!hasParent) {
+      world.setBlock(x, y, z, AIR);
+      return;
+    }
+  }
   if (y > 0) {
     const below = world.getBlock(x, y - 1, z);
     if (below === AIR) {
@@ -184,6 +199,9 @@ export function tickFluids(world: World, budget = 128): void {
   const lavaDue = lavaAcc >= (nether ? LAVA_INTERVAL_NETHER : LAVA_INTERVAL_NORMAL);
   if (lavaDue) lavaAcc -= nether ? LAVA_INTERVAL_NETHER : LAVA_INTERVAL_NORMAL;
   const maxLavaLevel = nether ? 7 : 3;
+  // 本拍可结算的岩浆格快照：拍内新入队的岩浆格留到下一拍——扩散/消退都严格 1.5s（下界 0.5s）每级，
+  // 避免同一拍内沿队列级联到底（MC 岩浆每级都要等一个流动周期）
+  const lavaBatch = lavaDue ? new Set(pending) : null;
   let drained = 0;
   const deferred: string[] = [];
   for (const key of pending) {
@@ -202,8 +220,8 @@ export function tickFluids(world: World, budget = 128): void {
     // 邻格同理：chunk 未加载的方向直接跳过，否则在加载半径边缘倒液体会逐 chunk 向外爬，
     // 每步都隐式触发主线程全量地形生成 + cascadeLight
     const loaded = (nx: number, nz: number): boolean => world.isChunkLoaded(nx, nz);
-    if (lLevel >= 0 && !lavaDue) {
-      deferred.push(key); // 岩浆节奏未到：本拍不结算，留回队列
+    if (lLevel >= 0 && (!lavaDue || !lavaBatch?.has(key))) {
+      deferred.push(key); // 岩浆节奏未到 / 拍内新入队：本拍不结算，留回队列
       continue;
     }
     drained++;

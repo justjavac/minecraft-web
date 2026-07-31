@@ -111,3 +111,63 @@ describe('落方块砸在非整格方块上碎成掉落物（MC）', () => {
     expect(itemDrops.length).toBe(0);
   });
 });
+
+describe('下落加速（MC 掉落实体持续加速的离散近似）', () => {
+  it('连续下落步进间隔逐格递减至 0.06s 下限；高落差远快于原匀速 0.4s/格', () => {
+    const w = new World('gravity-accel', undefined, VOID_TERRAIN);
+    w.setBlock(4, 10, 4, BLOCK_BY_KEY.stone.id); // 地面
+    w.setBlock(4, 40, 4, BLOCK_BY_KEY.sand.id); // 30 格高落差
+    checkGravityAt(w, 4, 40, 4);
+    const sandId = BLOCK_BY_KEY.sand.id;
+    const sandY = (): number => {
+      for (let y = 40; y >= 11; y--) if (w.getBlock(4, y, 4) === sandId) return y;
+      return -1;
+    };
+    // 逐步推进并记录每格下落完成的时间
+    const moveTimes: number[] = [];
+    let lastY = 40;
+    let t = 0;
+    const dt = 0.02;
+    while (t < 8 && lastY !== 11) {
+      tickGravity(w, dt);
+      t += dt;
+      const y = sandY();
+      if (y !== lastY) {
+        moveTimes.push(t);
+        lastY = y;
+      }
+    }
+    expect(lastY).toBe(11); // 落满 29 格停在石头顶面
+    expect(moveTimes.length).toBe(29);
+    // 首格间隔 ≈0.4s（与原匀速节奏一致，起落不变快）
+    expect(moveTimes[0]).toBeGreaterThanOrEqual(0.38);
+    expect(moveTimes[0]).toBeLessThan(0.44);
+    const gaps = moveTimes.slice(1).map((mt, i) => mt - moveTimes[i]);
+    // 间隔递减：第二格（≈0.28s）明显快于首格（0.4s）
+    expect(gaps[0]).toBeLessThan(0.34);
+    // 单调不增（允许一个 dt 的量化误差）
+    for (let i = 1; i < gaps.length; i++) expect(gaps[i]).toBeLessThanOrEqual(gaps[i - 1] + dt + 1e-9);
+    // 末段达到下限 ~0.06s/格
+    expect(Math.min(...gaps)).toBeLessThanOrEqual(0.08);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(0.04);
+    // 高落差整体远快于匀速：29 格匀速需 29×0.4=11.6s，加速后 <4s
+    expect(moveTimes[28]).toBeLessThan(4);
+  });
+
+  it('中断重置：落地后再次失撑重新下落时回到首格慢节奏', () => {
+    const w = new World('gravity-accel-reset', undefined, VOID_TERRAIN);
+    w.setBlock(4, 10, 4, BLOCK_BY_KEY.stone.id);
+    w.setBlock(4, 20, 4, BLOCK_BY_KEY.sand.id);
+    checkGravityAt(w, 4, 20, 4);
+    for (let i = 0; i < 100; i++) tickGravity(w, 0.05); // 落定到 y=11
+    expect(w.getBlock(4, 11, 4)).toBe(BLOCK_BY_KEY.sand.id);
+    // 挖掉脚下石头 → 再次失撑下落：首步仍需 ~0.4s（不延续上次的加速状态）
+    w.setBlock(4, 10, 4, 0);
+    checkGravityAt(w, 4, 11, 4);
+    tickGravity(w, 0.2);
+    expect(w.getBlock(4, 11, 4)).toBe(BLOCK_BY_KEY.sand.id); // 0.2s < 0.4s：尚未起步
+    for (let i = 0; i < 30; i++) tickGravity(w, 0.05);
+    expect(w.getBlock(4, 11, 4)).toBe(0); // 已坠落出世界/落到更深处
+  });
+});
+

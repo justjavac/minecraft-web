@@ -175,3 +175,83 @@ describe('流动岩浆（MC Java：维度距离/节奏/水火反应）', () => {
     expect(w2.getBlock(8, 30, 8)).toBe(LAVA_FLOW_1 + 2);
   });
 });
+
+describe('岩浆消退（MC：断源后按等级逐级枯竭；流动岩浆永不成源）', () => {
+  beforeEach(() => clearFluids());
+
+  const NETHER_TERRAIN = { ...VOID_TERRAIN, kind: 'nether' as const };
+
+  /** 铺一行石头地板（y=10），承接水平扩散 */
+  function floor(w: World, x0: number, x1: number, z: number): void {
+    for (let x = x0; x <= x1; x++) w.setBlock(x, 10, z, BLOCK_BY_KEY.stone.id);
+  }
+
+  it('挖掉源头后下游逐级消退：主世界 1.5s/级（节奏与扩散一致）', () => {
+    const w = new World('lava-drain-ow', undefined, VOID_TERRAIN);
+    floor(w, 0, 12, 6);
+    w.setBlock(6, 11, 6, LAVA);
+    for (let i = 0; i < 40; i++) tickFluids(w, 256);
+    expect(lavaLevel(w.getBlock(9, 11, 6))).toBe(3); // 已铺满 3 级
+    // 重置节奏累加器对齐拍点，再挖掉源头
+    clearFluids();
+    w.setBlock(6, 11, 6, AIR);
+    for (let i = 0; i < 3; i++) tickFluids(w, 256); // 1.2s < 1.5s：节奏未到，不消退
+    expect(isLavaId(w.getBlock(7, 11, 6))).toBe(true);
+    tickFluids(w, 256); // 1.6s：第一个岩浆步——1 级消退，更远的还在
+    expect(w.getBlock(7, 11, 6)).toBe(AIR);
+    expect(isLavaId(w.getBlock(8, 11, 6))).toBe(true);
+    expect(isLavaId(w.getBlock(9, 11, 6))).toBe(true);
+    for (let i = 0; i < 3; i++) tickFluids(w, 256); // 节奏未到的拍不消退
+    expect(isLavaId(w.getBlock(8, 11, 6))).toBe(true);
+    tickFluids(w, 256); // 第二个岩浆步——2 级消退
+    expect(w.getBlock(8, 11, 6)).toBe(AIR);
+    expect(isLavaId(w.getBlock(9, 11, 6))).toBe(true);
+    for (let i = 0; i < 8; i++) tickFluids(w, 256); // 走完剩余级
+    expect(w.getBlock(9, 11, 6)).toBe(AIR);
+    expect(isLavaId(w.getBlock(5, 11, 6))).toBe(false); // 另一侧同样枯竭
+  });
+
+  it('下界消退节奏 0.5s/级', () => {
+    const saved = new Map([['0,0', new Uint16Array(CHUNK_VOLUME)]]);
+    const w = new World('lava-drain-nether', saved, NETHER_TERRAIN);
+    floor(w, 0, 15, 6);
+    w.setBlock(6, 11, 6, LAVA);
+    for (let i = 0; i < 40; i++) tickFluids(w, 512);
+    expect(lavaLevel(w.getBlock(13, 11, 6))).toBe(7);
+    clearFluids();
+    w.setBlock(6, 11, 6, AIR);
+    // 下界 0.5s 一步：第 1 拍（0.4s）不到，第 2 拍（0.8s）1 级消退
+    tickFluids(w, 512);
+    expect(isLavaId(w.getBlock(7, 11, 6))).toBe(true);
+    tickFluids(w, 512);
+    expect(w.getBlock(7, 11, 6)).toBe(AIR);
+    for (let i = 0; i < 30; i++) tickFluids(w, 512);
+    for (let x = 7; x <= 13; x++) expect(w.getBlock(x, 11, 6)).toBe(AIR);
+  });
+
+  it('岩浆源被水反应消耗（黑曜石）后，残流同样逐级消退', () => {
+    const w = new World('lava-drain-react', undefined, VOID_TERRAIN);
+    floor(w, 0, 12, 6);
+    w.setBlock(6, 11, 6, LAVA);
+    for (let i = 0; i < 40; i++) tickFluids(w, 256);
+    expect(lavaLevel(w.getBlock(9, 11, 6))).toBe(3);
+    w.setBlock(5, 11, 6, WATER); // 侧向水把源变成黑曜石（MC）
+    for (let i = 0; i < 40; i++) tickFluids(w, 256);
+    expect(w.getBlock(6, 11, 6)).toBe(BLOCK_BY_KEY.obsidian.id);
+    // 残流不得滞留：源消失后下游全部枯竭
+    for (let x = 7; x <= 9; x++) expect(w.getBlock(x, 11, 6)).toBe(AIR);
+  });
+
+  it('流动岩浆永不生成新源（MC：岩浆无无限源规则）', () => {
+    const w = new World('lava-no-infinite', undefined, VOID_TERRAIN);
+    // 两个岩浆源夹一格流动岩浆、下方实心——水在此布局会成源，岩浆不会
+    for (let x = 2; x <= 6; x++) {
+      for (let z = 2; z <= 6; z++) w.setBlock(x, 10, z, BLOCK_BY_KEY.stone.id);
+    }
+    w.setBlock(3, 11, 4, LAVA);
+    w.setBlock(5, 11, 4, LAVA);
+    w.setBlock(4, 11, 4, LAVA_FLOW_1);
+    for (let i = 0; i < 20; i++) tickFluids(w, 256);
+    expect(w.getBlock(4, 11, 4)).not.toBe(LAVA); // 流动岩浆保持流动，永不成源
+  });
+});
